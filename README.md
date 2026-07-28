@@ -101,9 +101,8 @@ pass an explicit compose file skip the local override). In Dokploy:
 
    ```sh
    SECRET_KEY_BASE=<openssl rand -base64 48>
-   PHX_HOST=your.domain.com
+   PHX_HOST=your.domain.com        # bare hostname — no scheme, no trailing slash
    PHX_SCHEME=https
-   URL_PORT=443
    SPOTIFY_CLIENT_ID=...
    SPOTIFY_CLIENT_SECRET=...
    SPOTIFY_REDIRECT_URI=https://your.domain.com/auth/spotify/callback
@@ -226,7 +225,7 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `SPOTIFY_REDIRECT_URI` | No | `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Override only for https deployments. |
 | `APP_PORT` | No | `4000` | **Local compose only** (`docker-compose.override.yml`). Host port the app is published on, and the port used in generated URLs. Not used by proxy deployments. |
 | `PORT` | No | `4000` | The port the server actually listens on inside the app/container. Used by `mix phx.server` for local dev. |
-| `URL_PORT` | No | value of `PORT` | Port embedded in generated URLs. Behind a TLS proxy (Dokploy), set to `443`. The local override sets it to `APP_PORT`. |
+| `URL_PORT` | No | `443` when `PHX_SCHEME=https`, else value of `PORT` | Port embedded in generated URLs. Only needed for a non-standard public port. The local override sets it to `APP_PORT`. |
 | `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy (Dokploy). |
 | `POOL_SIZE` | No | `10` | Ecto DB connection pool size (prod). |
 | `POSTGRES_PASSWORD` | No | `postgres` | **Compose only.** Password for the bundled Postgres container; also folded into the default `DATABASE_URL`. |
