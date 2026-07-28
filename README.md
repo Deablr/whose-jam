@@ -92,7 +92,9 @@ Spotify powers both song **search** (app-wide) and TV **playback** (host only).
 Without credentials the app boots and the lobby works, but search returns
 nothing and no game can play audio.
 
-1. Go to <https://developer.spotify.com/dashboard> and create an app.
+1. Go to <https://developer.spotify.com/dashboard> and create an app. When the
+   form asks *which API/SDKs are you planning to use*, select **Web API** and
+   **Web Playback SDK** — nothing else (no Android, iOS, or Ads API).
 2. Add this **redirect URI** to the app (match your `APP_PORT` — the port is
    part of the exact match):
 
@@ -113,6 +115,18 @@ nothing and no game can play audio.
    SPOTIFY_CLIENT_ID=your_client_id
    SPOTIFY_CLIENT_SECRET=your_client_secret
    ```
+
+**Exactly what the app uses:**
+
+| Spotify product | Where | Calls |
+| --- | --- | --- |
+| **Web API** | Server (Client Credentials token) | `GET /v1/search` — song search from phones, proxied server-side |
+| **Web API** | Server (host's OAuth token) | `GET /v1/me` — Premium verification after OAuth |
+| **Web API** | TV browser (host's OAuth token) | `PUT /v1/me/player/play` — start each round's track on the TV device |
+| **Web Playback SDK** | TV browser | Turns the TV tab into a Spotify Connect device; reports track end |
+| Accounts service | Server | OAuth authorize/token endpoints (Authorization Code + Client Credentials flows) |
+
+The Android SDK, iOS SDK, and Ads API are **not** used.
 
 **Two different token flows are in play:**
 
