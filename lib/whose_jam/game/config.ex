@@ -6,7 +6,7 @@ defmodule WhoseJam.Game.Config do
   Nothing here touches a process, the Repo, or any external service: it takes
   plain data in (an overrides map and a player count) and returns a `%Config{}`
   struct out. The struct fully determines the pacing of a session, and
-  `estimated_runtime_s/2` turns it back into a wall-clock estimate.
+  `estimated_runtime_s/3` turns it back into a wall-clock estimate.
 
   ## Fields
 
@@ -23,9 +23,10 @@ defmodule WhoseJam.Game.Config do
       style. Defaults to `true`.
     * `allow_vote_change?` — let voters change a cast vote. Defaults to `false`.
 
-  Internal (used only by the runtime estimator; documented here because they
-  shape `estimated_runtime_s/2`). All default to fixed values and are rarely
-  overridden, but `build/2` accepts overrides for them too:
+  Internal (constants used only by the runtime estimator; documented here
+  because they shape `estimated_runtime_s/3`). These are fixed values and are
+  **not** overridable via `build/2` — only the five host-facing settings above
+  can be overridden:
 
     * `song_playback_s` — seconds of song audio played per round. Default `30`.
     * `reveal_padding_s` — pause to reveal the submitter each round. Default `5`.
@@ -66,6 +67,11 @@ defmodule WhoseJam.Game.Config do
   may use atom or string keys (LiveView forms send strings), and string values
   are coerced for known fields (`"45"` → `45`, `"true"` → `true`).
 
+  Only the five host-facing settings can be overridden (`answer_timer_s`,
+  `vote_timer_s`, `questions_per_player`, `subrounds_enabled?`,
+  `allow_vote_change?`); any other key in `overrides` is ignored. The internal
+  estimator fields stay fixed at their constant defaults.
+
   Resolution order matters: `questions_per_player` is resolved first, then
   `answer_timer_s` derives from the resolved value unless the host overrode it
   directly.
@@ -85,33 +91,44 @@ defmodule WhoseJam.Game.Config do
       questions_per_player: qpp,
       subrounds_enabled?: fetch_bool(overrides, :subrounds_enabled?, true),
       allow_vote_change?: fetch_bool(overrides, :allow_vote_change?, false),
-      song_playback_s: fetch_int(overrides, :song_playback_s, @default_song_playback_s),
-      reveal_padding_s: fetch_int(overrides, :reveal_padding_s, @default_reveal_padding_s),
-      results_padding_s: fetch_int(overrides, :results_padding_s, @default_results_padding_s)
+      song_playback_s: @default_song_playback_s,
+      reveal_padding_s: @default_reveal_padding_s,
+      results_padding_s: @default_results_padding_s
     }
   end
 
   @doc """
   Estimate the total wall-clock length of a game, in seconds.
 
-  Model: a single answer phase, then one round per submitted song. Each round
-  is a song snippet + a voting window + reveal/results padding. Round count is
-  `player_count * questions_per_player`, since every submitted song becomes its
-  own play-and-vote round.
+  Model: one answer phase per sub-round, then one round per submitted song.
+  Each round is a song snippet + a voting window + reveal/results padding.
+  Round count is `player_count * questions_per_player` (total across all
+  sub-rounds), since every submitted song becomes its own play-and-vote round.
 
-  This is a theme-agnostic estimate; it treats answering as one phase even when
-  sub-rounds are enabled (the config carries no theme structure).
+  `subround_count` (default `1`) is the number of sub-rounds the theme splits
+  into. The answer timer is global *per sub-round* (per the PRD), so when
+  `subrounds_enabled?` is true the answer phase is counted once per sub-round;
+  when it is false the answer phase is counted once regardless of
+  `subround_count`. Only the answer phases multiply — the total round count is
+  unchanged.
+
+  The arity-2 form is equivalent to `subround_count = 1`.
   """
-  @spec estimated_runtime_s(t(), pos_integer()) :: non_neg_integer()
-  def estimated_runtime_s(%__MODULE__{} = config, player_count)
-      when is_integer(player_count) and player_count > 0 do
+  @spec estimated_runtime_s(t(), pos_integer(), pos_integer()) :: non_neg_integer()
+  def estimated_runtime_s(config, player_count, subround_count \\ 1)
+
+  def estimated_runtime_s(%__MODULE__{} = config, player_count, subround_count)
+      when is_integer(player_count) and player_count > 0 and
+             is_integer(subround_count) and subround_count > 0 do
     round_count = player_count * config.questions_per_player
 
     per_round_s =
       config.song_playback_s + config.vote_timer_s + config.reveal_padding_s +
         config.results_padding_s
 
-    config.answer_timer_s + per_round_s * round_count
+    answer_phases = if config.subrounds_enabled?, do: subround_count, else: 1
+
+    config.answer_timer_s * answer_phases + per_round_s * round_count
   end
 
   # Keep total round count near ~15-16 so the estimate stays within ±20% of the

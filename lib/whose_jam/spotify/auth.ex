@@ -25,9 +25,7 @@ defmodule WhoseJam.Spotify.Auth do
   alias WhoseJam.Spotify.Credentials
 
   @authorize_url "https://accounts.spotify.com/authorize"
-  @token_url "https://accounts.spotify.com/api/token"
   @me_url "https://api.spotify.com/v1/me"
-  @receive_timeout 8_000
 
   # Scopes required for the Web Playback SDK and playback control.
   @scopes "streaming user-read-email user-read-private user-modify-playback-state user-read-playback-state"
@@ -78,17 +76,17 @@ defmodule WhoseJam.Spotify.Auth do
           | {:error, term()}
   def exchange_code(code, redirect_uri) do
     with {:ok, creds} <- Credentials.fetch() do
-      @token_url
+      Credentials.token_url()
       |> Req.post(
         form: [
           grant_type: "authorization_code",
           code: code,
           redirect_uri: redirect_uri
         ],
-        auth: basic_auth(creds),
-        receive_timeout: @receive_timeout
+        auth: Credentials.basic_auth(creds),
+        receive_timeout: Credentials.receive_timeout()
       )
-      |> handle_exchange_response()
+      |> Credentials.handle_json(&extract_exchange/1)
     end
   end
 
@@ -109,13 +107,13 @@ defmodule WhoseJam.Spotify.Auth do
           {:ok, %{access_token: String.t(), expires_at: DateTime.t()}} | {:error, term()}
   def refresh(refresh_token) do
     with {:ok, creds} <- Credentials.fetch() do
-      @token_url
+      Credentials.token_url()
       |> Req.post(
         form: [grant_type: "refresh_token", refresh_token: refresh_token],
-        auth: basic_auth(creds),
-        receive_timeout: @receive_timeout
+        auth: Credentials.basic_auth(creds),
+        receive_timeout: Credentials.receive_timeout()
       )
-      |> handle_refresh_response()
+      |> Credentials.handle_json(&extract_refresh/1)
     end
   end
 
@@ -132,7 +130,7 @@ defmodule WhoseJam.Spotify.Auth do
   @spec premium?(String.t()) :: {:ok, boolean()} | {:error, term()}
   def premium?(access_token) do
     @me_url
-    |> Req.get(auth: {:bearer, access_token}, receive_timeout: @receive_timeout)
+    |> Req.get(auth: {:bearer, access_token}, receive_timeout: Credentials.receive_timeout())
     |> case do
       {:ok, %Req.Response{status: 200, body: %{"product" => product}}} ->
         {:ok, product == "premium"}
@@ -145,10 +143,7 @@ defmodule WhoseJam.Spotify.Auth do
     end
   end
 
-  defp basic_auth(%{client_id: id, client_secret: secret}), do: {:basic, "#{id}:#{secret}"}
-
-  defp handle_exchange_response({:ok, %Req.Response{status: 200, body: body}})
-       when is_map(body) do
+  defp extract_exchange(body) do
     case body do
       %{"access_token" => access, "refresh_token" => refresh, "expires_in" => expires_in} ->
         {:ok,
@@ -163,13 +158,7 @@ defmodule WhoseJam.Spotify.Auth do
     end
   end
 
-  defp handle_exchange_response({:ok, %Req.Response{status: status, body: body}}),
-    do: {:error, {:http_error, status, body}}
-
-  defp handle_exchange_response({:error, reason}), do: {:error, reason}
-
-  defp handle_refresh_response({:ok, %Req.Response{status: 200, body: body}})
-       when is_map(body) do
+  defp extract_refresh(body) do
     case body do
       %{"access_token" => access, "expires_in" => expires_in} ->
         {:ok, %{access_token: access, expires_at: expires_at(expires_in)}}
@@ -178,11 +167,6 @@ defmodule WhoseJam.Spotify.Auth do
         {:error, {:unexpected_token_body, body}}
     end
   end
-
-  defp handle_refresh_response({:ok, %Req.Response{status: status, body: body}}),
-    do: {:error, {:http_error, status, body}}
-
-  defp handle_refresh_response({:error, reason}), do: {:error, reason}
 
   defp expires_at(expires_in) when is_integer(expires_in) do
     DateTime.utc_now() |> DateTime.add(expires_in, :second)

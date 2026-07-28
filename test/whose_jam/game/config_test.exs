@@ -117,6 +117,18 @@ defmodule WhoseJam.Game.ConfigTest do
       config = Config.build(%{questions_per_player: 8, answer_timer_s: 60}, 4)
       assert config.answer_timer_s == 60
     end
+
+    test "internal estimator fields are not overridable and stay at their constant defaults" do
+      config =
+        Config.build(
+          %{song_playback_s: 999, reveal_padding_s: 999, results_padding_s: 999},
+          5
+        )
+
+      assert config.song_playback_s == 30
+      assert config.reveal_padding_s == 5
+      assert config.results_padding_s == 5
+    end
   end
 
   describe "estimated_runtime_s/2" do
@@ -158,6 +170,30 @@ defmodule WhoseJam.Game.ConfigTest do
       base = Config.build(%{}, 5)
       slower = Config.build(%{vote_timer_s: 60}, 5)
       assert Config.estimated_runtime_s(slower, 5) > Config.estimated_runtime_s(base, 5)
+    end
+
+    test "arity-2 form equals subround_count = 1" do
+      config = Config.build(%{}, 5)
+      assert Config.estimated_runtime_s(config, 5) == Config.estimated_runtime_s(config, 5, 1)
+    end
+
+    test "with sub-rounds enabled, each extra sub-round adds exactly one answer phase" do
+      config = Config.build(%{subrounds_enabled?: true}, 5)
+
+      one = Config.estimated_runtime_s(config, 5, 1)
+      two = Config.estimated_runtime_s(config, 5, 2)
+
+      assert two - one == config.answer_timer_s
+      # Only the answer phases multiply; the round count (and thus per-round
+      # time) is unchanged, so the delta is exactly one answer phase.
+      assert two == one + config.answer_timer_s
+    end
+
+    test "with sub-rounds disabled, subround_count is ignored" do
+      config = Config.build(%{subrounds_enabled?: false}, 5)
+
+      assert Config.estimated_runtime_s(config, 5, 3) ==
+               Config.estimated_runtime_s(config, 5, 1)
     end
   end
 end

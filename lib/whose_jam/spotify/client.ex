@@ -13,10 +13,8 @@ defmodule WhoseJam.Spotify.Client do
 
   alias WhoseJam.Spotify.Credentials
 
-  @token_url "https://accounts.spotify.com/api/token"
   @search_url "https://api.spotify.com/v1/search"
   @search_limit 8
-  @receive_timeout 8_000
 
   @type track :: %{
           uri: String.t(),
@@ -39,14 +37,14 @@ defmodule WhoseJam.Spotify.Client do
           {:ok, %{access_token: String.t(), expires_in: pos_integer()}}
           | {:error, term()}
   def fetch_app_token do
-    with {:ok, %{client_id: id, client_secret: secret}} <- Credentials.fetch() do
-      @token_url
+    with {:ok, creds} <- Credentials.fetch() do
+      Credentials.token_url()
       |> Req.post(
         form: [grant_type: "client_credentials"],
-        auth: {:basic, "#{id}:#{secret}"},
-        receive_timeout: @receive_timeout
+        auth: Credentials.basic_auth(creds),
+        receive_timeout: Credentials.receive_timeout()
       )
-      |> handle_token_response()
+      |> Credentials.handle_json(&extract_app_token/1)
     end
   end
 
@@ -68,13 +66,12 @@ defmodule WhoseJam.Spotify.Client do
     |> Req.get(
       params: [q: query, type: "track", limit: @search_limit],
       auth: {:bearer, access_token},
-      receive_timeout: @receive_timeout
+      receive_timeout: Credentials.receive_timeout()
     )
-    |> handle_search_response()
+    |> Credentials.handle_json(&extract_tracks/1)
   end
 
-  defp handle_token_response({:ok, %Req.Response{status: 200, body: body}})
-       when is_map(body) do
+  defp extract_app_token(body) do
     case body do
       %{"access_token" => token, "expires_in" => expires_in}
       when is_binary(token) and is_integer(expires_in) ->
@@ -85,13 +82,7 @@ defmodule WhoseJam.Spotify.Client do
     end
   end
 
-  defp handle_token_response({:ok, %Req.Response{status: status, body: body}}),
-    do: {:error, {:http_error, status, body}}
-
-  defp handle_token_response({:error, reason}), do: {:error, reason}
-
-  defp handle_search_response({:ok, %Req.Response{status: 200, body: body}})
-       when is_map(body) do
+  defp extract_tracks(body) do
     items =
       body
       |> Map.get("tracks", %{})
@@ -99,11 +90,6 @@ defmodule WhoseJam.Spotify.Client do
 
     {:ok, Enum.map(items, &normalize_track/1)}
   end
-
-  defp handle_search_response({:ok, %Req.Response{status: status, body: body}}),
-    do: {:error, {:http_error, status, body}}
-
-  defp handle_search_response({:error, reason}), do: {:error, reason}
 
   defp normalize_track(track) do
     %{
