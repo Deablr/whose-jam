@@ -416,7 +416,12 @@ defmodule WhoseJamWeb.TvLive do
 
     ~H"""
     <div class="space-y-5">
-      <div class="text-center lg:text-left">
+      <div :if={@view.round.style == :guess_question} class="text-center lg:text-left">
+        <p class="text-2xl text-white/50">The prompt was…</p>
+        <p class="text-5xl font-black text-emerald-400 leading-tight">{@view.round.correct_prompt}</p>
+        <p class="text-2xl text-white/60 mt-2">submitted by {@submitter_name}</p>
+      </div>
+      <div :if={@view.round.style != :guess_question} class="text-center lg:text-left">
         <p class="text-2xl text-white/50">It was…</p>
         <p class="text-6xl font-black text-emerald-400">{@submitter_name}</p>
       </div>

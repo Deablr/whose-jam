@@ -334,6 +334,84 @@ defmodule WhoseJam.Game.ServerTest do
     end
   end
 
+  describe "revealed round exposes the correct answer" do
+    test "guess_who: correct_choice is nil pre-reveal, the submitter at results" do
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      # Pre-reveal: never leaked.
+      assert view.round.revealed == false
+      assert view.round.correct_choice == nil
+      assert view.round.correct_prompt == nil
+
+      submitter = view.round.song.uri
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for p <- view.players, p.id != submitter, do: Game.cast_vote(code, p.id, submitter)
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
+      assert round.correct_choice == submitter
+      # guess_who has no prompt to reveal.
+      assert round.correct_prompt == nil
+    end
+
+    test "guess_question: correct_choice/prompt hidden pre-reveal, exposed at results" do
+      theme = insert_theme([:guess_question])
+      insert_questions(theme, :guess_question, 8)
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      :ok = Game.song_ended(code)
+
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert view.round.correct_choice == nil
+      assert view.round.correct_prompt == nil
+
+      submitter = view.round.song.uri
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      # Voting any valid choice drives the round to results (need not be correct).
+      choice = hd(view.round.choices).id
+      for p <- view.players, p.id != submitter, do: Game.cast_vote(code, p.id, choice)
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
+      # The correct choice is a question id, and its prompt matches the matching
+      # entry in the (already-exposed) choices list.
+      assert is_binary(round.correct_choice)
+      correct = Enum.find(round.choices, &(&1.id == round.correct_choice))
+      assert round.correct_prompt == correct.prompt
+    end
+  end
+
+  describe "player_view :me flags" do
+    test "own_round? is true only for the current round's submitter during voting" do
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      submitter = view.round.song.uri
+      assert Game.player_view(code, submitter).me.own_round? == true
+
+      for p <- view.players, p.id != submitter do
+        assert Game.player_view(code, p.id).me.own_round? == false
+      end
+    end
+
+    test "missed_count reflects unsubmitted assignments once answering has ended" do
+      theme = guess_who_theme()
+      {code, [p1, p2, p3]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      # Two players submit; p3 never does. The ~1s answer timer moves us into
+      # playing with p3's question dropped.
+      submit_all(code, p1)
+      submit_all(code, p2)
+      assert_receive {:game_state, %{phase: :playing}}, 3000
+
+      assert Game.player_view(code, p3).me.missed_count == 1
+      assert Game.player_view(code, p1).me.missed_count == 0
+    end
+  end
+
   describe "disconnection during answering" do
     test "a disconnected player's prior submissions are preserved" do
       theme = guess_who_theme()

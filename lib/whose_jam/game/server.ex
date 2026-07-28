@@ -764,9 +764,40 @@ defmodule WhoseJam.Game.Server do
         nil
 
       {:ok, player} ->
-        %{id: player.id, role: player.role, assigned: assigned_view(state, player_id)}
+        %{
+          id: player.id,
+          role: player.role,
+          assigned: assigned_view(state, player_id),
+          # Per-caller truth (safe here, never in the shared broadcast): is this
+          # player the submitter of the round currently in play?
+          own_round?: own_round?(state, player_id),
+          # How many of this player's assigned questions in the current sub-round
+          # went unsubmitted once answering ended. Lets a reconnecting player
+          # still learn their unfinished questions were dropped.
+          missed_count: missed_count(state, player_id)
+        }
     end
   end
+
+  defp own_round?(state, player_id) do
+    case state.round do
+      %{submitter_id: submitter_id} -> submitter_id == player_id
+      _ -> false
+    end
+  end
+
+  # Only meaningful once answering has ended (the playing phase): the assigned
+  # questions this player never submitted. During :answering the player is still
+  # submitting, so it is 0.
+  defp missed_count(%{phase: :playing} = state, player_id) do
+    subround = current_subround(state)
+
+    Enum.count(subround.assignments, fn {qid, pids} ->
+      player_id in pids and not Map.has_key?(state.submissions, {player_id, qid})
+    end)
+  end
+
+  defp missed_count(_state, _player_id), do: 0
 
   defp assigned_view(%{phase: :answering} = state, player_id) do
     subround = current_subround(state)
@@ -866,13 +897,38 @@ defmodule WhoseJam.Game.Server do
     }
 
     if round.revealed do
-      Map.merge(base, %{submitter_id: round.submitter_id, deltas: round.deltas})
+      # Post-reveal only: expose the correct answer. `correct_choice` is the
+      # submitter id (guess_who) or the question id (guess_question); the choices
+      # list always carries the correct one, so `correct_prompt` is derivable for
+      # guess_question rounds. NEVER populated before the reveal.
+      Map.merge(base, %{
+        submitter_id: round.submitter_id,
+        deltas: round.deltas,
+        correct_choice: round.correct_choice,
+        correct_prompt: correct_prompt(round)
+      })
     else
-      Map.merge(base, %{submitter_id: nil, deltas: nil})
+      Map.merge(base, %{
+        submitter_id: nil,
+        deltas: nil,
+        correct_choice: nil,
+        correct_prompt: nil
+      })
     end
   end
 
   defp round_view(_state), do: nil
+
+  # The prompt of the correct question, for guess_question reveals. The correct
+  # question is always among the round's choices (see `guess_question_choices/3`).
+  defp correct_prompt(%{style: :guess_question, choices: choices, correct_choice: cid}) do
+    case Enum.find(choices, fn c -> c.id == cid end) do
+      %{prompt: prompt} -> prompt
+      _ -> nil
+    end
+  end
+
+  defp correct_prompt(_round), do: nil
 
   # =========================================================================
   # Helpers

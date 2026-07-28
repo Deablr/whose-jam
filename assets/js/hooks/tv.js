@@ -1,6 +1,6 @@
 // TV-screen hooks. Owned by the TV/host agent.
 //
-// Exports two LiveView hooks:
+// Exports one LiveView hook:
 //
 //   * "SpotifyPlayer" — drives the Spotify Web Playback SDK on the TV browser
 //     using the host's Premium OAuth token. It is entirely attribute-driven:
@@ -11,10 +11,9 @@
 //     event; any SDK/token failure pushes "playback_error" so the LiveView can
 //     surface a visible banner instead of silently dying.
 //
-//   * "Countdown" — a self-contained ticking countdown. Reads `data-deadline`
-//     (an epoch-millisecond timestamp, matching the server's
-//     System.system_time(:millisecond)) and renders the whole seconds
-//     remaining. No dependency on any other agent's hooks.
+// The "Countdown" hook lives in hooks/player.js and is registered globally, so
+// TV templates using phx-hook="Countdown" pick it up from there (its mm:ss +
+// stop-at-zero rendering is fine on the TV).
 
 const SDK_SRC = "https://sdk.scdn.co/spotify-player.js"
 
@@ -170,34 +169,4 @@ const SpotifyPlayer = {
   },
 }
 
-const Countdown = {
-  mounted() {
-    this.tick()
-    this.timer = setInterval(() => this.tick(), 250)
-  },
-
-  updated() {
-    this.tick()
-  },
-
-  destroyed() {
-    if (this.timer) clearInterval(this.timer)
-  },
-
-  tick() {
-    const raw = this.el.dataset.deadline
-    if (!raw) {
-      this.el.textContent = ""
-      return
-    }
-    const deadline = parseInt(raw, 10)
-    if (Number.isNaN(deadline)) {
-      this.el.textContent = ""
-      return
-    }
-    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000))
-    this.el.textContent = String(remaining)
-  },
-}
-
-export default {SpotifyPlayer, Countdown}
+export default {SpotifyPlayer}

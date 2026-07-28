@@ -67,8 +67,8 @@ defmodule WhoseJamWeb.PlayLive do
       search_query: "",
       search_results: [],
       spotify_error: nil,
-      submitted_uris: MapSet.new(),
       show_times_up: false,
+      times_up_dismissed: false,
       # voting
       my_vote: nil,
       vote_error: nil,
@@ -104,7 +104,7 @@ defmodule WhoseJamWeb.PlayLive do
     if query == "" do
       {:noreply, assign(socket, search_query: "", search_results: [], spotify_error: nil)}
     else
-      {:noreply, run_search(socket, q)}
+      {:noreply, run_search(socket, query)}
     end
   end
 
@@ -163,7 +163,7 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   def handle_event("dismiss_times_up", _params, socket) do
-    {:noreply, assign(socket, show_times_up: false)}
+    {:noreply, assign(socket, show_times_up: false, times_up_dismissed: true)}
   end
 
   # =========================================================================
@@ -247,7 +247,6 @@ defmodule WhoseJamWeb.PlayLive do
   defp refresh_view(socket) do
     code = socket.assigns.code
     player_id = socket.assigns.player_id
-    old_view = socket.assigns.view
 
     case Game.player_view(code, player_id) do
       nil ->
@@ -260,6 +259,10 @@ defmodule WhoseJamWeb.PlayLive do
 
       view ->
         me = view.me
+        # A fresh answering phase (e.g. a new sub-round) resets the dismissal so
+        # a later "time's up" for that sub-round can surface again.
+        times_up_dismissed =
+          if view.phase == :answering, do: false, else: socket.assigns.times_up_dismissed
 
         socket
         |> assign(
@@ -268,44 +271,20 @@ defmodule WhoseJamWeb.PlayLive do
           me: me,
           role: me.role,
           my_name: participant_name(view, player_id),
-          submitted_uris: merge_submitted_uris(socket.assigns.submitted_uris, me),
-          show_times_up: compute_times_up(socket.assigns, old_view, view, me.role)
+          times_up_dismissed: times_up_dismissed,
+          show_times_up: compute_times_up(me, view, times_up_dismissed)
         )
     end
   end
 
-  defp merge_submitted_uris(uris, %{assigned: assigned}) when is_list(assigned) do
-    Enum.reduce(assigned, uris, fn
-      %{song: %{uri: uri}}, acc when is_binary(uri) -> MapSet.put(acc, uri)
-      _entry, acc -> acc
-    end)
-  end
+  # Server truth beats a witnessed transition: any player whose assigned
+  # questions went unsubmitted (`me.missed_count > 0`) once we're past answering
+  # sees the notice — including one who only reconnects after answering ended.
+  defp compute_times_up(%{role: :player, missed_count: missed}, %{phase: :playing}, false)
+       when missed > 0,
+       do: true
 
-  defp merge_submitted_uris(uris, _me), do: uris
-
-  # True when the answer timer flipped us out of :answering with work left over.
-  defp compute_times_up(assigns, old_view, new_view, role) do
-    cond do
-      new_view.phase in [:lobby, :finished] ->
-        false
-
-      role == :player and old_view != nil and old_view.phase == :answering and
-          new_view.phase != :answering ->
-        had_unfinished =
-          case old_view.me do
-            %{assigned: assigned} when is_list(assigned) ->
-              Enum.any?(assigned, &(not &1.submitted?))
-
-            _ ->
-              false
-          end
-
-        had_unfinished or assigns.show_times_up
-
-      true ->
-        assigns.show_times_up
-    end
-  end
+  defp compute_times_up(_me, _view, _dismissed), do: false
 
   defp valid_token(session, code) do
     with token when is_binary(token) <- Map.get(session, "player_token"),
@@ -343,12 +322,11 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
-  defp own_round?(assigns) do
-    case assigns.view.round do
-      %{song: %{uri: uri}} when is_binary(uri) -> MapSet.member?(assigns.submitted_uris, uri)
-      _ -> false
-    end
-  end
+  # Server truth: the player-scoped view tells each caller whether the round in
+  # play is their own submission (correct even when two players picked the same
+  # track).
+  defp own_round?(%{me: %{own_round?: own}}), do: own == true
+  defp own_round?(_assigns), do: false
 
   defp voted?(assigns) do
     assigns.player_id in (assigns.view.round.voters || [])
@@ -566,6 +544,16 @@ defmodule WhoseJamWeb.PlayLive do
 
   # --- answering ------------------------------------------------------------
 
+  # Safe fallback if the server ever hands us an :answering phase without an
+  # answering payload (mirrors tv_live's nil-guarding).
+  defp answering_screen(%{view: %{answering: nil}} = assigns) do
+    ~H"""
+    <div class="flex flex-1 items-center justify-center text-white/60">
+      Getting the next round ready…
+    </div>
+    """
+  end
+
   defp answering_screen(%{role: :audience} = assigns) do
     ~H"""
     <div class="flex flex-1 flex-col items-center justify-center gap-5 text-center">
@@ -753,6 +741,15 @@ defmodule WhoseJamWeb.PlayLive do
 
   # --- playing (revealing / voting / results) -------------------------------
 
+  # Safe fallback if a round hasn't materialised yet (mirrors tv_live).
+  defp playing_screen(%{view: %{round: nil}} = assigns, _round_state) do
+    ~H"""
+    <div class="flex flex-1 items-center justify-center text-white/60">
+      Loading the next song…
+    </div>
+    """
+  end
+
   defp playing_screen(assigns, round_state) do
     assigns =
       assigns
@@ -913,8 +910,11 @@ defmodule WhoseJamWeb.PlayLive do
           <div class="mt-1 text-2xl font-bold text-fuchsia-300">{@submitter_name}</div>
         </div>
         <div :if={@round.style != :guess_who}>
-          <div class="text-xs uppercase tracking-wide text-white/50">The reveal</div>
-          <div class="mt-1 text-lg font-semibold">Check the TV for the correct prompt.</div>
+          <div class="text-xs uppercase tracking-wide text-white/50">The prompt was</div>
+          <div class="mt-1 text-lg font-semibold text-fuchsia-300">{@round.correct_prompt}</div>
+          <div :if={@submitter_name} class="mt-1 text-sm text-white/50">
+            submitted by {@submitter_name}
+          </div>
         </div>
       </div>
 
