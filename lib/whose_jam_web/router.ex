@@ -17,7 +17,14 @@ defmodule WhoseJamWeb.Router do
   scope "/", WhoseJamWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", HomeLive
+    live "/play/:code", PlayLive
+    live "/tv/:code", TvLive
+    live "/host/:code", HostLive
+
+    get "/claim/:token", PlayerSessionController, :claim
+    get "/auth/spotify", SpotifyAuthController, :authorize
+    get "/auth/spotify/callback", SpotifyAuthController, :callback
   end
 
   # Other scopes may use custom stacks.
