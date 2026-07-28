@@ -1,5 +1,14 @@
 import Config
 
+# Compose/Dokploy pass "" for unset interpolated vars — treat blank as unset.
+get_env = fn name ->
+  case System.get_env(name) do
+    nil -> nil
+    "" -> nil
+    value -> value
+  end
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -21,7 +30,7 @@ if System.get_env("PHX_SERVER") do
 end
 
 config :whose_jam, WhoseJamWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+  http: [port: String.to_integer(get_env.("PORT") || "4000")]
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
@@ -43,13 +52,8 @@ end
 # Spotify OAuth redirect URI override (any env). When unset, the app defaults
 # to http://127.0.0.1:<public port>/auth/spotify/callback — Spotify permits
 # loopback IPs over plain http but rejects `localhost` and non-HTTPS hosts.
-# Note: compose passes "" for unset vars, so guard against empty strings.
-case System.get_env("SPOTIFY_REDIRECT_URI") do
-  uri when is_binary(uri) and uri != "" ->
-    config :whose_jam, :spotify_redirect_uri, uri
-
-  _ ->
-    :ok
+if spotify_redirect_uri = get_env.("SPOTIFY_REDIRECT_URI") do
+  config :whose_jam, :spotify_redirect_uri, spotify_redirect_uri
 end
 
 if config_env() == :prod do
@@ -65,7 +69,7 @@ if config_env() == :prod do
   config :whose_jam, WhoseJam.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: String.to_integer(get_env.("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
     socket_options: maybe_ipv6
@@ -82,17 +86,17 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "localhost"
-  port = String.to_integer(System.get_env("PORT") || "4000")
+  host = get_env.("PHX_HOST") || "localhost"
+  port = String.to_integer(get_env.("PORT") || "4000")
 
   # URLs the app generates (QR join links on the TV, OAuth redirect URIs) must
   # be reachable by phones on the same network, so they default to plain http
   # on the serving port. Behind a TLS proxy, set PHX_SCHEME=https and
   # URL_PORT=443.
-  url_scheme = System.get_env("PHX_SCHEME") || "http"
-  url_port = String.to_integer(System.get_env("URL_PORT") || Integer.to_string(port))
+  url_scheme = get_env.("PHX_SCHEME") || "http"
+  url_port = String.to_integer(get_env.("URL_PORT") || Integer.to_string(port))
 
-  config :whose_jam, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :whose_jam, :dns_cluster_query, get_env.("DNS_CLUSTER_QUERY")
 
   # Browsers legitimately reach this app from several origins at once: phones
   # via PHX_HOST (the LAN IP in the QR links), and the host's laptop via

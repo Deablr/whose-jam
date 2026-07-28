@@ -84,6 +84,36 @@ persists in the `pgdata` volume between runs.
 To run in the background: `docker compose up --build -d`. To stop:
 `docker compose down` (add `-v` to also wipe the database volume).
 
+Port publishing lives in `docker-compose.override.yml`, which Compose merges
+automatically for local runs. The base `docker-compose.yml` publishes **no
+ports** — that's deliberate, for reverse-proxy deployments (below).
+
+### Deploying with Dokploy (Traefik)
+
+The base compose file is proxy-ready: Traefik reaches the `app` service on the
+Docker network at port `4000`, and no host ports are published (platforms that
+pass an explicit compose file skip the local override). In Dokploy:
+
+1. Create a Compose service from this repo (`docker-compose.yml`).
+2. Point a domain at service `app`, container port `4000` (Dokploy writes the
+   Traefik routing; enable HTTPS there).
+3. Set the environment variables:
+
+   ```sh
+   SECRET_KEY_BASE=<openssl rand -base64 48>
+   PHX_HOST=your.domain.com
+   PHX_SCHEME=https
+   URL_PORT=443
+   SPOTIFY_CLIENT_ID=...
+   SPOTIFY_CLIENT_SECRET=...
+   SPOTIFY_REDIRECT_URI=https://your.domain.com/auth/spotify/callback
+   POSTGRES_PASSWORD=<something strong>
+   ```
+
+   `SPOTIFY_REDIRECT_URI` must be set explicitly here (and registered in the
+   Spotify dashboard): the loopback default only makes sense when the server
+   runs on the host's own laptop. With HTTPS, Spotify accepts the real domain.
+
 ---
 
 ## Spotify setup
@@ -194,10 +224,10 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `DATABASE_URL` | **Yes** (prod/Docker) | — | Ecto connection URL, `ecto://USER:PASS@HOST/DB`. Compose sets it to the bundled `db` container automatically. |
 | `PHX_HOST` | Recommended | `localhost` | Hostname used in generated URLs (QR join links). Set to your LAN IP for a party. Not used for the Spotify redirect. |
 | `SPOTIFY_REDIRECT_URI` | No | `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Override only for https deployments. |
-| `APP_PORT` | No | `4000` | **Compose only.** Host port the app is published on, and the port used in generated URLs (`URL_PORT` defaults to it). |
+| `APP_PORT` | No | `4000` | **Local compose only** (`docker-compose.override.yml`). Host port the app is published on, and the port used in generated URLs. Not used by proxy deployments. |
 | `PORT` | No | `4000` | The port the server actually listens on inside the app/container. Used by `mix phx.server` for local dev. |
-| `URL_PORT` | No | value of `PORT` | Port embedded in generated URLs. Behind a TLS proxy, set to `443`. Compose sets it to `APP_PORT`. |
-| `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy. |
+| `URL_PORT` | No | value of `PORT` | Port embedded in generated URLs. Behind a TLS proxy (Dokploy), set to `443`. The local override sets it to `APP_PORT`. |
+| `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy (Dokploy). |
 | `POOL_SIZE` | No | `10` | Ecto DB connection pool size (prod). |
 | `POSTGRES_PASSWORD` | No | `postgres` | **Compose only.** Password for the bundled Postgres container; also folded into the default `DATABASE_URL`. |
 | `SPOTIFY_CLIENT_ID` | For Spotify | — | Spotify app Client ID. Without it, search/playback are disabled. |

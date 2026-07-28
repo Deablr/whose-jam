@@ -1,0 +1,12 @@
+# Local-development overrides. `docker compose up` merges this file
+# automatically; deployment platforms that pass an explicit compose file
+# (Dokploy, `docker compose -f docker-compose.yml`) ignore it — so ports are
+# published only on your machine, never behind the Traefik proxy.
+
+services:
+  app:
+    ports:
+      - "${APP_PORT:-4000}:4000"
+    environment:
+      # Generated URLs (QR links, OAuth redirect) must use the published port.
+      URL_PORT: ${APP_PORT:-4000}
