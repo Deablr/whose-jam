@@ -40,6 +40,18 @@ if config_env() == :dev do
     ]
 end
 
+# Spotify OAuth redirect URI override (any env). When unset, the app defaults
+# to http://127.0.0.1:<public port>/auth/spotify/callback — Spotify permits
+# loopback IPs over plain http but rejects `localhost` and non-HTTPS hosts.
+# Note: compose passes "" for unset vars, so guard against empty strings.
+case System.get_env("SPOTIFY_REDIRECT_URI") do
+  uri when is_binary(uri) and uri != "" ->
+    config :whose_jam, :spotify_redirect_uri, uri
+
+  _ ->
+    :ok
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

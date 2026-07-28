@@ -38,7 +38,7 @@ defmodule WhoseJamWeb.SpotifyAuthController do
 
       true ->
         state = Phoenix.Token.sign(conn, @state_salt, room_code)
-        redirect_uri = url(~p"/auth/spotify/callback")
+        redirect_uri = spotify_redirect_uri()
 
         case Auth.authorize_url(state, redirect_uri) do
           {:error, :not_configured} ->
@@ -100,7 +100,7 @@ defmodule WhoseJamWeb.SpotifyAuthController do
   # =========================================================================
 
   defp finish_callback(conn, room_code, auth_code) do
-    redirect_uri = url(~p"/auth/spotify/callback")
+    redirect_uri = spotify_redirect_uri()
 
     with {:ok, tokens} <- Auth.exchange_code(auth_code, redirect_uri),
          {:ok, premium?} <- Auth.premium?(tokens.access_token) do
@@ -139,6 +139,23 @@ defmodule WhoseJamWeb.SpotifyAuthController do
       :error,
       "That Spotify account isn't Premium — you can't host playback. Connect a Premium account to start the game."
     )
+  end
+
+  # Spotify rejects `localhost` and any non-HTTPS non-loopback redirect URI, so
+  # we can't derive this from PHX_HOST (which is a LAN IP at a real party).
+  # The OAuth round-trip only happens in the host's browser on the machine
+  # running the server, so a loopback URI always works: default to
+  # http://127.0.0.1:<public port>. Override with SPOTIFY_REDIRECT_URI (e.g. an
+  # https URI when deployed behind TLS). Must exactly match — including port —
+  # a redirect URI registered in the Spotify app.
+  defp spotify_redirect_uri do
+    Application.get_env(:whose_jam, :spotify_redirect_uri) ||
+      "http://127.0.0.1:#{public_port()}/auth/spotify/callback"
+  end
+
+  defp public_port do
+    endpoint_config = WhoseJamWeb.Endpoint.config(:url) || []
+    endpoint_config[:port] || WhoseJamWeb.Endpoint.config(:http)[:port] || 4000
   end
 
   defp recover_code(conn, state) do

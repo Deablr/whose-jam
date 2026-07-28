@@ -71,9 +71,10 @@ docker compose up --build
 
 `SECRET_KEY_BASE` is the only value required to boot. For a **real party**,
 also set `PHX_HOST` in `.env` to your laptop's LAN IP (e.g. `192.168.1.23`) so
-the QR-code join links and the Spotify OAuth redirect resolve to an address
-phones on the same Wi-Fi can actually reach. `localhost` only works when
-everything is on the one machine.
+the QR-code join links resolve to an address phones on the same Wi-Fi can
+actually reach — `localhost` only works when everything is on the one machine.
+(The Spotify OAuth redirect is separate and stays on `127.0.0.1`; see
+[Spotify setup](#spotify-setup).)
 
 Database migrations and the (idempotent) content seeds run automatically on
 boot — the compose `command` runs `bin/migrate`, then `bin/seed`, then
@@ -92,14 +93,20 @@ Without credentials the app boots and the lobby works, but search returns
 nothing and no game can play audio.
 
 1. Go to <https://developer.spotify.com/dashboard> and create an app.
-2. Add this **redirect URI** to the app, matching your `.env`:
+2. Add this **redirect URI** to the app (match your `APP_PORT` — the port is
+   part of the exact match):
 
    ```
-   http://<PHX_HOST>:<APP_PORT>/auth/spotify/callback
+   http://127.0.0.1:4000/auth/spotify/callback
    ```
 
-   For a local run that's `http://localhost:4000/auth/spotify/callback`; for a
-   LAN party, `http://192.168.1.23:4000/auth/spotify/callback`.
+   Spotify **rejects `localhost`** and any non-HTTPS URI that isn't a loopback
+   IP (`127.0.0.1` / `[::1]`), so the app always sends a `127.0.0.1` redirect —
+   even at a LAN party where phones join via your LAN IP. That works because
+   the OAuth round-trip happens in the host's browser on the same machine that
+   runs the server; don't register a LAN-IP redirect URI, Spotify won't accept
+   it. Deploying behind TLS instead? Register your https URI and set
+   `SPOTIFY_REDIRECT_URI=https://your.domain/auth/spotify/callback`.
 3. Copy the app's Client ID and Client Secret into `.env`:
 
    ```sh
@@ -171,7 +178,8 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | --- | --- | --- | --- |
 | `SECRET_KEY_BASE` | **Yes** | — | Signs/encrypts cookies and session tokens. Generate with `openssl rand -base64 48`. Boot fails (prod/release) if missing. |
 | `DATABASE_URL` | **Yes** (prod/Docker) | — | Ecto connection URL, `ecto://USER:PASS@HOST/DB`. Compose sets it to the bundled `db` container automatically. |
-| `PHX_HOST` | Recommended | `localhost` | Hostname used in generated URLs (QR join links, OAuth redirect). Set to your LAN IP for a party. |
+| `PHX_HOST` | Recommended | `localhost` | Hostname used in generated URLs (QR join links). Set to your LAN IP for a party. Not used for the Spotify redirect. |
+| `SPOTIFY_REDIRECT_URI` | No | `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Override only for https deployments. |
 | `APP_PORT` | No | `4000` | **Compose only.** Host port the app is published on, and the port used in generated URLs (`URL_PORT` defaults to it). |
 | `PORT` | No | `4000` | The port the server actually listens on inside the app/container. Used by `mix phx.server` for local dev. |
 | `URL_PORT` | No | value of `PORT` | Port embedded in generated URLs. Behind a TLS proxy, set to `443`. Compose sets it to `APP_PORT`. |
@@ -280,9 +288,15 @@ account.
 
 **Phones can't reach the QR link.**
 `PHX_HOST` must be your laptop's **LAN IP**, not `localhost`, and the phones must
-be on the **same Wi-Fi**. Update `PHX_HOST` in `.env`, restart, and make sure
-your Spotify redirect URI matches the same host and port. (A dev server also
-binds loopback-only by default — see Local development.)
+be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. The Spotify
+redirect URI is unaffected — it stays on `127.0.0.1`. (A dev server also binds
+loopback-only by default — see Local development.)
+
+**Spotify says "invalid redirect URI" (or the dashboard rejects the URI).**
+Spotify doesn't accept `localhost` or plain-http non-loopback hosts. Register
+exactly `http://127.0.0.1:<APP_PORT>/auth/spotify/callback` (port included) and
+start the OAuth flow from the machine running the server. Behind TLS, register
+your https URI and set `SPOTIFY_REDIRECT_URI` to the same value.
 
 **DB connection refused / authentication failed.**
 Docker: let the `db` service finish starting (the app waits on its healthcheck);
