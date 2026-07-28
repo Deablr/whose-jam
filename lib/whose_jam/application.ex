@@ -13,6 +13,9 @@ defmodule WhoseJam.Application do
       {DNSCluster, query: Application.get_env(:whose_jam, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: WhoseJam.PubSub},
       WhoseJam.Spotify.Cache,
+      # Per-game runtime: registry of live games + dynamic supervisor of servers.
+      {Registry, keys: :unique, name: WhoseJam.Game.Registry},
+      {DynamicSupervisor, strategy: :one_for_one, name: WhoseJam.Game.Supervisor},
       # Start to serve requests, typically the last entry
       WhoseJamWeb.Endpoint
     ]

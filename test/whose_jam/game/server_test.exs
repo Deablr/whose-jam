@@ -1,0 +1,455 @@
+defmodule WhoseJam.Game.ServerTest do
+  @moduledoc """
+  Contract tests for the per-game runtime, exercised entirely through the public
+  `WhoseJam.Game` facade — events in, `get_state/1` (and the host/player views)
+  out. Internal GenServer state is never inspected directly, per the PRD testing
+  philosophy.
+
+  Tests run `async: false` in shared-sandbox mode so the game server process
+  (started under the app's DynamicSupervisor) can read seed content through the
+  same DB connection.
+  """
+
+  use WhoseJam.DataCase, async: false
+
+  alias WhoseJam.Content.{Question, Theme}
+  alias WhoseJam.Game
+
+  @fast_overrides %{
+    questions_per_player: 1,
+    answer_timer_s: 1,
+    vote_timer_s: 1,
+    results_pause_ms: 5
+  }
+
+  @premium %{access_token: "tok", refresh_token: "ref", expires_at: 0, premium?: true}
+
+  setup do
+    # Terminate any game servers left running after each test.
+    on_exit(fn ->
+      for {_, pid, _, _} <- DynamicSupervisor.which_children(WhoseJam.Game.Supervisor) do
+        DynamicSupervisor.terminate_child(WhoseJam.Game.Supervisor, pid)
+      end
+    end)
+
+    :ok
+  end
+
+  # --- fixtures -------------------------------------------------------------
+
+  defp insert_theme(style_sequence) do
+    %Theme{}
+    |> Theme.changeset(%{
+      name: "Theme #{System.unique_integer([:positive])}",
+      description: "desc",
+      style_sequence: style_sequence
+    })
+    |> Repo.insert!()
+  end
+
+  defp insert_questions(theme, style, count) do
+    for i <- 1..count do
+      %Question{}
+      |> Question.changeset(%{
+        theme_id: theme.id,
+        prompt: "#{style} prompt #{i}",
+        style: style,
+        is_example: false
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp guess_who_theme do
+    theme = insert_theme([:guess_who])
+    insert_questions(theme, :guess_who, 8)
+    theme
+  end
+
+  # Create a game, join `n` players, verify Spotify Premium, apply fast timers.
+  defp lobby_with_players(theme, n, extra_overrides \\ %{}) do
+    {:ok, code} = Game.create_game(theme.id, Map.merge(@fast_overrides, extra_overrides))
+
+    ids =
+      for i <- 1..n do
+        {:ok, %{player_id: id, role: :player}} = Game.join(code, "P#{i}")
+        id
+      end
+
+    :ok = Game.set_spotify(code, @premium)
+    {code, ids}
+  end
+
+  defp song(uri), do: %{uri: uri, name: "Song #{uri}", artist: "Artist", album_art_url: "art"}
+
+  # For a player, submit `song(player_id)` for each assigned question.
+  defp submit_all(code, player_id) do
+    view = Game.player_view(code, player_id)
+
+    for q <- view.me.assigned do
+      :ok = Game.submit_song(code, player_id, q.question_id, song(player_id))
+    end
+
+    view.me.assigned
+  end
+
+  # Drive a started game to completion by reacting to broadcasts. Voters always
+  # vote for the true submitter (identified via the song uri we chose = the
+  # submitter's id), so scoring is exercised end to end.
+  defp play_to_finish(code) do
+    receive do
+      {:game_state, view} ->
+        case {view.phase, view.round_state} do
+          {:finished, _} ->
+            view
+
+          {:playing, :revealing} ->
+            Game.song_ended(code)
+            play_to_finish(code)
+
+          {:playing, :voting} ->
+            submitter = view.round.song.uri
+
+            for p <- view.players, p.id != submitter, p.id not in view.round.voters do
+              Game.cast_vote(code, p.id, submitter)
+            end
+
+            play_to_finish(code)
+
+          _ ->
+            play_to_finish(code)
+        end
+    after
+      5000 -> flunk("game did not reach :finished")
+    end
+  end
+
+  # =========================================================================
+
+  describe "lobby & creation" do
+    test "create_game returns a code and get_state reports a lobby" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      assert is_binary(code)
+      assert Game.exists?(code)
+
+      view = Game.get_state(code)
+      assert view.phase == :lobby
+      assert view.code == code
+      assert view.theme.style_sequence == [:guess_who]
+      assert view.players == []
+      assert view.audience == []
+    end
+
+    test "create_game with an unknown theme errors" do
+      assert Game.create_game(-1) == {:error, :theme_not_found}
+    end
+
+    test "unknown code: reads are nil, commands are not_found" do
+      refute Game.exists?("ZZZZ")
+      assert Game.get_state("ZZZZ") == nil
+      assert Game.join("ZZZZ", "Nobody") == {:error, :not_found}
+    end
+
+    test "config overrides are reflected in the public view (lobby only)" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      :ok = Game.set_config(code, %{vote_timer_s: 42, questions_per_player: 3})
+      view = Game.get_state(code)
+      assert view.config.vote_timer_s == 42
+      assert view.config.questions_per_player == 3
+    end
+  end
+
+  describe "joining & capacity" do
+    test "the first eight joiners are players; the ninth becomes audience" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      for i <- 1..8 do
+        assert {:ok, %{role: :player}} = Game.join(code, "P#{i}")
+      end
+
+      assert {:ok, %{role: :audience}} = Game.join(code, "Late")
+
+      view = Game.get_state(code)
+      assert length(view.players) == 8
+      assert length(view.audience) == 1
+    end
+
+    test "rejoin restores an existing player's slot; unknown ids error" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+      {:ok, %{player_id: id, role: :player}} = Game.join(code, "Amy")
+
+      assert Game.rejoin(code, id) == {:ok, %{player_id: id, role: :player}}
+      assert Game.rejoin(code, "nope") == {:error, :unknown_player}
+    end
+
+    test "joining after the game starts becomes audience (lobby is locked)" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      assert {:ok, %{role: :audience}} = Game.join(code, "Latecomer")
+    end
+  end
+
+  describe "start_game guards" do
+    test "requires at least three players" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+      {:ok, _} = Game.join(code, "A")
+      {:ok, _} = Game.join(code, "B")
+      :ok = Game.set_spotify(code, @premium)
+
+      assert Game.start_game(code) == {:error, :not_enough_players}
+    end
+
+    test "requires Spotify auth and Premium verification" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id, @fast_overrides)
+      for i <- 1..3, do: Game.join(code, "P#{i}")
+
+      assert Game.start_game(code) == {:error, :not_authenticated}
+
+      :ok = Game.set_spotify(code, %{access_token: "t", premium?: false})
+      assert Game.start_game(code) == {:error, :not_premium}
+
+      :ok = Game.set_spotify(code, @premium)
+      assert Game.start_game(code) == :ok
+    end
+  end
+
+  describe "happy path: lobby -> answering -> playing -> finished" do
+    test "a small 3-player guess_who game plays through to a final scoreboard" do
+      theme = guess_who_theme()
+      {code, [p1, p2, p3]} = lobby_with_players(theme, 3)
+
+      :ok = Game.start_game(code)
+
+      view = Game.get_state(code)
+      assert view.phase == :answering
+      assert is_integer(view.answering.deadline_ms)
+      # Progress counts are exposed; the songs themselves are not.
+      assert view.answering.progress[p1] == %{submitted: 0, total: 1}
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      # Each player submits their single assigned question.
+      for pid <- [p1, p2, p3], do: submit_all(code, pid)
+
+      final = play_to_finish(code)
+
+      assert final.phase == :finished
+      assert final.round == nil
+      # Winner(s) are computed and players/audience are kept separate.
+      assert is_list(final.winners.players)
+      assert final.winners.audience == []
+      # Everyone voted correctly every round, so guessers accrued points.
+      assert Enum.any?(Map.values(final.scores), &(&1 > 0))
+    end
+
+    test "re-submitting before the timer changes the pick (last write wins)" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      [q] = Game.player_view(code, p1).me.assigned
+      :ok = Game.submit_song(code, p1, q.question_id, song("first"))
+      :ok = Game.submit_song(code, p1, q.question_id, song("second"))
+
+      assigned = Game.player_view(code, p1).me.assigned
+      assert hd(assigned).song.uri == "second"
+      assert hd(assigned).submitted? == true
+    end
+  end
+
+  describe "voting rules" do
+    # Bring a game to the point where round 0 is open for voting.
+    defp start_voting(theme) do
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      # Answering ended early (all submitted) -> playing/:revealing.
+      :ok = Game.song_ended(code)
+
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      {code, view}
+    end
+
+    test "the submitter cannot vote in their own round" do
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      submitter = view.round.song.uri
+      assert Game.cast_vote(code, submitter, submitter) == {:error, :own_round}
+    end
+
+    test "double voting is rejected unless allow_vote_change? is enabled" do
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      submitter = view.round.song.uri
+      voter = Enum.find(view.players, &(&1.id != submitter)).id
+      other = Enum.find(view.players, &(&1.id != submitter and &1.id != voter)).id
+
+      assert Game.cast_vote(code, voter, submitter) == :ok
+      # Second vote by the same voter is rejected...
+      assert Game.cast_vote(code, voter, other) == {:error, :already_voted}
+    end
+
+    test "with allow_vote_change? enabled a voter may change their vote" do
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3, %{allow_vote_change?: true})
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      :ok = Game.song_ended(code)
+
+      view = Game.get_state(code)
+      submitter = view.round.song.uri
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      assert Game.cast_vote(code, a, submitter) == :ok
+      # Changing to another candidate is allowed here.
+      assert Game.cast_vote(code, a, b) == :ok
+    end
+
+    test "the round advances when the vote timer expires with missing votes" do
+      theme = guess_who_theme()
+      {code, _view} = start_voting(theme)
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      # Nobody votes; the ~1s vote timer must still move the round to :results,
+      # then auto-advance. No points are awarded for the un-voted round.
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
+      assert round.revealed == true
+      assert round.deltas == %{}
+    end
+  end
+
+  describe "disconnection during answering" do
+    test "a disconnected player's prior submissions are preserved" do
+      theme = guess_who_theme()
+      {code, [p1, p2, p3]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      submit_all(code, p1)
+
+      # p1 drops (Presence no longer lists them).
+      :ok = Game.presence_diff(code, [p2, p3])
+
+      view = Game.get_state(code)
+      assert Enum.find(view.players, &(&1.id == p1)).connected? == false
+      # Still counted as submitted, and still in the private player view.
+      assert view.answering.progress[p1] == %{submitted: 1, total: 1}
+      assert hd(Game.player_view(code, p1).me.assigned).submitted? == true
+      # Game is still in answering, waiting on the others (not stalled/crashed).
+      assert view.phase == :answering
+    end
+  end
+
+  describe "invalid events in the wrong state" do
+    test "are rejected without crashing the game process" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id, @fast_overrides)
+      {:ok, %{player_id: pid}} = Game.join(code, "A")
+
+      pid_before = which_pid(code)
+
+      assert Game.cast_vote(code, pid, "x") == {:error, :not_voting}
+      assert Game.submit_song(code, pid, "q", song("s")) == {:error, :not_answering}
+      assert Game.song_ended(code) == {:error, :not_revealing}
+      assert Game.skip_song(code) == {:error, :not_playing}
+      assert Game.play_again(code) == {:error, :not_finished}
+      assert Game.set_config(code, %{vote_timer_s: 5}) == :ok
+
+      # Process survived every invalid event.
+      assert Game.exists?(code)
+      assert which_pid(code) == pid_before
+      assert Process.alive?(pid_before)
+    end
+  end
+
+  describe "play_again" do
+    test "resets a finished game to the lobby, keeping the roster" do
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      final = play_to_finish(code)
+      assert final.phase == :finished
+
+      :ok = Game.play_again(code)
+
+      view = Game.get_state(code)
+      assert view.phase == :lobby
+      # Roster preserved, scores reset.
+      assert Enum.map(view.players, & &1.id) |> Enum.sort() == Enum.sort(ids)
+      assert Enum.all?(Map.values(view.scores), &(&1 == 0))
+    end
+  end
+
+  describe "multi-style theme with sub-rounds" do
+    test "collapsing sub-rounds still plays through to finished" do
+      theme = insert_theme([:guess_who, :guess_question])
+      insert_questions(theme, :guess_who, 6)
+      insert_questions(theme, :guess_question, 6)
+
+      {code, ids} =
+        lobby_with_players(theme, 3, %{subrounds_enabled?: false})
+
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      # One collapsed answering phase across both styles.
+      view = Game.get_state(code)
+      assert view.phase == :answering
+      assert view.subround_total == 1
+
+      for pid <- ids, do: submit_all(code, pid)
+      final = play_to_finish(code)
+      assert final.phase == :finished
+    end
+
+    test "enabled sub-rounds produce one sub-round per style" do
+      theme = insert_theme([:guess_who, :guess_question])
+      insert_questions(theme, :guess_who, 6)
+      insert_questions(theme, :guess_question, 6)
+
+      {code, _ids} = lobby_with_players(theme, 3, %{subrounds_enabled?: true})
+      :ok = Game.start_game(code)
+
+      view = Game.get_state(code)
+      assert view.subround_total == 2
+      assert view.subround_index == 0
+    end
+  end
+
+  describe "host_state" do
+    test "exposes the Spotify token only through the host-scoped query" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+      :ok = Game.set_spotify(code, @premium)
+
+      # Never in the shared view...
+      refute Map.has_key?(Game.get_state(code), :spotify)
+      # ...but present for the host.
+      assert Game.host_state(code).spotify.access_token == "tok"
+    end
+  end
+
+  # --- helpers --------------------------------------------------------------
+
+  defp which_pid(code) do
+    case Registry.lookup(WhoseJam.Game.Registry, code) do
+      [{pid, _}] -> pid
+      [] -> nil
+    end
+  end
+end
