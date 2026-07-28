@@ -11,6 +11,9 @@ defmodule WhoseJamWeb.Presence do
 
   def topic(code), do: "presence:game:" <> code
 
+  @impl true
+  def init(_opts), do: {:ok, %{}}
+
   def track_player(pid, code, player_id) do
     track(pid, topic(code), player_id, %{})
   end
