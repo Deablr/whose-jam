@@ -16,6 +16,7 @@ defmodule WhoseJam.Application do
       # Per-game runtime: registry of live games + dynamic supervisor of servers.
       {Registry, keys: :unique, name: WhoseJam.Game.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: WhoseJam.Game.Supervisor},
+      WhoseJamWeb.Presence,
       # Start to serve requests, typically the last entry
       WhoseJamWeb.Endpoint
     ]
