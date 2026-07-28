@@ -26,6 +26,9 @@ config :whose_jam, WhoseJam.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
+# Shorten the per-round reveal/results pause so game tests run fast.
+config :whose_jam, results_pause_ms: 10
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

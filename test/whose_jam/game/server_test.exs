@@ -15,11 +15,13 @@ defmodule WhoseJam.Game.ServerTest do
   alias WhoseJam.Content.{Question, Theme}
   alias WhoseJam.Game
 
+  # The reveal/results pause is shortened globally for tests via the
+  # `:results_pause_ms` application env (see config/test.exs), not a per-game
+  # override.
   @fast_overrides %{
     questions_per_player: 1,
     answer_timer_s: 1,
-    vote_timer_s: 1,
-    results_pause_ms: 5
+    vote_timer_s: 1
   }
 
   @premium %{access_token: "tok", refresh_token: "ref", expires_at: 0, premium?: true}
@@ -351,6 +353,26 @@ defmodule WhoseJam.Game.ServerTest do
       # Game is still in answering, waiting on the others (not stalled/crashed).
       assert view.phase == :answering
     end
+
+    test "answering advances early when the last non-submitter disconnects" do
+      theme = guess_who_theme()
+      # A long answer timer proves the advance is early, not a timer expiry.
+      {code, [p1, p2, p3]} = lobby_with_players(theme, 3, %{answer_timer_s: 60})
+      :ok = Game.start_game(code)
+
+      # Two players submit everything; the third never submits.
+      submit_all(code, p1)
+      submit_all(code, p2)
+      assert Game.get_state(code).phase == :answering
+
+      # The lone remaining blocker disconnects -> answering completes early.
+      :ok = Game.presence_diff(code, [p1, p2])
+
+      view = Game.get_state(code)
+      assert view.phase == :playing
+      # p3's connection is reflected as dropped.
+      assert Enum.find(view.players, &(&1.id == p3)).connected? == false
+    end
   end
 
   describe "invalid events in the wrong state" do
@@ -428,6 +450,28 @@ defmodule WhoseJam.Game.ServerTest do
       view = Game.get_state(code)
       assert view.subround_total == 2
       assert view.subround_index == 0
+    end
+
+    test "the collapsed multi-style answer timer scales with the style count" do
+      theme = insert_theme([:guess_who, :guess_question])
+      insert_questions(theme, :guess_who, 6)
+      insert_questions(theme, :guess_question, 6)
+
+      # Collapsed: one sub-round spanning both styles, answer_timer_s = 5.
+      {code, _ids} =
+        lobby_with_players(theme, 3, %{subrounds_enabled?: false, answer_timer_s: 5})
+
+      before_ms = System.system_time(:millisecond)
+      :ok = Game.start_game(code)
+
+      view = Game.get_state(code)
+      assert view.subround_total == 1
+      assert view.subround_styles == [:guess_who, :guess_question]
+
+      # Two styles => 5s * 2 = ~10s window, not the flat ~5s a single style gets.
+      span = view.answering.deadline_ms - before_ms
+      assert span > 8_000
+      assert span <= 10_500
     end
   end
 

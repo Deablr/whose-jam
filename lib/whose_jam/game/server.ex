@@ -191,7 +191,7 @@ defmodule WhoseJam.Game.Server do
       state.phase != :lobby ->
         {:reply, {:error, :already_started}, state}
 
-      player_count(state) < 3 ->
+      role_count(state, :player) < 3 ->
         {:reply, {:error, :not_enough_players}, state}
 
       is_nil(state.spotify) ->
@@ -290,8 +290,16 @@ defmodule WhoseJam.Game.Server do
 
     state = %{state | participants: participants}
 
-    # A disconnect may make the remaining eligible voters "all voted".
-    state = if state.round_state == :voting, do: maybe_end_voting(state), else: state
+    # A disconnect may complete the current phase early: it can make the
+    # remaining eligible voters "all voted", or remove the last player still
+    # blocking answering.
+    state =
+      cond do
+        state.round_state == :voting -> maybe_end_voting(state)
+        state.phase == :answering -> maybe_end_answering(state)
+        true -> state
+      end
+
     {:reply, :ok, broadcast(state)}
   end
 
@@ -421,7 +429,11 @@ defmodule WhoseJam.Game.Server do
 
   defp begin_answering(state, index) do
     subround = Enum.at(state.subrounds, index)
-    ms = state.config.answer_timer_s * 1000
+    # Each style in a sub-round asks `questions_per_player` questions, so the
+    # answer window scales with how many styles the sub-round covers (1 for a
+    # normal sub-round; S for the collapsed all-styles case).
+    style_count = max(length(subround.styles), 1)
+    ms = state.config.answer_timer_s * style_count * 1000
     ref = schedule({:answer_timeout, index}, ms)
 
     %{
@@ -450,16 +462,28 @@ defmodule WhoseJam.Game.Server do
     if all_submitted?(state), do: end_answering(state), else: state
   end
 
+  # Only connected players can still block early completion. A disconnected
+  # player's already-submitted songs stay in the game; their *pending*
+  # questions no longer hold up the phase.
   defp all_submitted?(state) do
     assignments = current_subround(state).assignments
 
     Enum.all?(assignments, fn {qid, pids} ->
-      Enum.all?(pids, fn pid -> Map.has_key?(state.submissions, {pid, qid}) end)
+      Enum.all?(pids, fn pid ->
+        not connected?(state, pid) or Map.has_key?(state.submissions, {pid, qid})
+      end)
     end)
   end
 
+  defp connected?(state, pid) do
+    case Map.fetch(state.participants, pid) do
+      {:ok, p} -> p.connected?
+      :error -> false
+    end
+  end
+
   defp end_answering(state) do
-    state = cancel_answer_timer(state)
+    state = cancel_timer(state, :answer_ref)
     rounds = build_rounds(state)
     begin_playing(%{state | rounds: rounds, round_index: 0})
   end
@@ -477,29 +501,30 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp build_round(state, submitter_id, qid, %{style: :guess_who} = question, song) do
-    %{
-      style: :guess_who,
-      submitter_id: submitter_id,
-      qid: qid,
-      question: question,
-      song: song,
+    round_map(submitter_id, qid, question, song,
       choices: guess_who_choices(state),
-      correct_choice: submitter_id,
-      votes: %{},
-      revealed: false,
-      deltas: nil
-    }
+      correct_choice: submitter_id
+    )
   end
 
   defp build_round(state, submitter_id, qid, %{style: :guess_question} = question, song) do
+    round_map(submitter_id, qid, question, song,
+      choices: guess_question_choices(state, qid, question),
+      correct_choice: qid
+    )
+  end
+
+  # The 10-key round map shared by both styles; `choices` and `correct_choice`
+  # are the only style-specific fields. `style` mirrors the question's style.
+  defp round_map(submitter_id, qid, %{style: style} = question, song, opts) do
     %{
-      style: :guess_question,
+      style: style,
       submitter_id: submitter_id,
       qid: qid,
       question: question,
       song: song,
-      choices: guess_question_choices(state, qid, question),
-      correct_choice: qid,
+      choices: Keyword.fetch!(opts, :choices),
+      correct_choice: Keyword.fetch!(opts, :correct_choice),
       votes: %{},
       revealed: false,
       deltas: nil
@@ -554,7 +579,7 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp begin_voting(state) do
-    state = cancel_reveal_timer(state)
+    state = cancel_timer(state, :reveal_ref)
     ms = state.config.vote_timer_s * 1000
     ref = schedule({:vote_timeout, state.subround_index, state.round_index}, ms)
 
@@ -582,7 +607,7 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp enter_results(state) do
-    state = cancel_vote_timer(state)
+    state = cancel_timer(state, :vote_ref)
     round = state.round
 
     votes =
@@ -856,13 +881,13 @@ defmodule WhoseJam.Game.Server do
   defp join_role(state) do
     cond do
       state.phase != :lobby -> :audience
-      player_count(state) >= @max_players -> :audience
+      role_count(state, :player) >= @max_players -> :audience
       true -> :player
     end
   end
 
   defp maybe_flag_audience_cap(result, state, :audience) do
-    if audience_count(state) > @audience_soft_cap do
+    if role_count(state, :audience) > @audience_soft_cap do
       Map.put(result, :audience_soft_cap_exceeded, true)
     else
       result
@@ -915,7 +940,7 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp current_config(state) do
-    state.config || Config.build(state.overrides, max(player_count(state), 1))
+    state.config || Config.build(state.overrides, max(role_count(state, :player), 1))
   end
 
   defp ordered_participants(state) do
@@ -927,17 +952,11 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp player_ids(state) do
-    state.order
-    |> Enum.map(fn id -> Map.fetch!(state.participants, id) end)
-    |> Enum.filter(&(&1.role == :player))
-    |> Enum.map(& &1.id)
+    state |> players_ordered() |> Enum.map(& &1.id)
   end
 
-  defp player_count(state),
-    do: Enum.count(state.participants, fn {_id, p} -> p.role == :player end)
-
-  defp audience_count(state),
-    do: Enum.count(state.participants, fn {_id, p} -> p.role == :audience end)
+  defp role_count(state, role),
+    do: Enum.count(state.participants, fn {_id, p} -> p.role == role end)
 
   defp set_connected(state, id, connected?) do
     case Map.fetch(state.participants, id) do
@@ -955,16 +974,14 @@ defmodule WhoseJam.Game.Server do
     fetch_field(spotify, :premium?) == true
   end
 
+  # The reveal/results pause is estimator-consistent by default. A test-only
+  # application-env seam (`config :whose_jam, results_pause_ms: N`) can shorten
+  # it; it is not a host-facing setting and is not overridable via the public
+  # create/set_config API.
   defp results_pause_ms(state) do
-    default = (state.config.reveal_padding_s + state.config.results_padding_s) * 1000
-
-    # `results_pause_ms` is not a host-facing setting; it is an optional raw
-    # override (settable via the public create/set_config API) used to make the
-    # reveal pause short in tests. Falls back to the estimator-consistent value.
-    case fetch_field(state.overrides, :results_pause_ms) do
-      nil -> default
+    case Application.get_env(:whose_jam, :results_pause_ms) do
       ms when is_integer(ms) and ms >= 0 -> ms
-      _ -> default
+      _ -> (state.config.reveal_padding_s + state.config.results_padding_s) * 1000
     end
   end
 
@@ -995,19 +1012,9 @@ defmodule WhoseJam.Game.Server do
 
   defp schedule(msg, ms), do: Process.send_after(self(), msg, ms)
 
-  defp cancel_answer_timer(state) do
-    cancel(state.answer_ref)
-    %{state | answer_ref: nil}
-  end
-
-  defp cancel_reveal_timer(state) do
-    cancel(state.reveal_ref)
-    %{state | reveal_ref: nil}
-  end
-
-  defp cancel_vote_timer(state) do
-    cancel(state.vote_ref)
-    %{state | vote_ref: nil}
+  defp cancel_timer(state, field) do
+    cancel(Map.get(state, field))
+    Map.put(state, field, nil)
   end
 
   defp cancel_round_timers(state) do
