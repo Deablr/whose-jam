@@ -35,3 +35,6 @@ whose_jam-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Local environment (secrets) — never commit
+.env

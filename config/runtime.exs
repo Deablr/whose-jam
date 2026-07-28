@@ -70,18 +70,27 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host = System.get_env("PHX_HOST") || "localhost"
+  port = String.to_integer(System.get_env("PORT") || "4000")
+
+  # URLs the app generates (QR join links on the TV, OAuth redirect URIs) must
+  # be reachable by phones on the same network, so they default to plain http
+  # on the serving port. Behind a TLS proxy, set PHX_SCHEME=https and
+  # URL_PORT=443.
+  url_scheme = System.get_env("PHX_SCHEME") || "http"
+  url_port = String.to_integer(System.get_env("URL_PORT") || Integer.to_string(port))
 
   config :whose_jam, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :whose_jam, WhoseJamWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: host, port: url_port, scheme: url_scheme],
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
       # See the documentation on https://bandit.hexdocs.pm/Bandit.html#t:options/0
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
+      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      port: port
     ],
     secret_key_base: secret_key_base
 
