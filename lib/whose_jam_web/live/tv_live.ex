@@ -156,6 +156,12 @@ defmodule WhoseJamWeb.TvLive do
 
   defp play_uri(_view), do: ""
 
+  defp playback_error_message(%{"reason" => "initialization_error"}),
+    do:
+      "This browser can't play protected Spotify audio (DRM/Widevine unavailable). " <>
+        "Use Chrome, Edge, or Firefox with protected content allowed, over https " <>
+        "or on this machine via localhost — http on a LAN IP disables DRM."
+
   defp playback_error_message(%{"reason" => "no_token"}),
     do: "No Spotify token — the host may need to reconnect."
 

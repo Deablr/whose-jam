@@ -335,6 +335,15 @@ be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. The Spotify
 redirect URI is unaffected — it stays on `127.0.0.1`. (A dev server also binds
 loopback-only by default — see Local development.)
 
+**Playback banner on the TV / console shows `EMEError: No supported keysystem`.**
+The Web Playback SDK plays DRM-protected audio via EME/Widevine, and the TV
+browser can't. Fixes: use **Chrome, Edge, or Firefox** for the TV tab; allow
+protected content (Chrome: `chrome://settings/content/protectedContent`; Brave:
+enable Widevine in `brave://settings/extensions`); and open the TV over
+**https** or on the serving machine via `localhost`/`127.0.0.1` — plain http on
+a LAN IP is an insecure context where browsers disable DRM entirely. Search and
+everything else work regardless; only playback needs DRM.
+
 **Spotify says "invalid redirect URI" (or the dashboard rejects the URI).**
 Spotify doesn't accept `localhost` or plain-http non-loopback hosts. Register
 exactly `http://127.0.0.1:<APP_PORT>/auth/spotify/callback` (port included) and
