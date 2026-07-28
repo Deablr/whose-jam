@@ -1,0 +1,52 @@
+name: whose-jam
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: whose_jam
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d whose_jam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # Run migrations and (idempotent) seeds before serving.
+    command: sh -c "/app/bin/migrate && /app/bin/seed && exec /app/bin/server"
+    ports:
+      - "${APP_PORT:-4000}:4000"
+    environment:
+      DATABASE_URL: ecto://postgres:${POSTGRES_PASSWORD:-postgres}@db/whose_jam
+      SECRET_KEY_BASE: "${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env — generate one with openssl rand -base64 48}"
+      # Hostname phones will use to reach this machine (QR join links).
+      # For a LAN party this is your machine's LAN IP. The Spotify OAuth
+      # redirect is independent of this (loopback by default).
+      PHX_HOST: ${PHX_HOST:-localhost}
+      # External port for generated URLs; defaults to the serving port.
+      URL_PORT: ${APP_PORT:-4000}
+      # Optional until you want real Spotify search/playback.
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      # Defaults to http://127.0.0.1:<APP_PORT>/auth/spotify/callback (Spotify
+      # rejects `localhost`); override only for an https deployment.
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  pgdata:
