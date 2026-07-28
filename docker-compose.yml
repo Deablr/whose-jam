@@ -24,17 +24,24 @@ services:
         condition: service_healthy
     # Run migrations and (idempotent) seeds before serving.
     command: sh -c "/app/bin/migrate && /app/bin/seed && exec /app/bin/server"
-    ports:
-      - "${APP_PORT:-4000}:4000"
+    # No published ports: behind Dokploy/Traefik the proxy reaches the
+    # container on the docker network (service `app`, port 4000). For local
+    # runs, docker-compose.override.yml publishes the port automatically.
+    expose:
+      - "4000"
     environment:
       DATABASE_URL: ecto://postgres:${POSTGRES_PASSWORD:-postgres}@db/whose_jam
       SECRET_KEY_BASE: "${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env — generate one with openssl rand -base64 48}"
-      # Hostname phones will use to reach this machine (QR join links).
-      # For a LAN party this is your machine's LAN IP. The Spotify OAuth
-      # redirect is independent of this (loopback by default).
+      # Hostname phones will use to reach this app (QR join links): a LAN IP
+      # for a local party, or the public domain behind Dokploy/Traefik. The
+      # Spotify OAuth redirect is independent of this (loopback by default;
+      # set SPOTIFY_REDIRECT_URI when serving over https).
       PHX_HOST: ${PHX_HOST:-localhost}
-      # External port for generated URLs; defaults to the serving port.
-      URL_PORT: ${APP_PORT:-4000}
+      # Behind a TLS proxy set PHX_SCHEME=https and URL_PORT=443. Locally the
+      # override file sets URL_PORT to the published port; blank means "same
+      # as the serving port".
+      PHX_SCHEME: ${PHX_SCHEME:-}
+      URL_PORT: ${URL_PORT:-}
       # Optional until you want real Spotify search/playback.
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
