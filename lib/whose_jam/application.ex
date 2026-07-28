@@ -12,8 +12,7 @@ defmodule WhoseJam.Application do
       WhoseJam.Repo,
       {DNSCluster, query: Application.get_env(:whose_jam, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: WhoseJam.PubSub},
-      # Start a worker by calling: WhoseJam.Worker.start_link(arg)
-      # {WhoseJam.Worker, arg},
+      WhoseJam.Spotify.Cache,
       # Start to serve requests, typically the last entry
       WhoseJamWeb.Endpoint
     ]
