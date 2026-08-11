@@ -86,15 +86,23 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = get_env.("PHX_HOST") || "localhost"
+  # PHX_HOST must be a bare hostname; forgive pasted values like
+  # "https://example.com/" by stripping any scheme and slashes.
+  host =
+    (get_env.("PHX_HOST") || "localhost")
+    |> String.trim()
+    |> String.replace(~r{^[a-z][a-z0-9+.-]*://}i, "")
+    |> String.trim("/")
+
   port = String.to_integer(get_env.("PORT") || "4000")
 
   # URLs the app generates (QR join links on the TV, OAuth redirect URIs) must
-  # be reachable by phones on the same network, so they default to plain http
-  # on the serving port. Behind a TLS proxy, set PHX_SCHEME=https and
-  # URL_PORT=443.
+  # be reachable by phones. Defaults: plain http on the serving port; with
+  # PHX_SCHEME=https (a TLS proxy like Dokploy/Traefik), the URL port defaults
+  # to 443 — override with URL_PORT only for a non-standard public port.
   url_scheme = get_env.("PHX_SCHEME") || "http"
-  url_port = String.to_integer(get_env.("URL_PORT") || Integer.to_string(port))
+  default_url_port = if url_scheme == "https", do: "443", else: Integer.to_string(port)
+  url_port = String.to_integer(get_env.("URL_PORT") || default_url_port)
 
   config :whose_jam, :dns_cluster_query, get_env.("DNS_CLUSTER_QUERY")
 
