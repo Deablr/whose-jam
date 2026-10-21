@@ -92,6 +92,19 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyleTest do
     ~S|<div style={progress_style(%{a: 1})}></div>| |> check() |> refute_issues()
   end
 
+  test "escaped braces stay in the body, so they are not read as interpolation" do
+    ~S|<div style={progress_style("#\{")}></div>| |> check() |> refute_issues()
+  end
+
+  test "parsing a body does not print compiler warnings" do
+    output =
+      ExUnit.CaptureIO.capture_io(:stderr, fn ->
+        ~S|<div style={progress_style(%{"a": 1})}></div>| |> check() |> refute_issues()
+      end)
+
+    assert output == ""
+  end
+
   # HEEx closes the attribute by counting braces, ignoring strings, comments and
   # char literals (and treating `\{` / `\}` as text). The check has to see the
   # same body HEEx compiles, or a comment can hide a concatenation.

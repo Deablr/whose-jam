@@ -72,7 +72,7 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyle do
   # closes (`:error`) is a violation, like one that does not parse.
   defp attr_ast(rest) do
     with {:ok, body} <- attr_body(rest, 0, []),
-         {:ok, ast} <- Code.string_to_quoted(body, warnings: false) do
+         {:ok, ast} <- Code.string_to_quoted(body, emit_warnings: false) do
       {:ok, ast}
     else
       _ -> :error
