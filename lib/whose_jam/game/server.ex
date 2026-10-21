@@ -1157,7 +1157,9 @@ defmodule WhoseJam.Game.Server do
   # The whole song comes from the client, so validate every field: the uri
   # must be a Spotify track URI (it is handed to the Web Playback SDK) or the
   # submission is rejected; name/artist are display text, so non-strings
-  # become "" and long strings are trimmed to @max_song_text_length.
+  # become "" and long strings are trimmed to @max_song_text_length
+  # codepoints (not graphemes, so stacked combining marks can't bypass the cap;
+  # the stored value is at most 4 * @max_song_text_length bytes).
   defp normalize_song(song) do
     uri = fetch_field(song, :uri)
 
@@ -1175,10 +1177,21 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp safe_song_text(text) when is_binary(text) do
-    text |> String.trim() |> String.slice(0, @max_song_text_length)
+    trimmed = String.trim(text)
+    binary_part(trimmed, 0, codepoint_prefix_size(trimmed, @max_song_text_length, 0))
   end
 
   defp safe_song_text(_text), do: ""
+
+  # Byte size of the first `n` codepoints of `text`.
+  defp codepoint_prefix_size(_text, 0, size), do: size
+
+  defp codepoint_prefix_size(text, n, size) do
+    case String.next_codepoint(text) do
+      nil -> size
+      {codepoint, rest} -> codepoint_prefix_size(rest, n - 1, size + byte_size(codepoint))
+    end
+  end
 
   # The album-art URL comes from the client and ends up in every screen's
   # markup, so only Spotify image-CDN URLs survive; anything else becomes nil.

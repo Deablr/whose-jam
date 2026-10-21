@@ -381,7 +381,7 @@ defmodule WhoseJam.Game.ServerTest do
       assert hd(Game.player_view(code, p1).me.assigned).song.uri == valid
     end
 
-    test "song name and artist are trimmed, capped at 200 chars, and non-strings become empty" do
+    test "song name and artist are trimmed, capped at 200 codepoints, and non-strings become empty" do
       theme = guess_who_theme()
       {code, [p1 | _]} = lobby_with_players(theme, 3)
       :ok = Game.start_game(code)
@@ -402,6 +402,13 @@ defmodule WhoseJam.Game.ServerTest do
       song = stored.(%{evil: true}, nil)
       assert song.name == ""
       assert song.artist == ""
+
+      # Stacked combining marks form one grapheme; the cap still bounds bytes.
+      zalgo = "a" <> String.duplicate("\u0301", 100_000)
+      song = stored.(zalgo, zalgo)
+      assert byte_size(song.name) <= 800
+      assert byte_size(song.artist) <= 800
+      assert String.starts_with?(song.name, "a\u0301")
     end
   end
 
@@ -614,7 +621,7 @@ defmodule WhoseJam.Game.ServerTest do
       assert remaining_s(view) > 25
     end
 
-    test "skipping during a running countdown moves on without a stray :results" do
+    test "skipping during a running countdown advances to the next round with no deadline" do
       theme = guess_who_theme()
       code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 1})
       {submitter, [a, b, c, _d]} = submitter_and_voters(code)

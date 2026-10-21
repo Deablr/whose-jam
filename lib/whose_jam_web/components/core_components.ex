@@ -460,13 +460,20 @@ defmodule WhoseJamWeb.CoreComponents do
 
   ## Examples
 
-      <.modal :if={@open?} id="settings-modal" on_close="close" class="max-w-lg">
+      <.modal :if={@open?} id="settings-modal" on_close="close" class="max-w-lg" body_class="space-y-6">
         ...
       </.modal>
   """
   attr :id, :string, required: true, doc: "DOM id for the dialog (required by focus_wrap)"
   attr :on_close, :string, required: true, doc: "the event pushed on Escape or backdrop click"
-  attr :class, :any, default: nil, doc: "extra classes for the modal box"
+  attr :class, :any, default: nil, doc: "extra classes for the modal box (e.g. `max-w-*`)"
+
+  attr :body_class, :any,
+    default: nil,
+    doc:
+      "classes for the inner wrapper around the content; put `space-y-*` here, since " <>
+        "focus_wrap's tab sentinels break sibling spacing on the box itself"
+
   slot :inner_block, required: true
 
   def modal(assigns) do
@@ -483,7 +490,9 @@ defmodule WhoseJamWeb.CoreComponents do
         phx-mounted={JS.focus_first(to: "#" <> @id)}
         class={["modal-box border border-jam-cream/10", @class]}
       >
-        {render_slot(@inner_block)}
+        <div class={@body_class}>
+          {render_slot(@inner_block)}
+        </div>
       </.focus_wrap>
       <div class="modal-backdrop" phx-click={@on_close}></div>
     </div>

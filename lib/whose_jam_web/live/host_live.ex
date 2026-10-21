@@ -442,7 +442,8 @@ defmodule WhoseJamWeb.HostLive do
       :if={@show_music_prompt?}
       id="music-prompt-modal"
       on_close="dismiss_music_prompt"
-      class="max-w-lg space-y-5"
+      class="max-w-lg"
+      body_class="space-y-5"
     >
       <div class="space-y-2">
         <h2 class="font-display text-3xl">Connect your music</h2>
@@ -518,7 +519,8 @@ defmodule WhoseJamWeb.HostLive do
       :if={@settings_open?}
       id="settings-modal"
       on_close="close_settings"
-      class="max-w-2xl space-y-7"
+      class="max-w-2xl"
+      body_class="space-y-7"
     >
       <div class="flex items-center justify-between">
         <h2 class="font-display text-3xl">Settings</h2>
