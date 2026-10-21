@@ -272,10 +272,20 @@ defmodule WhoseJamWeb.PlayLive do
           role: me.role,
           my_name: participant_name(view, player_id),
           times_up_dismissed: times_up_dismissed,
-          show_times_up: compute_times_up(me, view, times_up_dismissed)
+          show_times_up: compute_times_up(me, view, times_up_dismissed),
+          my_vote: current_vote(socket.assigns.my_vote, view, player_id)
         )
     end
   end
+
+  # Keep the local vote highlight only while the server still lists us as a
+  # voter in the current round; a new round has an empty voter list, so the
+  # previous round's highlight never carries over.
+  defp current_vote(my_vote, %{round: %{voters: voters}}, player_id) when is_list(voters) do
+    if player_id in voters, do: my_vote, else: nil
+  end
+
+  defp current_vote(_my_vote, _view, _player_id), do: nil
 
   # Server truth beats a witnessed transition: any player whose assigned
   # questions went unsubmitted (`me.missed_count > 0`) once we're past answering

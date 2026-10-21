@@ -139,7 +139,7 @@ defmodule WhoseJamWeb.HomeLive do
 
   defp host_picker(assigns) do
     ~H"""
-    <.modal :if={@host_open?} on_close="close_host" class="max-w-3xl space-y-6">
+    <.modal :if={@host_open?} id="host-game-modal" on_close="close_host" class="max-w-3xl space-y-6">
       <div class="flex items-start justify-between gap-4">
         <div>
           <p class="jam-eyebrow">Host a game</p>

@@ -175,6 +175,43 @@ defmodule WhoseJam.Game.ConfigTest do
       assert high.questions_per_player == 10
     end
 
+    test "range/1 exposes each host-facing integer clamp range" do
+      assert Config.range(:answer_timer_s) == 1..1800
+      assert Config.range(:vote_delay_s) == 0..60
+      assert Config.range(:vote_timer_s) == 1..300
+      assert Config.range(:questions_per_player) == 1..10
+      assert Config.range(:min_players) == 2..8
+      assert Config.min_players_range() == Config.range(:min_players)
+    end
+
+    test "range edges are kept and their out-of-range neighbours are clamped" do
+      for key <- [
+            :answer_timer_s,
+            :vote_delay_s,
+            :vote_timer_s,
+            :questions_per_player,
+            :min_players
+          ],
+          first..last//_ = Config.range(key),
+          {input, expected} <- [
+            {first, first},
+            {last, last},
+            {first - 1, first},
+            {last + 1, last}
+          ] do
+        assert Map.fetch!(Config.build(%{key => input}, 5), key) == expected,
+               "#{key}: #{input} should resolve to #{expected}"
+      end
+    end
+
+    test "the derived questions_per_player default stays inside its clamp range" do
+      for n <- 1..20 do
+        assert Config.build(%{}, n).questions_per_player in Config.range(:questions_per_player)
+      end
+
+      assert Config.build(%{}, 1).questions_per_player == 10
+    end
+
     test "a derived answer timer follows the clamped questions_per_player" do
       assert Config.build(%{questions_per_player: 99}, 5).answer_timer_s == 10 * 30
     end

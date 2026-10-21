@@ -256,8 +256,6 @@
 
 /* --- Album art, Apple Music style ------------------------------------ */
 
-/* Full-bleed ambience: the song's own artwork, hugely blurred, tints the
-   whole screen so the foreground art blends into it. */
 /* The current artwork (an <img>), blown up and blurred behind the page, with a
    vignette on top. Purely decorative: never intercepts clicks. */
 .jam-ambient {

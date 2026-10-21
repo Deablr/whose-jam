@@ -18,7 +18,7 @@ defmodule WhoseJamWeb.HostLive do
   ## Playback approach
 
   Playback is **attribute-driven**, not command-driven. The hook element carries
-  two data attributes:
+  three data attributes:
 
     * `data-token` — the host's current access token (refreshed server-side on a
       timer via `WhoseJam.Spotify.Auth.refresh/1` + `Game.set_spotify/2`).
@@ -438,7 +438,12 @@ defmodule WhoseJamWeb.HostLive do
 
   defp music_prompt(assigns) do
     ~H"""
-    <.modal :if={@show_music_prompt?} on_close="dismiss_music_prompt" class="max-w-lg space-y-5">
+    <.modal
+      :if={@show_music_prompt?}
+      id="music-prompt-modal"
+      on_close="dismiss_music_prompt"
+      class="max-w-lg space-y-5"
+    >
       <div class="space-y-2">
         <h2 class="font-display text-3xl">Connect your music</h2>
         <p class="text-base-content/70">
@@ -509,7 +514,12 @@ defmodule WhoseJamWeb.HostLive do
     assigns = assign(assigns, estimate: runtime_estimate(assigns.view))
 
     ~H"""
-    <.modal :if={@settings_open?} on_close="close_settings" class="max-w-2xl space-y-7">
+    <.modal
+      :if={@settings_open?}
+      id="settings-modal"
+      on_close="close_settings"
+      class="max-w-2xl space-y-7"
+    >
       <div class="flex items-center justify-between">
         <h2 class="font-display text-3xl">Settings</h2>
         <button
@@ -554,7 +564,8 @@ defmodule WhoseJamWeb.HostLive do
               name="answer_timer_s"
               label="Answer timer (s)"
               value={@view.config.answer_timer_s}
-              min="10"
+              min={Config.range(:answer_timer_s).first}
+              max={Config.range(:answer_timer_s).last}
             />
             <.input
               type="number"
@@ -562,7 +573,8 @@ defmodule WhoseJamWeb.HostLive do
               name="vote_delay_s"
               label="Listen before voting opens (s)"
               value={@view.config.vote_delay_s}
-              min="0"
+              min={Config.range(:vote_delay_s).first}
+              max={Config.range(:vote_delay_s).last}
             />
             <.input
               type="number"
@@ -570,7 +582,8 @@ defmodule WhoseJamWeb.HostLive do
               name="vote_timer_s"
               label="Vote countdown once most have voted (s)"
               value={@view.config.vote_timer_s}
-              min="5"
+              min={Config.range(:vote_timer_s).first}
+              max={Config.range(:vote_timer_s).last}
             />
             <.input
               type="number"
@@ -578,7 +591,8 @@ defmodule WhoseJamWeb.HostLive do
               name="questions_per_player"
               label="Questions per player"
               value={@view.config.questions_per_player}
-              min="1"
+              min={Config.range(:questions_per_player).first}
+              max={Config.range(:questions_per_player).last}
             />
             <.input
               type="select"
@@ -586,7 +600,7 @@ defmodule WhoseJamWeb.HostLive do
               name="min_players"
               label="Players needed to start"
               value={@view.config.min_players}
-              options={Enum.map(Config.min_players_range(), &{Integer.to_string(&1), &1})}
+              options={Enum.map(Config.range(:min_players), &{Integer.to_string(&1), &1})}
             />
             <div class="flex flex-col justify-end gap-1">
               <.input

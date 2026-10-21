@@ -33,8 +33,8 @@ defmodule WhoseJam.Game.Config do
   Every integer override is clamped to a safe range, so a hand-crafted
   `set_config` can never produce a negative or timer-overflowing value:
   `answer_timer_s` `1..1800`, `vote_delay_s` `0..60`, `vote_timer_s` `1..300`,
-  `questions_per_player` `1..10`, `min_players` `2..8`. (The host settings form
-  suggests stricter minimums; these are the server's hard bounds.)
+  `questions_per_player` `1..10`, `min_players` `2..8` (see `range/1`). The
+  derived `questions_per_player` default is clamped into its range too.
 
   Internal (fixed values that shape `estimated_runtime_s/3`; `song_playback_s`
   also sizes the server's voting safety timeout). They are **not** overridable
@@ -165,16 +165,34 @@ defmodule WhoseJam.Game.Config do
   end
 
   @doc """
+  The clamp range for a host-facing integer setting.
+
+  `key` is one of `:answer_timer_s`, `:vote_delay_s`, `:vote_timer_s`,
+  `:questions_per_player`, or `:min_players`. Overrides outside the range are
+  clamped to its nearest edge by `build/2`.
+  """
+  @spec range(atom()) :: Range.t()
+  def range(:answer_timer_s), do: @answer_timer_range
+  def range(:vote_delay_s), do: @vote_delay_range
+  def range(:vote_timer_s), do: @vote_timer_range
+  def range(:questions_per_player), do: @questions_per_player_range
+  def range(:min_players), do: @min_players_range
+
+  @doc """
   The range `min_players` is clamped to (also the choices offered to the host).
+  Equivalent to `range(:min_players)`.
   """
   @spec min_players_range() :: Range.t()
-  def min_players_range, do: @min_players_range
+  def min_players_range, do: range(:min_players)
 
   # Keep total round count near ~15-16 so the estimate stays within ±20% of the
-  # 20-minute target across 3..8 players. Never below 2 questions per player.
+  # 20-minute target across 3..8 players. Never below 2 questions per player,
+  # and always inside the `questions_per_player` clamp range (e.g. a 1-player
+  # count would otherwise derive 15).
   @spec default_questions_per_player(pos_integer()) :: pos_integer()
   defp default_questions_per_player(player_count) do
-    max(2, round(15 / player_count))
+    first..last//_ = @questions_per_player_range
+    (15 / player_count) |> round() |> max(2) |> max(first) |> min(last)
   end
 
   # --- override helpers: atom-or-string key lookup + value coercion ---

@@ -98,9 +98,12 @@ defmodule WhoseJam.Game do
 
   @doc """
   Submit (or re-submit, until the answer timer ends) a song for `question_id`.
-  `song` is `%{uri, name, artist, album_art_url}`. `album_art_url` is kept only
-  if it is a Spotify image-CDN URL (`https://i.scdn.co/image/<id>`); anything
-  else is stored as `nil`.
+  `song` is `%{uri, name, artist, album_art_url}`. `uri` must be a Spotify
+  track URI (`spotify:track:<22 alphanumerics>`), otherwise the submission is
+  rejected with `{:error, :invalid_song}`. `name`/`artist` are trimmed and
+  capped at 200 characters (non-strings become `""`). `album_art_url` is kept
+  only if it is a Spotify image-CDN URL (`https://i.scdn.co/image/<id>`);
+  anything else is stored as `nil`.
   """
   @spec submit_song(String.t(), String.t(), String.t(), map()) :: :ok | {:error, term()}
   def submit_song(code, player_id, question_id, song),

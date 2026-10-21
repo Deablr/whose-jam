@@ -95,6 +95,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - Each active game is one `Game.Server` GenServer, registered under a short room code in a Phoenix Registry.
 - State transitions flow through explicit events (`:join`, `:start`, `:submit_song`, `:cast_vote`, `:skip_song`). The GenServer publishes game-state broadcasts via Phoenix.PubSub on a per-room topic.
+- Submitted songs are validated server-side: the URI must be a Spotify track URI (`spotify:track:<22 alphanumerics>`) or the submission is rejected; name/artist are trimmed and capped at 200 characters; album art is kept only if it is a Spotify image-CDN URL.
 - All LiveViews (host screen, player) subscribe to the room topic; they are pure renderers of state received from the GenServer.
 - `Phoenix.Presence` tracks connected clients per room. Players absent from Presence for a short threshold are marked AFK and excluded from "waiting on N players" counts, but their existing submissions stay live.
 - When a game ends (final scoreboard shown + short idle timeout), the GenServer shuts down and its state is discarded.
@@ -148,7 +149,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 ### Timing and configuration
 
 - `Game.Config` computes concrete timings from host overrides plus player count. Defaults aim for ~20-minute games.
-- Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8). The server clamps every numeric setting to a safe range (answer timer 1–1800s, listening delay 0–60s, vote countdown 1–300s, questions per player 1–10) so no value can stall or crash a game.
+- Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8). The server clamps every numeric setting to a safe range (answer timer 1–1800s, listening delay 0–60s, vote countdown 1–300s, questions per player 1–10, minimum players 2–8) so no value can stall or crash a game.
 - When player counts or question counts exceed what fits in the target window, the game will exceed 20 minutes; there is no hard cap on round count in v1.
 
 ### Spotify integration

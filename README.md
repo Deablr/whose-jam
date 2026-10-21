@@ -255,8 +255,9 @@ transport code.
   `start_game`, `submit_song`, `cast_vote`, `skip_song`, etc. — all addressed by
   room code, all returning plain maps or `{:error, reason}`.
 - **PubSub fan-out:** the server broadcasts `{:game_state, view}` on topic
-  `"game:" <> code`. The TV, host, and every phone subscribe and are pure
-  renderers of that view.
+  `"game:" <> code`. The host screen (which is
+  also the TV display) and every phone subscribe and are pure renderers of that
+  view.
 - **Postgres holds seed content only** — the two themes and their questions
   (`WhoseJam.Content`). Never runtime game state.
 - **Pure modules** carry the game logic and hold the unit tests: `Game.Binning`

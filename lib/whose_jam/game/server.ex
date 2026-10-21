@@ -68,6 +68,9 @@ defmodule WhoseJam.Game.Server do
 
   @guess_question_decoys 3
 
+  # Submitted song name/artist are trimmed to this many characters.
+  @max_song_text_length 200
+
   # --- server state ---------------------------------------------------------
 
   defstruct code: nil,
@@ -233,14 +236,13 @@ defmodule WhoseJam.Game.Server do
         _from,
         %{phase: :answering} = state
       ) do
-    cond do
-      not assigned?(state, player_id, question_id) ->
-        {:reply, {:error, :not_assigned}, state}
-
-      true ->
-        submissions = Map.put(state.submissions, {player_id, question_id}, normalize_song(song))
-        state = %{state | submissions: submissions} |> touch() |> maybe_end_answering()
-        {:reply, :ok, broadcast(state)}
+    with true <- assigned?(state, player_id, question_id) || {:error, :not_assigned},
+         {:ok, song} <- normalize_song(song) do
+      submissions = Map.put(state.submissions, {player_id, question_id}, song)
+      state = %{state | submissions: submissions} |> touch() |> maybe_end_answering()
+      {:reply, :ok, broadcast(state)}
+    else
+      {:error, _reason} = error -> {:reply, error, state}
     end
   end
 
@@ -1152,14 +1154,31 @@ defmodule WhoseJam.Game.Server do
 
   defp fetch_field(_map, _key), do: nil
 
+  # The whole song comes from the client, so validate every field: the uri
+  # must be a Spotify track URI (it is handed to the Web Playback SDK) or the
+  # submission is rejected; name/artist are display text, so non-strings
+  # become "" and long strings are trimmed to @max_song_text_length.
   defp normalize_song(song) do
-    %{
-      uri: fetch_field(song, :uri),
-      name: fetch_field(song, :name),
-      artist: fetch_field(song, :artist),
-      album_art_url: song |> fetch_field(:album_art_url) |> safe_album_art_url()
-    }
+    uri = fetch_field(song, :uri)
+
+    if is_binary(uri) and Regex.match?(~r/\Aspotify:track:[A-Za-z0-9]{22}\z/, uri) do
+      {:ok,
+       %{
+         uri: uri,
+         name: song |> fetch_field(:name) |> safe_song_text(),
+         artist: song |> fetch_field(:artist) |> safe_song_text(),
+         album_art_url: song |> fetch_field(:album_art_url) |> safe_album_art_url()
+       }}
+    else
+      {:error, :invalid_song}
+    end
   end
+
+  defp safe_song_text(text) when is_binary(text) do
+    text |> String.trim() |> String.slice(0, @max_song_text_length)
+  end
+
+  defp safe_song_text(_text), do: ""
 
   # The album-art URL comes from the client and ends up in every screen's
   # markup, so only Spotify image-CDN URLs survive; anything else becomes nil.
