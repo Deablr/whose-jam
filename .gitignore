@@ -38,3 +38,6 @@ npm-debug.log
 
 # Local environment (secrets) — never commit
 .env
+
+# macOS Finder metadata
+.DS_Store

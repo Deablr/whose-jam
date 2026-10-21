@@ -148,7 +148,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 ### Timing and configuration
 
 - `Game.Config` computes concrete timings from host overrides plus player count. Defaults aim for ~20-minute games.
-- Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8).
+- Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8). The server clamps every numeric setting to a safe range (answer timer 1–1800s, listening delay 0–60s, vote countdown 1–300s, questions per player 1–10) so no value can stall or crash a game.
 - When player counts or question counts exceed what fits in the target window, the game will exceed 20 minutes; there is no hard cap on round count in v1.
 
 ### Spotify integration
@@ -200,7 +200,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - **`Game.Binning`** — correctness of assignment (every player gets their target; no player gets the same question twice), overlap guarantee (every selected question has ≥2 submitters whenever mathematically feasible), edge cases (minimum player count, more questions requested than exist).
 - **`Game.Scoring`** — a correct guess awards +1; a submitter gains +1 per fooled non-audience vote; audience cannot be "fooled onto" for scoring purposes; all-correct and all-wrong rounds produce sane totals; a round with zero votes produces zero points.
 - **`Game.Config`** — derived timings at representative player counts; overrides override; default settings produce a game whose total estimated runtime is within a configured band of the 20-minute target.
-- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; vote-timer expiry advances the round even with missing votes.
+- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than Spotify's image CDN are dropped.
 
 ### Prior art
 

@@ -14,7 +14,7 @@ defmodule WhoseJam.Game.Server do
       :lobby
         └─ per sub-round:
              :answering ──▶ :playing
-                              ├─ round :revealing  (song plays; votes closed for vote_delay_s)
+                              ├─ round :revealing  (listening delay: song plays, votes closed for vote_delay_s)
                               ├─ round :voting     (song keeps playing; clients guess)
                               └─ round :results    (submitter + deltas revealed)
              ...next sub-round or...
@@ -25,7 +25,8 @@ defmodule WhoseJam.Game.Server do
   `:voting` opens with no deadline. The `vote_timer_s` countdown starts at the
   first of: a majority of eligible voters (connected, not the submitter) have
   voted, the song ends, or a safety timeout. Once every eligible voter has
-  voted the countdown drops to `all_voted_countdown_s` — never lengthening it.
+  voted the countdown drops to 5s (`@all_voted_countdown_s`) — never
+  lengthening it.
   When the countdown hits zero the round moves to `:results`.
 
   Sub-rounds come from the theme's `style_sequence`. When
@@ -61,6 +62,9 @@ defmodule WhoseJam.Game.Server do
   # Defensive ceiling on uncounted voting, in case the TV never reports the song
   # ending and nobody votes. Real clients call `song_ended/1` well before this.
   @voting_safety_extra_s 120
+  # Once every eligible voter has voted the countdown drops to this (never
+  # lengthening a shorter remaining countdown).
+  @all_voted_countdown_s 5
 
   @guess_question_decoys 3
 
@@ -98,10 +102,12 @@ defmodule WhoseJam.Game.Server do
             votes_open_ms: nil,
             # voting countdown deadline; nil until the countdown starts
             vote_deadline_ms: nil,
+            # in :voting, either the safety timer (before the countdown starts)
+            # or the countdown timer — never both
             vote_ref: nil,
             results_ref: nil,
-            reveal_ref: nil,
-            safety_ref: nil,
+            # listening-delay timer (:revealing -> :voting)
+            vote_delay_ref: nil,
             finished_ref: nil,
             winners: nil
 
@@ -274,7 +280,7 @@ defmodule WhoseJam.Game.Server do
   end
 
   def handle_call(:song_ended, _from, state) do
-    {:reply, {:error, :not_revealing}, state}
+    {:reply, {:error, :not_playing}, state}
   end
 
   def handle_call(:skip_song, _from, %{phase: :playing} = state) do
@@ -335,7 +341,7 @@ defmodule WhoseJam.Game.Server do
     {:noreply, broadcast(end_answering(state))}
   end
 
-  def handle_info({:reveal_timeout, si, ri}, state) do
+  def handle_info({:vote_delay_timeout, si, ri}, state) do
     if state.phase == :playing and state.round_state == :revealing and
          state.subround_index == si and state.round_index == ri do
       {:noreply, broadcast(begin_voting(state))}
@@ -600,22 +606,22 @@ defmodule WhoseJam.Game.Server do
         votes_open_ms: now_ms() + delay_ms,
         vote_deadline_ms: nil,
         vote_ref: nil,
-        results_ref: nil,
-        safety_ref: nil
+        results_ref: nil
     }
 
     if delay_ms == 0 do
       begin_voting(state)
     else
-      ref = schedule({:reveal_timeout, state.subround_index, index}, delay_ms)
-      %{state | reveal_ref: ref}
+      ref = schedule({:vote_delay_timeout, state.subround_index, index}, delay_ms)
+      %{state | vote_delay_ref: ref}
     end
   end
 
   # Open voting while the song keeps playing. No countdown yet — see
-  # `update_countdown/1` — but a safety timer guarantees one eventually starts.
+  # `update_countdown/1` — but a safety timer (held in `vote_ref` until the
+  # countdown replaces it) guarantees one eventually starts.
   defp begin_voting(state) do
-    state = cancel_timer(state, :reveal_ref)
+    state = cancel_timer(state, :vote_delay_ref)
 
     ref =
       schedule({:voting_safety, state.subround_index, state.round_index}, voting_safety_ms(state))
@@ -625,7 +631,7 @@ defmodule WhoseJam.Game.Server do
       | round_state: :voting,
         votes_open_ms: now_ms(),
         vote_deadline_ms: nil,
-        safety_ref: ref
+        vote_ref: ref
     }
     |> update_countdown()
   end
@@ -634,7 +640,7 @@ defmodule WhoseJam.Game.Server do
   # countdown (never lengthening it).
   defp update_countdown(state) do
     cond do
-      all_eligible_voted?(state) -> countdown_at_most(state, state.config.all_voted_countdown_s)
+      all_eligible_voted?(state) -> countdown_at_most(state, all_voted_countdown_ms())
       majority_voted?(state) -> start_countdown(state)
       true -> state
     end
@@ -642,19 +648,21 @@ defmodule WhoseJam.Game.Server do
 
   # Start the full countdown unless one is already running.
   defp start_countdown(%{vote_deadline_ms: nil} = state),
-    do: countdown_at_most(state, state.config.vote_timer_s)
+    do: countdown_at_most(state, state.config.vote_timer_s * 1000)
 
   defp start_countdown(state), do: state
 
-  # Set the countdown to end within `secs`, keeping an earlier deadline if any.
-  defp countdown_at_most(state, secs) do
-    deadline = now_ms() + secs * 1000
+  # Set the countdown to end within `ms`, keeping an earlier deadline if any.
+  # Replacing `vote_ref` also cancels the safety timer when the countdown first
+  # starts.
+  defp countdown_at_most(state, ms) do
+    deadline = now_ms() + ms
 
     if state.vote_deadline_ms && state.vote_deadline_ms <= deadline do
       state
     else
-      state = state |> cancel_timer(:vote_ref) |> cancel_timer(:safety_ref)
-      ref = schedule({:vote_timeout, state.subround_index, state.round_index}, secs * 1000)
+      state = cancel_timer(state, :vote_ref)
+      ref = schedule({:vote_timeout, state.subround_index, state.round_index}, ms)
       %{state | vote_deadline_ms: deadline, vote_ref: ref}
     end
   end
@@ -684,7 +692,7 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp enter_results(state) do
-    state = state |> cancel_timer(:vote_ref) |> cancel_timer(:safety_ref)
+    state = cancel_timer(state, :vote_ref)
     round = state.round
 
     votes =
@@ -1110,19 +1118,28 @@ defmodule WhoseJam.Game.Server do
     fetch_field(spotify, :premium?) == true
   end
 
-  # The reveal/results pause is estimator-consistent by default. A test-only
-  # application-env seam (`config :whose_jam, results_pause_ms: N`) can shorten
-  # it; it is not a host-facing setting and is not overridable via the public
-  # create/set_config API.
+  # Internal pacing durations. Each has an estimator-consistent default; a
+  # test-only application-env seam (e.g. `config :whose_jam, results_pause_ms: N`
+  # or `Application.put_env/3` in a test) can shorten it. None of these are
+  # host-facing settings or overridable via the public create/set_config API.
   defp results_pause_ms(state) do
-    case Application.get_env(:whose_jam, :results_pause_ms) do
-      ms when is_integer(ms) and ms >= 0 -> ms
-      _ -> (state.config.reveal_padding_s + state.config.results_padding_s) * 1000
-    end
+    env_ms(
+      :results_pause_ms,
+      (state.config.reveal_padding_s + state.config.results_padding_s) * 1000
+    )
   end
 
   defp voting_safety_ms(state) do
-    (state.config.song_playback_s + @voting_safety_extra_s) * 1000
+    env_ms(:voting_safety_ms, (state.config.song_playback_s + @voting_safety_extra_s) * 1000)
+  end
+
+  defp all_voted_countdown_ms, do: env_ms(:all_voted_countdown_ms, @all_voted_countdown_s * 1000)
+
+  defp env_ms(key, default) do
+    case Application.get_env(:whose_jam, key) do
+      ms when is_integer(ms) and ms >= 0 -> ms
+      _ -> default
+    end
   end
 
   # Fetch a value from a map that may use atom or string keys.
@@ -1140,9 +1157,17 @@ defmodule WhoseJam.Game.Server do
       uri: fetch_field(song, :uri),
       name: fetch_field(song, :name),
       artist: fetch_field(song, :artist),
-      album_art_url: fetch_field(song, :album_art_url)
+      album_art_url: song |> fetch_field(:album_art_url) |> safe_album_art_url()
     }
   end
+
+  # The album-art URL comes from the client and ends up in every screen's
+  # markup, so only Spotify image-CDN URLs survive; anything else becomes nil.
+  defp safe_album_art_url(url) when is_binary(url) do
+    if Regex.match?(~r{\Ahttps://i\.scdn\.co/image/[A-Za-z0-9]+\z}, url), do: url, else: nil
+  end
+
+  defp safe_album_art_url(_url), do: nil
 
   # --- timers ---------------------------------------------------------------
 
@@ -1154,11 +1179,10 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp cancel_round_timers(state) do
-    cancel(state.reveal_ref)
+    cancel(state.vote_delay_ref)
     cancel(state.vote_ref)
     cancel(state.results_ref)
-    cancel(state.safety_ref)
-    %{state | reveal_ref: nil, vote_ref: nil, results_ref: nil, safety_ref: nil}
+    %{state | vote_delay_ref: nil, vote_ref: nil, results_ref: nil}
   end
 
   defp cancel_all_timers(state) do

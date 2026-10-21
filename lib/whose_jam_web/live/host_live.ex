@@ -23,13 +23,17 @@ defmodule WhoseJamWeb.HostLive do
     * `data-token` — the host's current access token (refreshed server-side on a
       timer via `WhoseJam.Spotify.Auth.refresh/1` + `Game.set_spotify/2`).
     * `data-uri` — the Spotify track URI to be playing *right now*, or `""`.
+    * `data-round` — the current round's identity (sub-round + round index).
 
-  The LiveView sets `data-uri` to the current round's song only while the round
-  is `:revealing`; the hook reconciles real playback toward it (transfer +
-  `PUT /v1/me/player/play` with the device id). When the track finishes the hook
-  pushes `"song_ended"`, which advances the round. Any token/SDK failure pushes
-  `"playback_error"` and we show a visible banner — the server's reveal-safety
-  timer advances the game regardless, so a dead player never wedges the game.
+  `data-uri` holds the current round's song for the whole `:playing` phase
+  (listening, voting and the reveal), and `data-round` identifies the round so
+  a track repeated in back-to-back rounds still restarts. The hook reconciles
+  real playback toward them (`PUT /v1/me/player/play` with the device id). When
+  the track finishes the hook pushes `"song_ended"`, which opens voting (or
+  starts the vote countdown if voting is already open). Any token/SDK failure
+  pushes `"playback_error"` and we show a visible banner — if the TV never
+  reports the end, the server's voting-safety timer starts the countdown, so a
+  dead player never wedges the game.
   """
   use WhoseJamWeb, :live_view
 
@@ -237,6 +241,12 @@ defmodule WhoseJamWeb.HostLive do
 
   defp play_uri(_view), do: ""
 
+  # Changes every round, so the hook restarts a track that repeats back to back.
+  defp play_round(%{phase: :playing, subround_index: sub, round: %{index: index}}),
+    do: "#{sub}-#{index}"
+
+  defp play_round(_view), do: ""
+
   defp playback_error_message(%{"reason" => "initialization_error"}),
     do:
       "This browser can't play protected Spotify audio (DRM/Widevine unavailable). " <>
@@ -289,12 +299,6 @@ defmodule WhoseJamWeb.HostLive do
   defp spotify_connection(spotify) when is_map(spotify), do: :not_premium
   defp spotify_connection(_), do: :disconnected
 
-  defp active_service(view, code) do
-    Enum.find(music_services(view, code), &(&1.status == :connected))
-  end
-
-  defp music_ready?(view, code), do: active_service(view, code) != nil
-
   # =========================================================================
   # Render
   # =========================================================================
@@ -315,14 +319,17 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   def render(assigns) do
+    services = music_services(assigns.view, assigns.code)
+    active_service = Enum.find(services, &(&1.status == :connected))
+
     assigns =
       assign(assigns,
         banner: playback_banner(assigns),
-        services: music_services(assigns.view, assigns.code),
-        active_service: active_service(assigns.view, assigns.code),
+        services: services,
+        active_service: active_service,
         art_url: current_art(assigns.view),
         show_music_prompt?:
-          assigns.view.phase == :lobby and not music_ready?(assigns.view, assigns.code) and
+          assigns.view.phase == :lobby and is_nil(active_service) and
             not assigns.music_prompt_dismissed? and not assigns.settings_open?
       )
 
@@ -331,7 +338,9 @@ defmodule WhoseJamWeb.HostLive do
 
     <div data-theme="jam" class="jam-stage min-h-screen overflow-hidden">
       <%!-- Apple Music–style ambience: the current song's artwork tints the room. --%>
-      <div :if={@art_url} class="jam-ambient" style={"background-image: url('#{@art_url}')"}></div>
+      <div :if={@art_url} class="jam-ambient" aria-hidden="true">
+        <img src={@art_url} alt="" />
+      </div>
 
       <div
         :if={@spotify_status == :ok}
@@ -339,6 +348,7 @@ defmodule WhoseJamWeb.HostLive do
         phx-hook="SpotifyPlayer"
         data-token={@spotify_token}
         data-uri={play_uri(@view)}
+        data-round={play_round(@view)}
         class="hidden"
       >
       </div>
@@ -428,23 +438,20 @@ defmodule WhoseJamWeb.HostLive do
 
   defp music_prompt(assigns) do
     ~H"""
-    <div :if={@show_music_prompt?} class="modal modal-open bg-jam-ink/80 backdrop-blur-sm">
-      <div class="modal-box max-w-lg space-y-5 border border-jam-cream/10">
-        <div class="space-y-2">
-          <h2 class="font-display text-3xl">Connect your music</h2>
-          <p class="text-base-content/70">
-            This screen plays every song the players pick. Connect a music service before you start.
-          </p>
-        </div>
-        {music_service_list(assigns)}
-        <div class="modal-action mt-0">
-          <button type="button" phx-click="dismiss_music_prompt" class="jam-btn jam-btn-ghost text-sm">
-            Not now
-          </button>
-        </div>
+    <.modal :if={@show_music_prompt?} on_close="dismiss_music_prompt" class="max-w-lg space-y-5">
+      <div class="space-y-2">
+        <h2 class="font-display text-3xl">Connect your music</h2>
+        <p class="text-base-content/70">
+          This screen plays every song the players pick. Connect a music service before you start.
+        </p>
       </div>
-      <div class="modal-backdrop" phx-click="dismiss_music_prompt"></div>
-    </div>
+      {music_service_list(assigns)}
+      <div class="modal-action mt-0">
+        <button type="button" phx-click="dismiss_music_prompt" class="jam-btn jam-btn-ghost text-sm">
+          Not now
+        </button>
+      </div>
+    </.modal>
     """
   end
 
@@ -502,113 +509,105 @@ defmodule WhoseJamWeb.HostLive do
     assigns = assign(assigns, estimate: runtime_estimate(assigns.view))
 
     ~H"""
-    <div
-      :if={@settings_open?}
-      class="modal modal-open bg-jam-ink/80 backdrop-blur-sm"
-      phx-window-keydown="close_settings"
-      phx-key="Escape"
-    >
-      <div class="modal-box max-w-2xl space-y-7 border border-jam-cream/10">
+    <.modal :if={@settings_open?} on_close="close_settings" class="max-w-2xl space-y-7">
+      <div class="flex items-center justify-between">
+        <h2 class="font-display text-3xl">Settings</h2>
+        <button
+          type="button"
+          phx-click="close_settings"
+          aria-label="Close settings"
+          class="jam-chip !px-2.5 cursor-pointer"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+
+      <section class="space-y-3">
+        <h3 class="jam-eyebrow">Music service</h3>
+        {music_service_list(assigns)}
+        <p :if={@active_service} class="text-sm text-base-content/60">
+          <%= if @playback_ready? do %>
+            Player is live on this screen.
+          <% else %>
+            Starting the player on this screen…
+          <% end %>
+        </p>
+      </section>
+
+      <section class="space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="font-display text-3xl">Settings</h2>
-          <button
-            type="button"
-            phx-click="close_settings"
-            aria-label="Close settings"
-            class="jam-chip !px-2.5 cursor-pointer"
-          >
-            <.icon name="hero-x-mark" class="size-5" />
-          </button>
+          <h3 class="jam-eyebrow">Game</h3>
+          <span class="text-sm text-base-content/60">
+            Estimated length: <span class="font-bold text-jam-orange">~{@estimate} min</span>
+          </span>
         </div>
 
-        <section class="space-y-3">
-          <h3 class="jam-eyebrow">Music service</h3>
-          {music_service_list(assigns)}
-          <p :if={@active_service} class="text-sm text-base-content/60">
-            <%= if @playback_ready? do %>
-              Player is live on this screen.
-            <% else %>
-              Starting the player on this screen…
-            <% end %>
-          </p>
-        </section>
+        <p :if={@view.phase != :lobby} class="text-sm text-base-content/60">
+          Game settings are locked once the game starts.
+        </p>
 
-        <section class="space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="jam-eyebrow">Game</h3>
-            <span class="text-sm text-base-content/60">
-              Estimated length: <span class="font-bold text-jam-orange">~{@estimate} min</span>
-            </span>
-          </div>
-
-          <p :if={@view.phase != :lobby} class="text-sm text-base-content/60">
-            Game settings are locked once the game starts.
-          </p>
-
-          <form phx-change="set_config" class="grid gap-2 sm:grid-cols-2">
-            <fieldset disabled={@view.phase != :lobby} class="contents">
+        <form phx-change="set_config" class="grid gap-2 sm:grid-cols-2">
+          <fieldset disabled={@view.phase != :lobby} class="contents">
+            <.input
+              type="number"
+              id="answer_timer_s"
+              name="answer_timer_s"
+              label="Answer timer (s)"
+              value={@view.config.answer_timer_s}
+              min="10"
+            />
+            <.input
+              type="number"
+              id="vote_delay_s"
+              name="vote_delay_s"
+              label="Listen before voting opens (s)"
+              value={@view.config.vote_delay_s}
+              min="0"
+            />
+            <.input
+              type="number"
+              id="vote_timer_s"
+              name="vote_timer_s"
+              label="Vote countdown once most have voted (s)"
+              value={@view.config.vote_timer_s}
+              min="5"
+            />
+            <.input
+              type="number"
+              id="questions_per_player"
+              name="questions_per_player"
+              label="Questions per player"
+              value={@view.config.questions_per_player}
+              min="1"
+            />
+            <.input
+              type="select"
+              id="min_players"
+              name="min_players"
+              label="Players needed to start"
+              value={@view.config.min_players}
+              options={Enum.map(Config.min_players_range(), &{Integer.to_string(&1), &1})}
+            />
+            <div class="flex flex-col justify-end gap-1">
               <.input
-                type="number"
-                id="answer_timer_s"
-                name="answer_timer_s"
-                label="Answer timer (s)"
-                value={@view.config.answer_timer_s}
-                min="10"
+                type="checkbox"
+                id="subrounds_enabled?"
+                name="subrounds_enabled?"
+                label="Sub-rounds (split multi-style themes)"
+                checked={@view.config.subrounds_enabled?}
               />
               <.input
-                type="number"
-                id="vote_delay_s"
-                name="vote_delay_s"
-                label="Listen before voting opens (s)"
-                value={@view.config.vote_delay_s}
-                min="0"
+                type="checkbox"
+                id="allow_vote_change?"
+                name="allow_vote_change?"
+                label="Allow changing a vote"
+                checked={@view.config.allow_vote_change?}
               />
-              <.input
-                type="number"
-                id="vote_timer_s"
-                name="vote_timer_s"
-                label="Vote countdown once most have voted (s)"
-                value={@view.config.vote_timer_s}
-                min="5"
-              />
-              <.input
-                type="number"
-                id="questions_per_player"
-                name="questions_per_player"
-                label="Questions per player"
-                value={@view.config.questions_per_player}
-                min="1"
-              />
-              <.input
-                type="select"
-                id="min_players"
-                name="min_players"
-                label="Players needed to start"
-                value={@view.config.min_players}
-                options={Enum.map(2..8, &{Integer.to_string(&1), &1})}
-              />
-              <div class="flex flex-col justify-end gap-1">
-                <.input
-                  type="checkbox"
-                  id="subrounds_enabled?"
-                  name="subrounds_enabled?"
-                  label="Sub-rounds (split multi-style themes)"
-                  checked={@view.config.subrounds_enabled?}
-                />
-                <.input
-                  type="checkbox"
-                  id="allow_vote_change?"
-                  name="allow_vote_change?"
-                  label="Allow changing a vote"
-                  checked={@view.config.allow_vote_change?}
-                />
-              </div>
-            </fieldset>
-          </form>
-        </section>
-      </div>
-      <div class="modal-backdrop" phx-click="close_settings"></div>
-    </div>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+    </.modal>
     """
   end
 
@@ -618,8 +617,7 @@ defmodule WhoseJamWeb.HostLive do
     assigns =
       assign(assigns,
         player_count: length(assigns.view.players),
-        min_players: assigns.view.config.min_players,
-        music_ready?: assigns.active_service != nil
+        min_players: assigns.view.config.min_players
       )
 
     ~H"""
@@ -675,13 +673,13 @@ defmodule WhoseJamWeb.HostLive do
       <div class="flex items-center gap-6">
         <button
           phx-click="start"
-          disabled={not can_start?(@player_count, @min_players, @music_ready?)}
+          disabled={@player_count < @min_players or is_nil(@active_service)}
           class="jam-btn text-2xl !px-12"
         >
           Start game
         </button>
         <%= cond do %>
-          <% not @music_ready? -> %>
+          <% is_nil(@active_service) -> %>
             <button
               type="button"
               phx-click="open_settings"
@@ -951,9 +949,6 @@ defmodule WhoseJamWeb.HostLive do
        do: url
 
   defp current_art(_view), do: nil
-
-  defp can_start?(player_count, min_players, music_ready?),
-    do: player_count >= min_players and music_ready?
 
   defp runtime_estimate(view) do
     player_count = max(length(view.players), 1)

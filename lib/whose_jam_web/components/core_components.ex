@@ -452,6 +452,35 @@ defmodule WhoseJamWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Renders an open modal dialog. Render it conditionally with `:if`; Escape and
+  a backdrop click both push the `on_close` event.
+
+  ## Examples
+
+      <.modal :if={@open?} on_close="close" class="max-w-lg">
+        ...
+      </.modal>
+  """
+  attr :on_close, :string, required: true, doc: "the event pushed on Escape or backdrop click"
+  attr :class, :any, default: nil, doc: "extra classes for the modal box"
+  slot :inner_block, required: true
+
+  def modal(assigns) do
+    ~H"""
+    <div
+      class="modal modal-open bg-jam-ink/80 backdrop-blur-sm"
+      phx-window-keydown={@on_close}
+      phx-key="Escape"
+    >
+      <div class={["modal-box border border-jam-cream/10", @class]}>
+        {render_slot(@inner_block)}
+      </div>
+      <div class="modal-backdrop" phx-click={@on_close}></div>
+    </div>
+    """
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do

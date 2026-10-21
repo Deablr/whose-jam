@@ -3,7 +3,7 @@ defmodule WhoseJamWeb.HomeLive do
   Landing page.
 
   Two things happen here: a host picks a themed pool and creates a game (which
-  navigates to the host console), or someone joins an existing game by typing a
+  navigates to the host screen, which doubles as the TV display), or someone joins an existing game by typing a
   room code (which navigates to the player screen — the join UX itself lives in
   `PlayLive`).
   """
@@ -139,60 +139,52 @@ defmodule WhoseJamWeb.HomeLive do
 
   defp host_picker(assigns) do
     ~H"""
-    <div
-      :if={@host_open?}
-      class="modal modal-open bg-jam-ink/80 backdrop-blur-sm"
-      phx-window-keydown="close_host"
-      phx-key="Escape"
-    >
-      <div class="modal-box max-w-3xl space-y-6 border border-jam-cream/10">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="jam-eyebrow">Host a game</p>
-            <h2 class="font-display text-4xl">Pick a vibe</h2>
+    <.modal :if={@host_open?} on_close="close_host" class="max-w-3xl space-y-6">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="jam-eyebrow">Host a game</p>
+          <h2 class="font-display text-4xl">Pick a vibe</h2>
+        </div>
+        <button
+          type="button"
+          phx-click="close_host"
+          aria-label="Close"
+          class="jam-chip !px-2.5 cursor-pointer"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+
+      <ul class="space-y-3">
+        <li
+          :for={theme <- @themes}
+          class="rounded-box border border-jam-cream/10 bg-base-200 p-5 flex flex-col sm:flex-row gap-5 sm:items-center"
+        >
+          <div class="flex-1 min-w-0 space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-display text-2xl">{theme.name}</h3>
+              <span
+                :if={multi_style?(theme.style_sequence)}
+                class="jam-chip !py-0.5 !px-2.5 text-xs"
+              >
+                {length(Enum.uniq(theme.style_sequence))} sub-rounds
+              </span>
+            </div>
+            <p class="text-sm text-jam-cream/70">{theme.description}</p>
+            <ul :if={theme.examples != []} class="text-sm text-jam-cream/45 italic space-y-0.5">
+              <li :for={example <- theme.examples}>“{example.prompt}”</li>
+            </ul>
           </div>
           <button
-            type="button"
-            phx-click="close_host"
-            aria-label="Close"
-            class="jam-chip !px-2.5 cursor-pointer"
+            phx-click="create"
+            phx-value-theme={theme.id}
+            class="jam-btn shrink-0 self-start sm:self-center"
           >
-            <.icon name="hero-x-mark" class="size-5" />
+            Host this
           </button>
-        </div>
-
-        <ul class="space-y-3">
-          <li
-            :for={theme <- @themes}
-            class="rounded-box border border-jam-cream/10 bg-base-200 p-5 flex flex-col sm:flex-row gap-5 sm:items-center"
-          >
-            <div class="flex-1 min-w-0 space-y-2">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="font-display text-2xl">{theme.name}</h3>
-                <span
-                  :if={multi_style?(theme.style_sequence)}
-                  class="jam-chip !py-0.5 !px-2.5 text-xs"
-                >
-                  {length(Enum.uniq(theme.style_sequence))} sub-rounds
-                </span>
-              </div>
-              <p class="text-sm text-jam-cream/70">{theme.description}</p>
-              <p :if={theme.examples != []} class="text-sm text-jam-cream/45 italic">
-                e.g. “{hd(theme.examples).prompt}”
-              </p>
-            </div>
-            <button
-              phx-click="create"
-              phx-value-theme={theme.id}
-              class="jam-btn shrink-0 self-start sm:self-center"
-            >
-              Host this
-            </button>
-          </li>
-        </ul>
-      </div>
-      <div class="modal-backdrop" phx-click="close_host"></div>
-    </div>
+        </li>
+      </ul>
+    </.modal>
     """
   end
 

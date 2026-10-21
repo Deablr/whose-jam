@@ -153,7 +153,7 @@ nothing and no game can play audio.
 | **Web API** | Server (Client Credentials token) | `GET /v1/search` — song search from phones, proxied server-side |
 | **Web API** | Server (host's OAuth token) | `GET /v1/me` — Premium verification after OAuth |
 | **Web API** | TV browser (host's OAuth token) | `PUT /v1/me/player/play` — start each round's track on the TV device |
-| **Web Playback SDK** | TV browser | Turns the TV tab into a Spotify Connect device; reports track end |
+| **Web Playback SDK** | TV browser | Turns the host screen into a Spotify Connect device; reports track end |
 | Accounts service | Server | OAuth authorize/token endpoints (Authorization Code + Client Credentials flows) |
 
 The Android SDK, iOS SDK, and Ads API are **not** used.
@@ -337,9 +337,9 @@ be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. The Spotify
 redirect URI is unaffected — it stays on `127.0.0.1`. (A dev server also binds
 loopback-only by default — see Local development.)
 
-**Playback banner on the TV / console shows `EMEError: No supported keysystem`.**
+**Playback banner on the host screen shows `EMEError: No supported keysystem`.**
 The Web Playback SDK plays DRM-protected audio via EME/Widevine, and the TV
-browser can't. Fixes: use **Chrome, Edge, or Firefox** for the TV tab; allow
+browser can't. Fixes: use **Chrome, Edge, or Firefox** for the host screen; allow
 protected content (Chrome: `chrome://settings/content/protectedContent`; Brave:
 enable Widevine in `brave://settings/extensions`); and open the TV over
 **https** or on the serving machine via `localhost`/`127.0.0.1` — plain http on

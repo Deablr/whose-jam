@@ -124,8 +124,8 @@ defmodule WhoseJam.Game.ConfigTest do
       assert Config.build(%{vote_delay_s: -4}, 5).vote_delay_s == 0
     end
 
-    test "the all-voted countdown is a fixed 5s, not overridable" do
-      assert Config.build(%{all_voted_countdown_s: 99}, 5).all_voted_countdown_s == 5
+    test "the all-voted countdown is not a config field and cannot be overridden" do
+      refute Map.has_key?(Config.build(%{all_voted_countdown_s: 99}, 5), :all_voted_countdown_s)
     end
 
     test "min_players defaults to 3 and can be lowered to 2" do
@@ -138,6 +138,45 @@ defmodule WhoseJam.Game.ConfigTest do
       assert Config.build(%{min_players: 1}, 5).min_players == 2
       assert Config.build(%{min_players: 0}, 5).min_players == 2
       assert Config.build(%{min_players: 12}, 5).min_players == 8
+    end
+
+    test "min_players_range/0 exposes the clamp range" do
+      assert Config.min_players_range() == 2..8
+    end
+
+    test "timer and volume overrides are clamped to safe ranges" do
+      low =
+        Config.build(
+          %{answer_timer_s: -5, vote_delay_s: -4, vote_timer_s: -5, questions_per_player: -1},
+          5
+        )
+
+      assert low.answer_timer_s == 1
+      assert low.vote_delay_s == 0
+      assert low.vote_timer_s == 1
+      assert low.questions_per_player == 1
+
+      huge = 5_000_000_000
+
+      high =
+        Config.build(
+          %{
+            "answer_timer_s" => "#{huge}",
+            "vote_delay_s" => huge,
+            "vote_timer_s" => huge,
+            "questions_per_player" => huge
+          },
+          5
+        )
+
+      assert high.answer_timer_s == 1800
+      assert high.vote_delay_s == 60
+      assert high.vote_timer_s == 300
+      assert high.questions_per_player == 10
+    end
+
+    test "a derived answer timer follows the clamped questions_per_player" do
+      assert Config.build(%{questions_per_player: 99}, 5).answer_timer_s == 10 * 30
     end
 
     test "internal estimator fields are not overridable and stay at their constant defaults" do
@@ -169,15 +208,15 @@ defmodule WhoseJam.Game.ConfigTest do
       assert runtime >= 0
     end
 
-    test "cranking up questions_per_player lengthens the game (no cap)" do
+    test "cranking up questions_per_player lengthens the game past the target" do
       base = Config.build(%{}, 5)
-      cranked = Config.build(%{questions_per_player: 20}, 5)
+      cranked = Config.build(%{questions_per_player: 10}, 5)
 
       base_runtime = Config.estimated_runtime_s(base, 5)
       cranked_runtime = Config.estimated_runtime_s(cranked, 5)
 
       assert cranked_runtime > base_runtime
-      # 20 questions × 5 players is far past the 20-minute window — that's fine.
+      # 10 questions × 5 players is far past the 20-minute window — that's fine.
       assert cranked_runtime > @band_high
     end
 
@@ -192,6 +231,19 @@ defmodule WhoseJam.Game.ConfigTest do
       base = Config.build(%{}, 5)
       slower = Config.build(%{vote_timer_s: 60}, 5)
       assert Config.estimated_runtime_s(slower, 5) > Config.estimated_runtime_s(base, 5)
+    end
+
+    test "a vote delay longer than the typical listening time lengthens each round" do
+      base = Config.build(%{}, 5)
+      rounds = 5 * base.questions_per_player
+
+      # Up to song_playback_s (30s) the delay overlaps the listening time.
+      assert Config.estimated_runtime_s(Config.build(%{vote_delay_s: 20}, 5), 5) ==
+               Config.estimated_runtime_s(base, 5)
+
+      # Beyond it, every round grows by the excess.
+      assert Config.estimated_runtime_s(Config.build(%{vote_delay_s: 60}, 5), 5) ==
+               Config.estimated_runtime_s(base, 5) + 30 * rounds
     end
 
     test "arity-2 form equals subround_count = 1" do

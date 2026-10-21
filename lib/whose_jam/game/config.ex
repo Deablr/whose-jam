@@ -17,8 +17,8 @@ defmodule WhoseJam.Game.Config do
     * `vote_delay_s` — seconds the song plays before voting opens. Defaults to
       `10`; `0` opens voting as soon as the song starts.
     * `vote_timer_s` — the voting countdown, in seconds. It starts once a
-      majority of eligible voters have voted (or the song ends) and drops to
-      `all_voted_countdown_s` once everyone has voted. Defaults to `30`.
+      majority of eligible voters have voted (or the song ends) and drops to a
+      fixed 5s (a `Game.Server` constant) once everyone has voted. Defaults to `30`.
     * `questions_per_player` — songs each player submits. Default is tuned per
       player count so the estimated runtime lands near the 20-minute target
       (fewer questions at higher player counts, since every submitted song adds
@@ -28,17 +28,20 @@ defmodule WhoseJam.Game.Config do
     * `allow_vote_change?` — let voters change a cast vote. Defaults to `false`.
     * `min_players` — players needed before the host can start. Defaults to
       `3` (so guessing is non-trivial); can be lowered to `2` for development
-      and small groups. Clamped to `2..8`.
+      and small groups. Clamped to `2..8` (see `min_players_range/0`).
 
-  Internal (constants used only by the runtime estimator; documented here
-  because they shape `estimated_runtime_s/3`). These are fixed values and are
-  **not** overridable via `build/2` — only the seven host-facing settings above
-  can be overridden:
+  Every integer override is clamped to a safe range, so a hand-crafted
+  `set_config` can never produce a negative or timer-overflowing value:
+  `answer_timer_s` `1..1800`, `vote_delay_s` `0..60`, `vote_timer_s` `1..300`,
+  `questions_per_player` `1..10`, `min_players` `2..8`. (The host settings form
+  suggests stricter minimums; these are the server's hard bounds.)
+
+  Internal (fixed values that shape `estimated_runtime_s/3`; `song_playback_s`
+  also sizes the server's voting safety timeout). They are **not** overridable
+  via `build/2` — only the seven host-facing settings above can be overridden:
 
     * `song_playback_s` — typical listening time before most votes are in.
       Default `30`.
-    * `all_voted_countdown_s` — the countdown once every eligible voter has
-      voted (never lengthens a shorter remaining countdown). Default `5`.
     * `reveal_padding_s` — pause to reveal the submitter each round. Default `5`.
     * `results_padding_s` — pause on the running scoreboard each round.
       Default `5`.
@@ -47,12 +50,15 @@ defmodule WhoseJam.Game.Config do
   @answer_s_per_question 30
   @default_vote_timer_s 30
   @default_vote_delay_s 10
-  @all_voted_countdown_s 5
   @default_song_playback_s 30
   @default_reveal_padding_s 5
   @default_results_padding_s 5
   @default_min_players 3
   @min_players_range 2..8
+  @answer_timer_range 1..1800
+  @vote_delay_range 0..60
+  @vote_timer_range 1..300
+  @questions_per_player_range 1..10
 
   @type t :: %__MODULE__{
           answer_timer_s: pos_integer(),
@@ -63,7 +69,6 @@ defmodule WhoseJam.Game.Config do
           allow_vote_change?: boolean(),
           min_players: pos_integer(),
           song_playback_s: non_neg_integer(),
-          all_voted_countdown_s: pos_integer(),
           reveal_padding_s: non_neg_integer(),
           results_padding_s: non_neg_integer()
         }
@@ -76,7 +81,6 @@ defmodule WhoseJam.Game.Config do
             allow_vote_change?: false,
             min_players: @default_min_players,
             song_playback_s: @default_song_playback_s,
-            all_voted_countdown_s: @all_voted_countdown_s,
             reveal_padding_s: @default_reveal_padding_s,
             results_padding_s: @default_results_padding_s
 
@@ -90,7 +94,8 @@ defmodule WhoseJam.Game.Config do
   Only the seven host-facing settings can be overridden (`answer_timer_s`,
   `vote_timer_s`, `vote_delay_s`, `questions_per_player`, `subrounds_enabled?`,
   `allow_vote_change?`, `min_players`); any other key in `overrides` is ignored. The internal
-  estimator fields stay fixed at their constant defaults.
+  estimator fields stay fixed at their constant defaults. Integer overrides are
+  clamped to the ranges listed in the moduledoc.
 
   Resolution order matters: `questions_per_player` is resolved first, then
   `answer_timer_s` derives from the resolved value unless the host overrode it
@@ -100,22 +105,25 @@ defmodule WhoseJam.Game.Config do
   def build(overrides, player_count)
       when is_map(overrides) and is_integer(player_count) and player_count > 0 do
     qpp =
-      fetch_int(overrides, :questions_per_player, default_questions_per_player(player_count))
+      fetch_int(
+        overrides,
+        :questions_per_player,
+        default_questions_per_player(player_count),
+        @questions_per_player_range
+      )
 
     answer_timer_s =
-      fetch_int(overrides, :answer_timer_s, qpp * @answer_s_per_question)
+      fetch_int(overrides, :answer_timer_s, qpp * @answer_s_per_question, @answer_timer_range)
 
     %__MODULE__{
       answer_timer_s: answer_timer_s,
-      vote_timer_s: fetch_int(overrides, :vote_timer_s, @default_vote_timer_s),
-      vote_delay_s: overrides |> fetch_int(:vote_delay_s, @default_vote_delay_s) |> max(0),
+      vote_timer_s: fetch_int(overrides, :vote_timer_s, @default_vote_timer_s, @vote_timer_range),
+      vote_delay_s: fetch_int(overrides, :vote_delay_s, @default_vote_delay_s, @vote_delay_range),
       questions_per_player: qpp,
       subrounds_enabled?: fetch_bool(overrides, :subrounds_enabled?, true),
       allow_vote_change?: fetch_bool(overrides, :allow_vote_change?, false),
-      min_players:
-        overrides |> fetch_int(:min_players, @default_min_players) |> clamp_min_players(),
+      min_players: fetch_int(overrides, :min_players, @default_min_players, @min_players_range),
       song_playback_s: @default_song_playback_s,
-      all_voted_countdown_s: @all_voted_countdown_s,
       reveal_padding_s: @default_reveal_padding_s,
       results_padding_s: @default_results_padding_s
     }
@@ -156,6 +164,12 @@ defmodule WhoseJam.Game.Config do
     config.answer_timer_s * answer_phases + per_round_s * round_count
   end
 
+  @doc """
+  The range `min_players` is clamped to (also the choices offered to the host).
+  """
+  @spec min_players_range() :: Range.t()
+  def min_players_range, do: @min_players_range
+
   # Keep total round count near ~15-16 so the estimate stays within ±20% of the
   # 20-minute target across 3..8 players. Never below 2 questions per player.
   @spec default_questions_per_player(pos_integer()) :: pos_integer()
@@ -163,15 +177,14 @@ defmodule WhoseJam.Game.Config do
     max(2, round(15 / player_count))
   end
 
-  defp clamp_min_players(n),
-    do: n |> max(@min_players_range.first) |> min(@min_players_range.last)
-
   # --- override helpers: atom-or-string key lookup + value coercion ---
 
-  defp fetch_int(overrides, key, default) do
+  # An override is coerced and clamped to `range`; the derived default is used
+  # as-is when the key is absent.
+  defp fetch_int(overrides, key, default, first..last//_) do
     case fetch_raw(overrides, key) do
       :error -> default
-      {:ok, value} -> to_int(value, default)
+      {:ok, value} -> value |> to_int(default) |> max(first) |> min(last)
     end
   end
 

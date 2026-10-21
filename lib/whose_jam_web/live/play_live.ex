@@ -354,11 +354,11 @@ defmodule WhoseJamWeb.PlayLive do
   defp blank_to_nil(str), do: str
 
   # The current song's artwork tints the phone too while a round is on.
-  defp phone_art(%{view: %{phase: :playing, round: %{song: %{album_art_url: url}}}})
+  defp current_art(%{phase: :playing, round: %{song: %{album_art_url: url}}})
        when is_binary(url) and url != "",
        do: url
 
-  defp phone_art(_assigns), do: nil
+  defp current_art(_view), do: nil
 
   defp ordinal(0), do: "1st"
   defp ordinal(1), do: "2nd"
@@ -371,11 +371,14 @@ defmodule WhoseJamWeb.PlayLive do
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, art_url: current_art(assigns.view))
+
     ~H"""
     <Layouts.flash_group flash={@flash} />
     <div data-theme="jam" class="jam-stage min-h-screen overflow-x-hidden">
-      <% art = phone_art(assigns) %>
-      <div :if={art} class="jam-ambient" style={"background-image: url('#{art}')"}></div>
+      <div :if={@art_url} class="jam-ambient" aria-hidden="true">
+        <img src={@art_url} alt="" />
+      </div>
       <div class="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 pb-10 pt-6">
         <%= case @status do %>
           <% :missing -> %>
@@ -424,7 +427,7 @@ defmodule WhoseJamWeb.PlayLive do
     <div class="flex flex-1 flex-col items-center justify-center gap-6 text-center">
       <div class="text-6xl">🫥</div>
       <div>
-        <h1 class="font-display text-2xl font-bold">No game here</h1>
+        <h1 class="font-display text-2xl">No game here</h1>
         <p class="mt-2 text-white/60">
           We couldn't find a game with code <span class="font-mono font-semibold text-white">{@code}</span>. It may have ended.
         </p>
@@ -442,7 +445,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     {top_bar(assigns)}
     <div class="flex flex-1 flex-col justify-center">
-      <h1 class="font-display text-3xl  leading-tight">Pick a name<br />and jump in</h1>
+      <h1 class="font-display text-3xl leading-tight">Pick a name<br />and jump in</h1>
       <p class="mt-2 text-white/60">
         Joining game <span class="font-mono font-semibold text-white">{@code}</span>. No account needed.
       </p>
@@ -499,7 +502,7 @@ defmodule WhoseJamWeb.PlayLive do
     <div class="flex flex-1 flex-col">
       <div class="jam-panel p-6 text-center">
         <div class="text-5xl">🎉</div>
-        <h1 class="mt-3 font-display text-2xl font-bold">You're in, {@my_name}!</h1>
+        <h1 class="mt-3 font-display text-2xl">You're in, {@my_name}!</h1>
         <p class="mt-1 text-white/60">
           <%= if @role == :player do %>
             You'll get songs to submit once the host starts.
@@ -551,7 +554,7 @@ defmodule WhoseJamWeb.PlayLive do
   # --- answering ------------------------------------------------------------
 
   # Safe fallback if the server ever hands us an :answering phase without an
-  # answering payload (mirrors tv_live's nil-guarding).
+  # answering payload (mirrors HostLive's nil-guarding).
   defp answering_screen(%{view: %{answering: nil}} = assigns) do
     ~H"""
     <div class="flex flex-1 items-center justify-center text-white/60">
@@ -564,7 +567,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <div class="flex flex-1 flex-col items-center justify-center gap-5 text-center">
       <div class="text-6xl">🎧</div>
-      <h1 class="font-display text-2xl font-bold">Players are picking songs</h1>
+      <h1 class="font-display text-2xl">Players are picking songs</h1>
       <p class="text-white/60">Sit back — you'll vote once the music starts.</p>
       <div class="jam-panel mt-2 px-6 py-4">
         <div class="text-xs uppercase tracking-wide text-white/50">Time left to submit</div>
@@ -595,7 +598,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <div :if={@total == 0} class="flex flex-1 flex-col items-center justify-center gap-4 text-center">
       <div class="text-5xl">✅</div>
-      <h1 class="font-display text-xl font-bold">Nothing to submit this round</h1>
+      <h1 class="font-display text-xl">Nothing to submit this round</h1>
       <p class="text-white/60">Hang tight for the music.</p>
     </div>
 
@@ -621,7 +624,7 @@ defmodule WhoseJamWeb.PlayLive do
         <div class="text-xs font-semibold uppercase tracking-wide text-jam-pink">
           Your prompt
         </div>
-        <h1 class="mt-1 font-display text-2xl font-bold leading-snug">{@question.prompt}</h1>
+        <h1 class="mt-1 font-display text-2xl leading-snug">{@question.prompt}</h1>
       </div>
 
       {answer_body(assigns)}
@@ -749,7 +752,7 @@ defmodule WhoseJamWeb.PlayLive do
 
   # --- playing (revealing / voting / results) -------------------------------
 
-  # Safe fallback if a round hasn't materialised yet (mirrors tv_live).
+  # Safe fallback if a round hasn't materialised yet (mirrors HostLive).
   defp playing_screen(%{view: %{round: nil}} = assigns, _round_state) do
     ~H"""
     <div class="flex flex-1 items-center justify-center text-white/60">
@@ -810,7 +813,7 @@ defmodule WhoseJamWeb.PlayLive do
       </div>
       <div class="min-w-0">
         <div class="jam-eyebrow !text-xs">Round {@round.index + 1} of {@round.total}</div>
-        <div class="truncate font-display text-lg ">{@round.song.name}</div>
+        <div class="truncate font-display text-lg">{@round.song.name}</div>
         <div class="truncate text-sm text-white/60">{@round.song.artist}</div>
       </div>
     </div>
@@ -821,7 +824,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <div class="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
       <div class="text-6xl">📺</div>
-      <h1 class="font-display text-xl font-bold">Listen up — it's playing on the TV</h1>
+      <h1 class="font-display text-xl">Listen up — it's playing on the TV</h1>
       <p class="text-white/60">
         Voting opens in
         <span
@@ -841,7 +844,7 @@ defmodule WhoseJamWeb.PlayLive do
         ~H"""
         <div class="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
           <div class="text-6xl">🤫</div>
-          <h1 class="font-display text-xl font-bold">This one's yours</h1>
+          <h1 class="font-display text-xl">This one's yours</h1>
           <p class="text-white/60">Sit tight and see who you fooled.</p>
         </div>
         """
@@ -850,7 +853,7 @@ defmodule WhoseJamWeb.PlayLive do
         ~H"""
         <div class="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
           <div class="text-6xl">✅</div>
-          <h1 class="font-display text-xl font-bold">Vote locked in</h1>
+          <h1 class="font-display text-xl">Vote locked in</h1>
           <p class="text-white/60">Waiting on the reveal…</p>
           {vote_timer(assigns)}
         </div>
@@ -924,7 +927,7 @@ defmodule WhoseJamWeb.PlayLive do
       <div class="jam-panel px-6 py-5">
         <div :if={@round.style == :guess_who}>
           <div class="text-xs uppercase tracking-wide text-white/50">Submitted by</div>
-          <div class="mt-1 font-display text-2xl font-bold text-jam-pink">{@submitter_name}</div>
+          <div class="mt-1 font-display text-2xl text-jam-pink">{@submitter_name}</div>
         </div>
         <div :if={@round.style != :guess_who}>
           <div class="text-xs uppercase tracking-wide text-white/50">The prompt was</div>
@@ -962,7 +965,7 @@ defmodule WhoseJamWeb.PlayLive do
     <div class="flex flex-1 flex-col">
       <div class="jam-panel p-6 text-center">
         <div class="text-5xl">🏆</div>
-        <h1 class="mt-3 font-display text-2xl font-bold">That's a wrap!</h1>
+        <h1 class="mt-3 font-display text-2xl">That's a wrap!</h1>
         <p :if={@place != nil} class="mt-1 text-white/70">
           You finished <span class="font-bold text-jam-pink">{ordinal(@place)}</span>
           {if @role == :audience, do: "in the audience", else: "among players"}.
