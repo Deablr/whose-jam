@@ -10,8 +10,8 @@ A web-based, Jackbox-style party game where:
 - 3–8 players join from their phones by scanning the QR code and entering a display name. Additional joiners become audience members who can vote but do not submit songs.
 - The host picks a themed question pool (e.g., "Emotional Damage," "The Club"). Each theme is a curated pool of prompts like "Song that changed your life" or "Grooves to flirt to."
 - Every player is assigned a small set of questions drawn from the pool. They don't see each other's questions, and the same question may be assigned to multiple players.
-- Each player searches Spotify on their phone and submits a song for each assigned question.
-- Once answers are in, the host's TV plays submitted songs one at a time using Spotify's Web Playback SDK (requires host Premium). While each song plays, all connected clients (players + audience) vote to guess which player submitted it.
+- Each player searches the room's music service (Spotify in v1) on their phone and submits a song for each assigned question.
+- Once answers are in, the host's TV plays submitted songs one at a time through the music provider's web player (Spotify's Web Playback SDK in v1, which requires host Premium). While each song plays, all connected clients (players + audience) vote to guess which player submitted it.
 - Players score +1 per correct guess and +1 per non-audience vote they fooled onto their own song. Audience members score +1 per correct guess but are not submitters and do not win the main board.
 - At the end, a final scoreboard appears on the TV.
 
@@ -45,7 +45,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 ### Player — submitting songs
 
 18. As a player, I want to see my assigned questions one at a time on my phone, so that I can focus on one submission at a time.
-19. As a player, I want to search Spotify directly from the submission form, so that I can find songs without leaving the app.
+19. As a player, I want to search the music service directly from the submission form, so that I can find songs without leaving the app.
 20. As a player, I want the search results to show song title, artist, and album art, so that I can confirm I'm picking the right version.
 21. As a player, I want to see a live countdown for the submission phase, so that I know how much time I have.
 22. As a player, I want to change my song pick before the submission timer ends, so that I can second-guess myself.
@@ -89,13 +89,13 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - **Phoenix + LiveView** for the entire web layer. Chosen because the per-game-room model maps cleanly onto OTP processes, PubSub handles the TV-and-phones fan-out for free, and Phoenix Presence solves liveness tracking.
 - **Ecto + Postgres** for seed data (themes, questions, pools) only. Runtime game state lives in memory in a GenServer per game.
 - **Phoenix.Token** for device→player binding; the token is stored in a cookie and is sufficient to identify a returning device.
-- **No authentication system in v1.** No Better Auth, no user accounts. Hosts don't register. Players don't register. The only auth involved is the host's OAuth flow to Spotify.
+- **No authentication system in v1.** No Better Auth, no user accounts. Hosts don't register. Players don't register. The only auth involved is the host connecting a music service (Spotify's OAuth flow in v1).
 
 ### Runtime architecture
 
 - Each active game is one `Game.Server` GenServer, registered under a short room code in a Phoenix Registry.
 - State transitions flow through explicit events (`:join`, `:start`, `:submit_song`, `:cast_vote`, `:skip_song`). The GenServer publishes game-state broadcasts via Phoenix.PubSub on a per-room topic.
-- Submitted songs are validated server-side: the URI must be a Spotify track URI (`spotify:track:<22 alphanumerics>`) or the submission is rejected; name/artist are trimmed and capped at 200 characters; album art is kept only if it is a Spotify image-CDN URL.
+- Submitted songs are validated server-side against the room's music provider: the URI must be a well-formed song URI of that provider (for Spotify, `spotify:track:<22 alphanumerics>`; a URI from any other provider is rejected too) or the submission is rejected; name/artist are trimmed and capped at 200 characters; album art is kept only if it is hosted where that provider's art lives (for Spotify, its image CDN).
 - All LiveViews (host screen, player) subscribe to the room topic; they are pure renderers of state received from the GenServer.
 - `Phoenix.Presence` tracks connected clients per room. Players absent from Presence for a short threshold are marked AFK and excluded from "waiting on N players" counts, but their existing submissions stay live.
 - When a game ends (final scoreboard shown + short idle timeout), the GenServer shuts down and its state is discarded.
@@ -152,13 +152,32 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8). The server clamps every numeric setting to a safe range (answer timer 1–1800s, listening delay 0–60s, vote countdown 1–300s, questions per player 1–10, minimum players 2–8) so no value can stall or crash a game.
 - When player counts or question counts exceed what fits in the target window, the game will exceed 20 minutes; there is no hard cap on round count in v1.
 
-### Spotify integration
+### Music providers
+
+The game is bound to one music provider per room, chosen by the host in the lobby. Everything provider-specific sits behind the `WhoseJam.Music.Provider` behaviour; the game runtime, scoring and screens only ever see the provider-neutral song `%{uri, name, artist, album_art_url}`. Providers differ in six places: catalog search and song validation, how the host connects, whether the account is eligible, token refresh, the browser player (a JS module of the same id), and capabilities (`video?`).
+
+Enabled providers come from `config :whose_jam, :music_providers`. Spotify is the only provider that ships; dev and test also enable the fake **Mock** provider.
+
+**Spotify**
 
 - **Search:** server-side, using Spotify client credentials (app-level token, not host-linked). Results cached in-memory per search term for a short TTL to reduce API calls. Key is held server-side; never shipped to players.
 - **Playback:** Spotify Web Playback SDK on the host screen's browser only. Host completes OAuth from the lobby (connect prompt or Settings); the game refuses to start if the host is not authenticated and Premium-verified.
-- **Music services are pluggable in the UX.** The host picks from a list of music services; Spotify is the only entry in v1, shown alongside a "more services coming soon" placeholder. Host-facing copy says "music service" rather than assuming Spotify, so adding a provider later is a new list entry rather than a UI redesign. (Search and playback internals remain Spotify-specific in v1.)
-- **Only the host plays audio.** Players may see album art and song title on their phones during rounds but do not play audio. No per-player preview audio in v1.
-- Submitted songs are stored by Spotify track URI.
+- **Music services are pluggable in the UX.** The host picks from a list of music services, shown alongside a "more music services coming soon" placeholder. Host-facing copy says "music service" rather than assuming Spotify, so adding a provider is a new list entry rather than a UI redesign.
+
+**Mock** (dev/test only)
+
+A small fixed catalog of fake tracks, no credentials, no connect step, no audio: the browser stub reports each song as ended after a few seconds (`:mock_track_ms`, default 5s). It lets a whole game be played and tested without a Spotify account.
+
+**Researched and shelved**
+
+Throwaway proofs of concept for YouTube (a no-account, `video?` provider) and Apple Music (a provider authorized inside the browser) were built to prove the `Provider` behaviour fits both shapes, then removed. Neither is offered to hosts, because:
+
+- **YouTube:** the Data API quota is per Google Cloud project (roughly 100 searches/day), embedded ads may still play for Premium viewers, and the terms require a visible, unobscured player.
+- **Apple Music:** a MusicKit developer token needs a MusicKit key, which needs a paid Apple Developer Program membership (Account Holder or Admin role). If this is ever revived, sign the ES256 developer token with `jose`.
+
+The abstraction keeps the hooks they needed (`:browser` connect kind via the `MusicConnect` hook, `video?`, `search_scope/1`), though no shipped provider uses them yet.
+
+- Submitted songs are stored by provider-namespaced song URI (`spotify:track:…`).
 
 ### Players, audience, and capacity
 
@@ -194,14 +213,14 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - Tests target *external behavior* of a module, not its internal structure. A test should still pass after a full internal refactor as long as the module's contract is preserved.
 - Deep, pure modules are prioritized for unit tests because they offer the highest test-value-per-line-of-test.
 - The GenServer is tested through its public event API, not by peeking at internal state. Tests send events and observe the resulting public state (via the same query functions LiveViews will use).
-- LiveViews, Spotify integration, and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, Spotify tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry.
+- LiveViews, the live provider APIs (Spotify), and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), pure response parsing is tested from fixtures, and `Game.Server` plays the same game on every provider.
 
 ### Modules with tests
 
 - **`Game.Binning`** — correctness of assignment (every player gets their target; no player gets the same question twice), overlap guarantee (every selected question has ≥2 submitters whenever mathematically feasible), edge cases (minimum player count, more questions requested than exist).
 - **`Game.Scoring`** — a correct guess awards +1; a submitter gains +1 per fooled non-audience vote; audience cannot be "fooled onto" for scoring purposes; all-correct and all-wrong rounds produce sane totals; a round with zero votes produces zero points.
 - **`Game.Config`** — derived timings at representative player counts; overrides override; default settings produce a game whose total estimated runtime is within a configured band of the 20-minute target.
-- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than Spotify's image CDN are dropped.
+- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than the room provider's art host are dropped; songs from another provider are rejected.
 
 ### Prior art
 
@@ -216,10 +235,10 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - **Mid-game changes.** No late joiners becoming players, no audience promotion, no pause.
 - **Vote changing.** Votes are locked once submitted (a host toggle for this is conceptually supported but not prioritized for v1).
 - **Avatars, images, and custom player art.** Display name only.
-- **Video playback.** Audio via Spotify Web Playback SDK only. No YouTube, no music videos. A simple visualizer or album-art display is the intended TV visual during rounds.
+- **Video playback in v1.** Spotify (the only shipped provider) is audio-only: no music videos, and a simple visualizer or album-art display is the intended TV visual during rounds. The provider abstraction does carry a `video?` capability (the host screen then shows the player), but no shipped provider uses it — see "Music providers".
 - **Full implementation of `:guess_for_player` style.** Enum reserved; no runtime logic.
 - **Rich question-style engine.** Dispatch is via pattern matching on an enum. No DSL, no rules engine.
-- **Spotify-free playback fallback.** If the host lacks Premium, v1 does not offer 30-second previews or a YouTube fallback. They cannot host.
+- **Spotify-free playback fallback.** If the host lacks Premium, v1 does not offer 30-second previews or a YouTube fallback. They cannot host. A previews-only provider was considered and explicitly rejected.
 - **Tests for LiveViews, Spotify client, and the Registry.** Manual playtesting only in v1.
 - **Multi-node deployment, Redis, external queues.** Single-node BEAM is the deployment model.
 - **Mobile apps.** Mobile web only.
