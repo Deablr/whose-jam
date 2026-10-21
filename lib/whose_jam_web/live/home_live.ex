@@ -13,7 +13,12 @@ defmodule WhoseJamWeb.HomeLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "whose-jam", themes: load_themes(), join_code: "")}
+    {:ok,
+     assign(socket,
+       page_title: "A song-guessing party game",
+       themes: load_themes(),
+       join_code: ""
+     )}
   end
 
   defp load_themes do
@@ -67,74 +72,89 @@ defmodule WhoseJamWeb.HomeLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <main class="min-h-screen bg-base-200 px-4 py-10 sm:py-16">
-      <div class="mx-auto max-w-3xl space-y-10">
-        <header class="text-center space-y-2">
-          <h1 class="text-4xl sm:text-5xl font-black tracking-tight">whose-jam</h1>
-          <p class="text-base-content/70 text-lg">
+    <main data-theme="jam" class="jam-stage min-h-screen px-4 py-10 sm:py-16">
+      <div class="jam-halftone fixed inset-x-0 top-0 h-[50vh] -z-10"></div>
+
+      <div class="mx-auto max-w-3xl space-y-14">
+        <header class="text-center space-y-5">
+          <p class="jam-path">C://users/you/party/whose-jam.exe</p>
+          <div class="flex flex-col items-center">
+            <span class="jam-sticker jam-sticker-ghost text-2xl -rotate-3 opacity-60">whose jam</span>
+            <span class="jam-sticker jam-sticker-ghost text-3xl rotate-1 opacity-80 -mt-4 ml-8">
+              whose jam
+            </span>
+            <h1 class="jam-sticker text-5xl sm:text-6xl -rotate-1 -mt-4 ml-16">whose jam?</h1>
+          </div>
+          <p class="text-white/75 text-lg max-w-md mx-auto">
             A song-guessing party game for your TV and everyone's phones.
           </p>
         </header>
 
-        <section class="card bg-base-100 shadow-xl">
-          <div class="card-body space-y-2">
-            <h2 class="card-title text-2xl">Join a game</h2>
-            <p class="text-base-content/70">Got a room code from the TV? Punch it in.</p>
-            <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                name="code"
-                value={@join_code}
-                autocomplete="off"
-                autocapitalize="characters"
-                placeholder="CODE"
-                maxlength="4"
-                class="input input-lg input-bordered flex-1 uppercase tracking-[0.5em] text-center font-mono"
-              />
-              <.button variant="primary" class="btn btn-lg btn-primary">Join</.button>
-            </form>
+        <section class="jam-panel p-6 sm:p-8 space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="font-display text-2xl font-black">Join a game</h2>
+            <span class="jam-path hidden sm:inline">got a code from the TV?</span>
           </div>
+          <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              name="code"
+              value={@join_code}
+              autocomplete="off"
+              autocapitalize="characters"
+              placeholder="CODE"
+              maxlength="4"
+              class="flex-1 rounded-2xl border-2 border-jam-bubblegum/30 bg-jam-night/70 px-5 py-4 text-center font-display text-3xl font-black uppercase tracking-[0.4em] text-jam-lemon placeholder-white/25 focus:border-jam-mint focus:outline-none"
+            />
+            <button type="submit" class="jam-btn text-lg">Join</button>
+          </form>
         </section>
 
-        <section class="space-y-4">
-          <div class="text-center">
-            <h2 class="text-2xl font-bold">Host a game</h2>
-            <p class="text-base-content/70">Pick a vibe. You'll set it up on the next screen.</p>
+        <section class="space-y-6">
+          <div class="text-center space-y-2">
+            <h2 class="jam-sticker jam-sticker-lemon text-xl rotate-1">Host a game</h2>
+            <p class="text-white/65">Pick a vibe. You'll set it up on the next screen.</p>
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div :for={theme <- @themes} class="card bg-base-100 shadow-lg">
-              <div class="card-body space-y-3">
-                <div class="flex items-start justify-between gap-2">
-                  <h3 class="card-title text-xl">{theme.name}</h3>
-                </div>
-
-                <div class="flex flex-wrap gap-1">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <div :for={theme <- @themes} class="jam-panel p-6 flex flex-col gap-4">
+              <div class="space-y-3">
+                <h3 class="jam-glitch text-2xl font-black leading-tight">{theme.name}</h3>
+                <div class="flex flex-wrap gap-1.5">
                   <span
                     :for={style <- Enum.uniq(theme.style_sequence)}
-                    class="badge badge-secondary badge-sm"
+                    class="jam-chip !py-0.5 !px-2.5 text-xs"
                   >
                     {style_label(style)}
                   </span>
-                  <span :if={multi_style?(theme.style_sequence)} class="badge badge-outline badge-sm">
+                  <span
+                    :if={multi_style?(theme.style_sequence)}
+                    class="jam-chip jam-chip-on !py-0.5 !px-2.5 text-xs"
+                  >
                     sub-rounds
                   </span>
                 </div>
+              </div>
 
-                <p class="text-sm text-base-content/70">{theme.description}</p>
+              <p class="text-sm text-white/70">{theme.description}</p>
 
-                <div :if={theme.examples != []} class="text-sm">
-                  <p class="font-semibold text-base-content/80 mb-1">For example:</p>
-                  <ul class="list-disc list-inside space-y-1 text-base-content/60">
-                    <li :for={q <- theme.examples}>{q.prompt}</li>
-                  </ul>
-                </div>
+              <div :if={theme.examples != []} class="text-sm space-y-1.5">
+                <p class="jam-path">for example:</p>
+                <ul class="space-y-1.5 text-white/60">
+                  <li :for={q <- theme.examples} class="flex gap-2">
+                    <span class="text-jam-pink">▸</span><span>{q.prompt}</span>
+                  </li>
+                </ul>
+              </div>
 
-                <div class="card-actions justify-end pt-1">
-                  <button phx-click="create" phx-value-theme={theme.id} class="btn btn-primary">
-                    Host this
-                  </button>
-                </div>
+              <div class="mt-auto pt-2 flex justify-end">
+                <button
+                  phx-click="create"
+                  phx-value-theme={theme.id}
+                  class="jam-btn jam-btn-mint text-sm"
+                >
+                  Host this
+                </button>
               </div>
             </div>
           </div>

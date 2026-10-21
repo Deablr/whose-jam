@@ -227,7 +227,7 @@ defmodule WhoseJamWeb.HostLive do
   defp qr_svg(url) do
     url
     |> EQRCode.encode()
-    |> EQRCode.svg(width: 320, background_color: "#000000", color: "#ffffff")
+    |> EQRCode.svg(width: 300, background_color: "#fff7fb", color: "#241046")
   end
 
   # The URI that should be playing right now: the current round's song, which
@@ -303,11 +303,12 @@ defmodule WhoseJamWeb.HostLive do
   def render(%{view: nil} = assigns) do
     ~H"""
     <Layouts.flash_group flash={@flash} />
-    <div class="min-h-screen grid place-items-center bg-black text-white text-center px-4">
+    <div data-theme="jam" class="jam-stage min-h-screen grid place-items-center text-center px-4">
       <div class="space-y-6">
-        <h1 class="text-6xl font-black">No game here</h1>
+        <p class="jam-path">C://WHOSE-JAM/ROOMS/{@code} — not found</p>
+        <h1 class="jam-glitch text-6xl font-black">No game here</h1>
         <p class="text-2xl text-white/60">Room {@code} isn't live.</p>
-        <.link navigate={~p"/"} class="btn btn-primary btn-lg">Back to start</.link>
+        <.link navigate={~p"/"} class="jam-btn text-lg">Back to start</.link>
       </div>
     </div>
     """
@@ -319,6 +320,7 @@ defmodule WhoseJamWeb.HostLive do
         banner: playback_banner(assigns),
         services: music_services(assigns.view, assigns.code),
         active_service: active_service(assigns.view, assigns.code),
+        art_url: current_art(assigns.view),
         show_music_prompt?:
           assigns.view.phase == :lobby and not music_ready?(assigns.view, assigns.code) and
             not assigns.music_prompt_dismissed? and not assigns.settings_open?
@@ -327,7 +329,11 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <div data-theme="dark" class="min-h-screen bg-black text-white overflow-hidden">
+    <div data-theme="jam" class="jam-stage min-h-screen overflow-hidden">
+      <%!-- Apple Music–style ambience: the current song's artwork tints the room. --%>
+      <div :if={@art_url} class="jam-ambient" style={"background-image: url('#{@art_url}')"}></div>
+      <div :if={!@art_url} class="jam-halftone fixed inset-x-0 top-0 h-[60vh] -z-10"></div>
+
       <div
         :if={@spotify_status == :ok}
         id="spotify-player"
@@ -340,11 +346,11 @@ defmodule WhoseJamWeb.HostLive do
 
       {top_bar(assigns)}
 
-      <div
-        :if={@banner}
-        class="fixed top-14 inset-x-0 z-30 bg-amber-500 text-black text-center py-2 px-4 font-semibold"
-      >
-        Playback unavailable — {@banner}
+      <div :if={@banner} class="fixed bottom-6 inset-x-0 z-30 flex justify-center px-6">
+        <div class="jam-sticker jam-sticker-lemon text-sm normal-case max-w-5xl">
+          <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+          <span class="font-body font-bold">Playback unavailable — {@banner}</span>
+        </div>
       </div>
 
       <%= case @view.phase do %>
@@ -368,13 +374,12 @@ defmodule WhoseJamWeb.HostLive do
 
   defp top_bar(assigns) do
     ~H"""
-    <header class="fixed top-0 inset-x-0 z-40 h-14 flex items-center justify-between gap-4 px-5 bg-black/70 backdrop-blur border-b border-white/10">
-      <div class="flex items-center gap-3 min-w-0 text-white/70">
-        <span class="font-black tracking-tight text-white">whose-jam</span>
-        <span class="text-white/30">·</span>
-        <span class="truncate">{@view.theme.name}</span>
-        <span class="text-white/30">·</span>
-        <span class="font-mono font-bold tracking-widest text-white">{@code}</span>
+    <header class="fixed top-0 inset-x-0 z-40 h-16 flex items-center justify-between gap-4 px-6">
+      <div class="flex items-center gap-4 min-w-0">
+        {logo(assigns)}
+        <span class="jam-path truncate hidden md:inline">
+          C://whose-jam/{slug(@view.theme.name)}/{@code}
+        </span>
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
@@ -382,14 +387,17 @@ defmodule WhoseJamWeb.HostLive do
           type="button"
           phx-click="open_settings"
           class={[
-            "btn btn-sm rounded-full gap-2",
-            if(@active_service, do: "btn-ghost text-white/70", else: "btn-warning")
+            "jam-chip text-sm cursor-pointer",
+            !@active_service && "!bg-jam-lemon !text-jam-night !border-jam-lemon"
           ]}
         >
           <%= if @active_service do %>
             <span class={[
               "inline-block size-2 rounded-full",
-              if(@playback_ready?, do: "bg-emerald-400", else: "bg-white/40")
+              if(@playback_ready?,
+                do: "bg-jam-mint shadow-[0_0_10px] shadow-jam-mint",
+                else: "bg-white/40"
+              )
             ]} />
             {@active_service.name}
           <% else %>
@@ -402,16 +410,16 @@ defmodule WhoseJamWeb.HostLive do
           type="button"
           phx-click="skip_song"
           data-confirm="Skip this song and move on?"
-          class="btn btn-sm btn-ghost rounded-full gap-1 text-white/70"
+          class="jam-chip text-sm cursor-pointer"
         >
-          <.icon name="hero-forward" class="size-4" /> Skip song
+          <.icon name="hero-forward" class="size-4" /> Skip
         </button>
 
         <button
           type="button"
           phx-click="open_settings"
           aria-label="Settings"
-          class="btn btn-sm btn-ghost btn-circle text-white/70"
+          class="jam-chip !px-2.5 cursor-pointer"
         >
           <.icon name="hero-cog-6-tooth" class="size-5" />
         </button>
@@ -420,21 +428,31 @@ defmodule WhoseJamWeb.HostLive do
     """
   end
 
+  defp logo(assigns) do
+    ~H"""
+    <span class="flex items-center gap-1.5 shrink-0">
+      <span class="font-display font-black text-xl tracking-tight">whose</span>
+      <span class="jam-sticker jam-sticker-pink text-sm !px-2 !py-1 -rotate-3">jam</span>
+    </span>
+    """
+  end
+
   # ---- music service prompt ----------------------------------------------
 
   defp music_prompt(assigns) do
     ~H"""
-    <div :if={@show_music_prompt?} class="modal modal-open bg-black/70">
-      <div class="modal-box max-w-lg space-y-5">
-        <div class="space-y-1">
-          <h2 class="text-2xl font-bold">Connect your music</h2>
+    <div :if={@show_music_prompt?} class="modal modal-open bg-jam-ink/80 backdrop-blur-sm">
+      <div class="modal-box max-w-lg space-y-5 border-2 border-jam-bubblegum/30">
+        <div class="space-y-2">
+          <p class="jam-path">C://whose-jam/setup/music.exe</p>
+          <h2 class="jam-glitch text-3xl font-black">Connect your music</h2>
           <p class="text-base-content/70">
             This screen plays every song the players pick. Connect a music service before you start.
           </p>
         </div>
         {music_service_list(assigns)}
         <div class="modal-action mt-0">
-          <button type="button" phx-click="dismiss_music_prompt" class="btn btn-ghost">
+          <button type="button" phx-click="dismiss_music_prompt" class="jam-btn jam-btn-ghost text-sm">
             Not now
           </button>
         </div>
@@ -446,16 +464,16 @@ defmodule WhoseJamWeb.HostLive do
 
   defp music_service_list(assigns) do
     ~H"""
-    <ul class="space-y-2">
+    <ul class="space-y-3">
       <li
         :for={service <- @services}
-        class="flex items-center gap-4 rounded-box border border-base-content/10 bg-base-200 p-4"
+        class="flex items-center gap-4 rounded-box border-2 border-jam-violet/60 bg-base-200 p-4"
       >
-        <div class="grid place-items-center size-10 rounded-full bg-base-300 shrink-0">
+        <div class="grid place-items-center size-11 rounded-full bg-jam-mint text-jam-night shrink-0">
           <.icon name="hero-musical-note" class="size-5" />
         </div>
         <div class="flex-1 min-w-0">
-          <p class="font-semibold">{service.name}</p>
+          <p class="font-display font-extrabold">{service.name}</p>
           <p class={["text-sm", service_status_class(service.status)]}>
             {service_status_text(service)}
           </p>
@@ -463,15 +481,15 @@ defmodule WhoseJamWeb.HostLive do
         <a
           href={service.connect_href}
           class={[
-            "btn btn-sm",
-            if(service.status == :connected, do: "btn-ghost", else: "btn-primary")
+            "jam-btn text-xs !px-4 !py-2.5",
+            service.status == :connected && "jam-btn-ghost"
           ]}
         >
           {service_action(service.status)}
         </a>
       </li>
-      <li class="flex items-center gap-4 rounded-box border border-dashed border-base-content/15 p-4 text-base-content/50">
-        <div class="grid place-items-center size-10 rounded-full bg-base-300/50 shrink-0">
+      <li class="flex items-center gap-4 rounded-box border-2 border-dashed border-jam-bubblegum/25 p-4 text-base-content/50">
+        <div class="grid place-items-center size-11 rounded-full bg-base-300 shrink-0">
           <.icon name="hero-plus" class="size-5" />
         </div>
         <p class="text-sm">More music services coming soon.</p>
@@ -503,27 +521,28 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <div
       :if={@settings_open?}
-      class="modal modal-open bg-black/70"
+      class="modal modal-open bg-jam-ink/80 backdrop-blur-sm"
       phx-window-keydown="close_settings"
       phx-key="Escape"
     >
-      <div class="modal-box max-w-2xl space-y-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-bold">Settings</h2>
+      <div class="modal-box max-w-2xl space-y-6 border-2 border-jam-bubblegum/30">
+        <div class="flex items-start justify-between">
+          <div class="space-y-1">
+            <p class="jam-path">C://whose-jam/settings.ini</p>
+            <h2 class="jam-glitch text-3xl font-black">Settings</h2>
+          </div>
           <button
             type="button"
             phx-click="close_settings"
             aria-label="Close settings"
-            class="btn btn-sm btn-ghost btn-circle"
+            class="jam-chip !px-2.5 cursor-pointer"
           >
             <.icon name="hero-x-mark" class="size-5" />
           </button>
         </div>
 
         <section class="space-y-3">
-          <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/60">
-            Music service
-          </h3>
+          <h3 class="jam-sticker text-xs">Music service</h3>
           {music_service_list(assigns)}
           <p :if={@active_service} class="text-sm text-base-content/60">
             <%= if @playback_ready? do %>
@@ -535,12 +554,10 @@ defmodule WhoseJamWeb.HostLive do
         </section>
 
         <section class="space-y-3">
-          <div class="flex items-baseline justify-between">
-            <h3 class="text-sm font-semibold uppercase tracking-wider text-base-content/60">
-              Game
-            </h3>
+          <div class="flex items-center justify-between">
+            <h3 class="jam-sticker jam-sticker-lemon text-xs">Game</h3>
             <span class="text-sm text-base-content/60">
-              Estimated length: <span class="font-semibold">~{@estimate} min</span>
+              Estimated length: <span class="font-bold text-jam-mint">~{@estimate} min</span>
             </span>
           </div>
 
@@ -626,65 +643,79 @@ defmodule WhoseJamWeb.HostLive do
       )
 
     ~H"""
-    <div class="min-h-screen flex flex-col items-center justify-center gap-10 px-8 pt-24 pb-12">
-      <div class="text-center space-y-2">
-        <h1 class="text-5xl font-black">{@view.theme.name}</h1>
-        <p class="text-xl text-white/60 max-w-2xl">{@view.theme.description}</p>
+    <div class="min-h-screen flex flex-col items-center justify-center gap-12 px-8 pt-28 pb-14">
+      <div class="text-center space-y-4">
+        <div class="flex flex-col items-center gap-2">
+          <span class="jam-sticker text-lg -rotate-2">Tonight's vibe</span>
+          <h1 class="jam-glitch text-6xl xl:text-7xl font-black tracking-tight">
+            {@view.theme.name}
+          </h1>
+        </div>
+        <p class="text-xl text-white/70 max-w-2xl mx-auto">{@view.theme.description}</p>
       </div>
 
-      <div class="w-full max-w-7xl grid xl:grid-cols-[auto_minmax(16rem,1fr)] gap-12 xl:gap-20 items-center">
-        <div class="flex flex-col sm:flex-row items-center justify-center gap-8">
-          <div class="bg-black p-3 rounded-2xl shrink-0">{raw(@qr_svg)}</div>
-          <div class="text-center sm:text-left">
-            <p class="text-2xl text-white/60 uppercase tracking-widest">Room code</p>
-            <p class="text-8xl font-black font-mono tracking-widest whitespace-nowrap">
-              {@view.code}
-            </p>
-            <p class="text-lg text-white/50 mt-2">
-              Scan or go to <br /><span class="whitespace-nowrap">{@join_url}</span>
+      <div class="w-full max-w-7xl grid xl:grid-cols-[auto_minmax(16rem,1fr)] gap-14 xl:gap-24 items-center">
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-10">
+          <div class="relative shrink-0">
+            <div class="rounded-[1.75rem] bg-[#fff7fb] p-4 border-4 border-jam-violet shadow-[0.5rem_0.5rem_0] shadow-jam-pink">
+              {raw(@qr_svg)}
+            </div>
+            <span class="jam-sticker jam-sticker-lemon absolute -bottom-5 -right-6 rotate-6 text-base">
+              Scan me!
+            </span>
+          </div>
+          <div class="text-center sm:text-left space-y-3">
+            <p class="jam-path !text-sm">Room code</p>
+            <div class="flex gap-2">
+              <span
+                :for={{ch, i} <- @view.code |> String.graphemes() |> Enum.with_index()}
+                class={[
+                  "jam-sticker text-6xl xl:text-7xl !px-3 !py-2",
+                  rem(i, 2) == 0 && "jam-sticker-lemon -rotate-2",
+                  rem(i, 2) == 1 && "rotate-2"
+                ]}
+              >
+                {ch}
+              </span>
+            </div>
+            <p class="text-lg text-white/60 pt-2">
+              or go to <span class="whitespace-nowrap font-bold text-jam-mint">{@join_url}</span>
             </p>
           </div>
         </div>
 
         <div class="space-y-6 text-center xl:text-left">
-          <div>
-            <h2 class="text-2xl font-semibold mb-3">
-              Players <span class="text-white/50">({@player_count}/8)</span>
+          <div class="space-y-4">
+            <h2 class="jam-sticker jam-sticker-ghost text-xl">
+              Players <span class="text-jam-mint">{@player_count}/8</span>
             </h2>
-            <p :if={@view.players == []} class="text-white/40 text-xl">
-              Waiting for players to join…
+            <p :if={@view.players == []} class="text-white/50 text-xl">
+              Waiting for players to join<span class="animate-pulse">…</span>
             </p>
             <div class="flex flex-wrap justify-center xl:justify-start gap-3">
               <span
                 :for={p <- @view.players}
-                class={[
-                  "px-5 py-2 rounded-full text-2xl font-semibold bg-white/10",
-                  p.connected? || "opacity-40"
-                ]}
+                class={["jam-chip jam-chip-on text-2xl", p.connected? || "opacity-40"]}
               >
                 {p.name}
               </span>
             </div>
           </div>
 
-          <div :if={@view.audience != []}>
-            <h3 class="text-lg font-semibold text-white/60 mb-1">
-              Audience ({length(@view.audience)})
-            </h3>
+          <div :if={@view.audience != []} class="space-y-2">
+            <h3 class="jam-path !text-sm">Audience ({length(@view.audience)})</h3>
             <div class="flex flex-wrap justify-center xl:justify-start gap-2">
-              <span :for={p <- @view.audience} class="px-3 py-1 rounded-full text-lg bg-white/5">
-                {p.name}
-              </span>
+              <span :for={p <- @view.audience} class="jam-chip text-lg">{p.name}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="flex flex-col items-center gap-3">
+      <div class="flex flex-col items-center gap-4">
         <button
           phx-click="start"
           disabled={not can_start?(@player_count, @min_players, @music_ready?)}
-          class="btn btn-primary btn-lg px-12 text-xl"
+          class="jam-btn text-2xl !px-14"
         >
           Start game
         </button>
@@ -693,16 +724,16 @@ defmodule WhoseJamWeb.HostLive do
             <button
               type="button"
               phx-click="open_settings"
-              class="text-lg text-amber-400 underline underline-offset-4"
+              class="text-lg font-bold text-jam-lemon underline decoration-wavy underline-offset-4 cursor-pointer"
             >
               Connect a music service to start
             </button>
           <% @player_count < @min_players -> %>
-            <p class="text-lg text-white/50">
+            <p class="text-lg text-white/60">
               Waiting for at least {@min_players} players ({@player_count} joined)
             </p>
           <% true -> %>
-            <p class="text-lg text-white/50">Everyone in? Let's go.</p>
+            <p class="text-lg text-jam-mint font-bold">Everyone in? Let's go.</p>
         <% end %>
       </div>
     </div>
@@ -713,34 +744,42 @@ defmodule WhoseJamWeb.HostLive do
 
   defp answering(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col items-center justify-center gap-10 px-8 pt-20 text-center">
-      <div class="space-y-2">
-        <h1 class="text-7xl font-black">Heads down! 🎧</h1>
-        <p class="text-3xl text-white/60">Everyone's picking their songs.</p>
-        <p :if={@view.subround_total > 1} class="text-xl text-white/40">
-          Sub-round {@view.subround_index + 1} of {@view.subround_total}
+    <div class="min-h-screen flex flex-col items-center justify-center gap-12 px-8 pt-24 pb-12 text-center">
+      <div class="flex flex-col items-center gap-3">
+        <span class="jam-sticker jam-sticker-ghost text-2xl -rotate-2 opacity-50">Heads down</span>
+        <span class="jam-sticker jam-sticker-ghost text-3xl rotate-1 opacity-75 -mt-5 ml-10">
+          Heads down
+        </span>
+        <span class="jam-sticker text-5xl -rotate-1 -mt-5 ml-20">Heads down! 🎧</span>
+        <p class="text-2xl text-white/70 mt-4">Everyone's picking their songs.</p>
+        <p :if={@view.subround_total > 1} class="jam-path !text-sm">
+          sub-round {@view.subround_index + 1} of {@view.subround_total}
         </p>
       </div>
 
       <div :if={@view.answering} class="text-center">
-        <p class="text-2xl text-white/50 uppercase tracking-widest">Time left</p>
+        <p class="jam-path !text-sm">Time left</p>
         <p
           id="answer-countdown"
           phx-hook="Countdown"
           data-deadline={@view.answering.deadline_ms}
-          class="text-8xl font-black font-mono"
+          class="jam-glitch text-9xl font-black tabular-nums"
         >
         </p>
       </div>
 
-      <div :if={@view.answering} class="w-full max-w-2xl space-y-3">
+      <div :if={@view.answering} class="w-full max-w-2xl space-y-4">
         <div :for={p <- @view.players} class="flex items-center gap-4">
-          <span class="w-40 text-right text-2xl truncate">{p.name}</span>
+          <span class="w-44 text-right text-2xl font-bold truncate">{p.name}</span>
           <% prog = Map.get(@view.answering.progress, p.id, %{submitted: 0, total: 0}) %>
-          <div class="flex-1 h-6 rounded-full bg-white/10 overflow-hidden">
-            <div class="h-full bg-emerald-500" style={progress_style(prog)}></div>
+          <div class="flex-1 h-7 rounded-full bg-white/10 border-2 border-jam-violet/60 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-gradient-to-r from-jam-pink to-jam-mint transition-[width] duration-500"
+              style={progress_style(prog)}
+            >
+            </div>
           </div>
-          <span class="w-16 text-2xl font-mono">{prog.submitted}/{prog.total}</span>
+          <span class="w-20 text-2xl font-path font-bold">{prog.submitted}/{prog.total}</span>
         </div>
       </div>
     </div>
@@ -752,51 +791,60 @@ defmodule WhoseJamWeb.HostLive do
   defp playing(%{view: %{round: nil}} = assigns) do
     ~H"""
     <div class="min-h-screen grid place-items-center text-center">
-      <p class="text-4xl text-white/60">Loading the next song…</p>
+      <p class="jam-glitch text-4xl font-black">Loading the next song…</p>
     </div>
     """
   end
 
   defp playing(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col lg:flex-row items-center justify-center gap-12 px-10 pt-24 pb-12">
+    <div class="min-h-screen flex flex-col lg:flex-row items-center justify-center gap-10 xl:gap-16 px-10 pt-24 pb-12">
       <div class="shrink-0">
-        <%= if @view.round.song.album_art_url do %>
+        <%= if @art_url do %>
           <img
-            src={@view.round.song.album_art_url}
+            src={@art_url}
             alt="Album art"
-            class="size-72 lg:size-96 rounded-3xl shadow-2xl object-cover"
+            class="jam-art size-80 lg:size-[28rem] xl:size-[34rem]"
           />
         <% else %>
-          <div class="size-72 lg:size-96 rounded-3xl bg-white/10 grid place-items-center">
+          <div class="size-80 lg:size-[28rem] grid place-items-center rounded-full bg-jam-violet/30 blur-0">
             <span class="text-9xl">🎵</span>
           </div>
         <% end %>
       </div>
 
       <div class="flex-1 max-w-2xl space-y-6 text-center lg:text-left">
-        <p class="text-2xl uppercase tracking-widest text-white/50">
-          Round {@view.round.index + 1} of {@view.round.total} · {round_state_label(@view.round_state)}
+        <p class="flex items-center gap-3 justify-center lg:justify-start jam-path !text-base !text-white/70">
+          <span :if={@view.round_state != :results} class="jam-eq text-lg" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          round_{pad(@view.round.index + 1)}/{pad(@view.round.total)} · {round_state_label(
+            @view.round_state
+          )}
         </p>
         <div>
-          <h1 class="text-6xl font-black leading-tight">{@view.round.song.name}</h1>
-          <p class="text-3xl text-white/60 mt-2">{@view.round.song.artist}</p>
+          <h1 class="font-display text-6xl xl:text-7xl font-black leading-[1.05] drop-shadow-[0_4px_24px_rgb(0_0_0/0.35)]">
+            {@view.round.song.name}
+          </h1>
+          <p class="text-3xl text-white/75 mt-3 font-bold">{@view.round.song.artist}</p>
         </div>
 
         <%= case @view.round_state do %>
           <% :revealing -> %>
-            <p class="text-3xl text-white/70">
-              {reveal_prompt(@view.round.style)}
-            </p>
-            <p class="text-2xl text-white/50">
-              Voting opens in
-              <span
-                id="votes-open-countdown"
-                phx-hook="Countdown"
-                data-deadline={@view.round.votes_open_ms}
-                class="font-mono font-bold text-white"
-              ></span>
-            </p>
+            <div class="space-y-4">
+              <span class="jam-sticker jam-sticker-lemon text-2xl -rotate-1">
+                {reveal_prompt(@view.round.style)}
+              </span>
+              <p class="text-2xl text-white/70">
+                Voting opens in
+                <span
+                  id="votes-open-countdown"
+                  phx-hook="Countdown"
+                  data-deadline={@view.round.votes_open_ms}
+                  class="font-display font-black text-jam-mint tabular-nums"
+                ></span>
+              </p>
+            </div>
           <% :voting -> %>
             {voting(assigns)}
           <% :results -> %>
@@ -810,36 +858,30 @@ defmodule WhoseJamWeb.HostLive do
 
   defp voting(assigns) do
     ~H"""
-    <div class="space-y-5">
-      <div class="flex items-center gap-4 justify-center lg:justify-start">
-        <p class="text-3xl font-semibold">{vote_prompt(@view.round.style)}</p>
+    <div class="space-y-6">
+      <div class="flex items-center gap-5 justify-center lg:justify-start">
+        <span class="jam-sticker text-2xl -rotate-1">{vote_prompt(@view.round.style)}</span>
         <span
           :if={@view.round.deadline_ms}
           id="vote-countdown"
           phx-hook="Countdown"
           data-deadline={@view.round.deadline_ms}
-          class="text-5xl font-black font-mono text-amber-400"
+          class="jam-glitch text-7xl font-black text-jam-lemon tabular-nums"
         ></span>
       </div>
-      <p :if={!@view.round.deadline_ms} class="text-xl text-white/50">
+      <p :if={!@view.round.deadline_ms} class="text-xl text-white/70">
         Vote on your phone — the countdown starts once most of you are in.
       </p>
 
-      <div>
-        <p class="text-xl text-white/50 mb-2">Votes in ({@view.round.votes_received})</p>
+      <div class="space-y-3">
+        <p class="jam-path !text-sm !text-white/70">votes_in: {@view.round.votes_received}</p>
         <div class="flex flex-wrap gap-2 justify-center lg:justify-start">
           <span
             :for={p <- @view.players ++ @view.audience}
-            class={[
-              "px-4 py-2 rounded-full text-xl font-medium",
-              if(p.id in @view.round.voters, do: "bg-emerald-500 text-black", else: "bg-white/10")
-            ]}
+            class={["jam-chip text-xl", p.id in @view.round.voters && "jam-chip-on"]}
           >
-            <%= if p.id in @view.round.voters do %>
-              ✓ {p.name}
-            <% else %>
-              {p.name}
-            <% end %>
+            <.icon :if={p.id in @view.round.voters} name="hero-check" class="size-5" />
+            {p.name}
           </span>
         </div>
       </div>
@@ -852,24 +894,23 @@ defmodule WhoseJamWeb.HostLive do
       assign(assigns, submitter_name: name_of(assigns.view, assigns.view.round.submitter_id))
 
     ~H"""
-    <div class="space-y-5">
-      <div :if={@view.round.style == :guess_question} class="text-center lg:text-left">
-        <p class="text-2xl text-white/50">The prompt was…</p>
-        <p class="text-5xl font-black text-emerald-400 leading-tight">{@view.round.correct_prompt}</p>
-        <p class="text-2xl text-white/60 mt-2">submitted by {@submitter_name}</p>
+    <div class="space-y-6">
+      <div :if={@view.round.style == :guess_question} class="space-y-3 text-center lg:text-left">
+        <span class="jam-sticker jam-sticker-lemon text-xl -rotate-1">The prompt was…</span>
+        <p class="jam-glitch text-5xl font-black leading-tight">{@view.round.correct_prompt}</p>
+        <p class="text-2xl text-white/75">
+          submitted by <span class="font-black text-jam-mint">{@submitter_name}</span>
+        </p>
       </div>
-      <div :if={@view.round.style != :guess_question} class="text-center lg:text-left">
-        <p class="text-2xl text-white/50">It was…</p>
-        <p class="text-6xl font-black text-emerald-400">{@submitter_name}</p>
+      <div :if={@view.round.style != :guess_question} class="space-y-3 text-center lg:text-left">
+        <span class="jam-sticker jam-sticker-lemon text-xl -rotate-1">It was…</span>
+        <p class="jam-glitch text-8xl font-black">{@submitter_name}</p>
       </div>
 
       <% gains = round_gains(@view) %>
       <div :if={gains != []} class="flex flex-wrap gap-3 justify-center lg:justify-start">
-        <span
-          :for={{name, delta} <- gains}
-          class="px-4 py-2 rounded-full bg-white/10 text-2xl font-semibold"
-        >
-          {name} <span class="text-emerald-400">+{delta}</span>
+        <span :for={{name, delta} <- gains} class="jam-chip text-2xl">
+          {name} <span class="font-display font-black text-jam-mint">+{delta}</span>
         </span>
       </div>
 
@@ -882,49 +923,48 @@ defmodule WhoseJamWeb.HostLive do
 
   defp finished(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col items-center justify-center gap-10 px-8 pt-24 pb-12 text-center">
-      <div class="space-y-2">
-        <p class="text-3xl text-white/50 uppercase tracking-[0.3em]">Final scores</p>
-        <h1 class="text-7xl font-black">🏆 {winner_names(@view)}</h1>
+    <div class="min-h-screen flex flex-col items-center justify-center gap-12 px-8 pt-24 pb-12 text-center">
+      <div class="flex flex-col items-center gap-4">
+        <span class="jam-sticker jam-sticker-lemon text-2xl -rotate-2">Final scores</span>
+        <h1 class="jam-glitch text-7xl xl:text-8xl font-black">🏆 {winner_names(@view)}</h1>
       </div>
 
-      <div class="w-full max-w-3xl grid md:grid-cols-2 gap-8">
-        <div>
-          <h2 class="text-3xl font-bold mb-3 border-b border-white/20 pb-1">Players</h2>
+      <div class="w-full max-w-4xl grid md:grid-cols-2 gap-10">
+        <div class="space-y-3">
+          <h2 class="jam-sticker text-xl">Players</h2>
           <ul class="space-y-2">
             <li
               :for={{p, rank} <- ranked(@view, @view.players) |> Enum.with_index(1)}
               class={[
-                "flex items-center justify-between text-3xl px-4 py-2 rounded-xl",
+                "flex items-center justify-between text-3xl px-5 py-3 rounded-2xl border-2",
                 if(p.id in winner_ids(@view, :players),
-                  do: "bg-amber-400 text-black font-black",
-                  else: "bg-white/5"
+                  do:
+                    "bg-jam-lemon text-jam-night border-jam-violet font-black shadow-[0.3rem_0.3rem_0] shadow-jam-pink",
+                  else: "jam-panel"
                 )
               ]}
             >
-              <span>{rank}. {p.name}</span>
-              <span class="font-mono">{score_of(@view, p.id)}</span>
+              <span><span class="font-path opacity-60">{pad(rank)}</span> {p.name}</span>
+              <span class="font-display font-black">{score_of(@view, p.id)}</span>
             </li>
           </ul>
         </div>
 
-        <div :if={@view.audience != []}>
-          <h2 class="text-3xl font-bold mb-3 border-b border-white/20 pb-1 text-white/70">
-            Audience
-          </h2>
+        <div :if={@view.audience != []} class="space-y-3">
+          <h2 class="jam-sticker jam-sticker-ghost text-xl">Audience</h2>
           <ul class="space-y-2">
             <li
               :for={p <- ranked(@view, @view.audience)}
-              class="flex items-center justify-between text-2xl px-4 py-2 rounded-xl bg-white/5 text-white/70"
+              class="jam-panel flex items-center justify-between text-2xl px-5 py-3 text-white/80"
             >
               <span>{p.name}</span>
-              <span class="font-mono">{score_of(@view, p.id)}</span>
+              <span class="font-display font-black">{score_of(@view, p.id)}</span>
             </li>
           </ul>
         </div>
       </div>
 
-      <button phx-click="play_again" class="btn btn-primary btn-lg px-10 text-xl">
+      <button phx-click="play_again" class="jam-btn jam-btn-mint text-xl">
         Play again with these players
       </button>
     </div>
@@ -935,15 +975,15 @@ defmodule WhoseJamWeb.HostLive do
   # "official" board is submitters).
   defp scoreboard(assigns) do
     ~H"""
-    <div class="mt-4">
-      <p class="text-xl text-white/50 mb-2">Scoreboard</p>
-      <ul class="space-y-1">
+    <div class="jam-panel p-5 space-y-2">
+      <p class="jam-path">scoreboard.txt</p>
+      <ul class="space-y-1.5">
         <li
           :for={p <- ranked(@view, @view.players)}
-          class="flex items-center justify-between text-2xl px-3 py-1 rounded-lg bg-white/5"
+          class="flex items-center justify-between text-2xl"
         >
-          <span>{p.name}</span>
-          <span class="font-mono">{score_of(@view, p.id)}</span>
+          <span class="font-bold">{p.name}</span>
+          <span class="font-display font-black text-jam-mint">{score_of(@view, p.id)}</span>
         </li>
       </ul>
     </div>
@@ -953,6 +993,16 @@ defmodule WhoseJamWeb.HostLive do
   # =========================================================================
   # View helpers
   # =========================================================================
+
+  defp current_art(%{phase: :playing, round: %{song: %{album_art_url: url}}})
+       when is_binary(url) and url != "",
+       do: url
+
+  defp current_art(_view), do: nil
+
+  defp slug(name), do: name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "_")
+
+  defp pad(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
 
   defp can_start?(player_count, min_players, music_ready?),
     do: player_count >= min_players and music_ready?
@@ -974,9 +1024,9 @@ defmodule WhoseJamWeb.HostLive do
 
   defp progress_style(_), do: "width: 0%"
 
-  defp round_state_label(:revealing), do: "Now playing"
-  defp round_state_label(:voting), do: "Vote!"
-  defp round_state_label(:results), do: "Reveal"
+  defp round_state_label(:revealing), do: "now_playing"
+  defp round_state_label(:voting), do: "voting"
+  defp round_state_label(:results), do: "reveal"
   defp round_state_label(_), do: ""
 
   defp reveal_prompt(:guess_who), do: "Whose jam is this? 👀"
