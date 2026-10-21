@@ -816,7 +816,15 @@ defmodule WhoseJamWeb.PlayLive do
     <div class="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
       <div class="text-6xl">📺</div>
       <h1 class="text-xl font-bold">Listen up — it's playing on the TV</h1>
-      <p class="text-white/60">Voting opens the moment the song wraps.</p>
+      <p class="text-white/60">
+        Voting opens in
+        <span
+          id="countdown-votes-open"
+          phx-hook="Countdown"
+          data-deadline={@round.votes_open_ms}
+          class="font-mono font-semibold text-white"
+        ></span>
+      </p>
     </div>
     """
   end
@@ -879,6 +887,9 @@ defmodule WhoseJamWeb.PlayLive do
         """
     end
   end
+
+  # No countdown until most voters are in; show nothing rather than "--".
+  defp vote_timer(%{round: %{deadline_ms: nil}} = assigns), do: ~H""
 
   defp vote_timer(assigns) do
     ~H"""

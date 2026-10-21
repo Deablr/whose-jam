@@ -161,10 +161,14 @@ const SpotifyPlayer = {
   },
 
   pauseNow() {
+    // Only pause if we started something. Pausing an empty player (e.g. right
+    // after "ready" in the lobby) makes the SDK emit a spurious
+    // playback_error ("no list was loaded"), which would show a false banner.
+    const hadTrack = this.currentUri !== null
     this.currentUri = null
     this.wasPlaying = false
-    if (this.player) {
-      try { this.player.pause() } catch (_e) {}
+    if (hadTrack && this.player) {
+      this.player.pause().catch(() => {})
     }
   },
 }

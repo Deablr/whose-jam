@@ -89,8 +89,8 @@ defmodule WhoseJam.Game do
   def set_spotify(code, spotify), do: command(code, {:set_spotify, spotify})
 
   @doc """
-  Start the game. Requires at least three players and a Premium-verified Spotify
-  auth. Errors: `:not_enough_players`, `:not_authenticated`, `:not_premium`,
+  Start the game. Requires at least `min_players` players (a host setting,
+  default three) and a Premium-verified Spotify auth. Errors: `:not_enough_players`, `:not_authenticated`, `:not_premium`,
   `:already_started`.
   """
   @spec start_game(String.t()) :: :ok | {:error, term()}

@@ -136,8 +136,8 @@ defmodule WhoseJamWeb.HostLive do
      assign(socket, playback_ready?: false, playback_error: playback_error_message(params))}
   end
 
-  @host_settings ~w(answer_timer_s vote_timer_s questions_per_player
-                    subrounds_enabled? allow_vote_change?)
+  @host_settings ~w(answer_timer_s vote_delay_s vote_timer_s questions_per_player
+                    subrounds_enabled? allow_vote_change? min_players)
 
   # Forward only the setting the host just changed. The form posts every field,
   # and untouched ones still hold player-count-derived defaults — sending them
@@ -149,7 +149,7 @@ defmodule WhoseJamWeb.HostLive do
 
   defp config_overrides(_params), do: %{}
 
-  defp start_error(:not_enough_players), do: "You need at least 3 players to start."
+  defp start_error(:not_enough_players), do: "Not enough players have joined yet."
   defp start_error(:not_authenticated), do: "Connect a music service first."
   defp start_error(:not_premium), do: "That Spotify account isn't Premium — playback won't work."
   defp start_error(:already_started), do: "The game has already started."
@@ -230,18 +230,19 @@ defmodule WhoseJamWeb.HostLive do
     |> EQRCode.svg(width: 320, background_color: "#000000", color: "#ffffff")
   end
 
-  # The URI that should be playing right now: only during the reveal of a round.
-  defp play_uri(%{phase: :playing, round_state: :revealing, round: %{song: %{uri: uri}}})
-       when is_binary(uri),
-       do: uri
+  # The URI that should be playing right now: the current round's song, which
+  # keeps playing through voting and the reveal until the next round starts.
+  defp play_uri(%{phase: :playing, round: %{song: %{uri: uri}}}) when is_binary(uri),
+    do: uri
 
   defp play_uri(_view), do: ""
 
   defp playback_error_message(%{"reason" => "initialization_error"}),
     do:
       "This browser can't play protected Spotify audio (DRM/Widevine unavailable). " <>
-        "Use Chrome, Edge, or Firefox with protected content allowed, over https " <>
-        "or on this machine via localhost — http on a LAN IP disables DRM."
+        "Open this page in desktop Chrome, Edge, or Firefox — built-in app browsers " <>
+        "(editor/IDE previews, Electron apps) don't include Widevine. Use https, or " <>
+        "localhost on this machine; http on a LAN IP also disables DRM."
 
   defp playback_error_message(%{"reason" => "no_token"}),
     do: "No Spotify token — reconnect Spotify in Settings."
@@ -559,9 +560,17 @@ defmodule WhoseJamWeb.HostLive do
               />
               <.input
                 type="number"
+                id="vote_delay_s"
+                name="vote_delay_s"
+                label="Listen before voting opens (s)"
+                value={@view.config.vote_delay_s}
+                min="0"
+              />
+              <.input
+                type="number"
                 id="vote_timer_s"
                 name="vote_timer_s"
-                label="Vote timer (s)"
+                label="Vote countdown once most have voted (s)"
                 value={@view.config.vote_timer_s}
                 min="5"
               />
@@ -572,6 +581,14 @@ defmodule WhoseJamWeb.HostLive do
                 label="Questions per player"
                 value={@view.config.questions_per_player}
                 min="1"
+              />
+              <.input
+                type="select"
+                id="min_players"
+                name="min_players"
+                label="Players needed to start"
+                value={@view.config.min_players}
+                options={Enum.map(2..8, &{Integer.to_string(&1), &1})}
               />
               <div class="flex flex-col justify-end gap-1">
                 <.input
@@ -604,6 +621,7 @@ defmodule WhoseJamWeb.HostLive do
     assigns =
       assign(assigns,
         player_count: length(assigns.view.players),
+        min_players: assigns.view.config.min_players,
         music_ready?: assigns.active_service != nil
       )
 
@@ -614,17 +632,21 @@ defmodule WhoseJamWeb.HostLive do
         <p class="text-xl text-white/60 max-w-2xl">{@view.theme.description}</p>
       </div>
 
-      <div class="w-full max-w-6xl grid lg:grid-cols-2 gap-12 items-center">
+      <div class="w-full max-w-7xl grid xl:grid-cols-[auto_minmax(16rem,1fr)] gap-12 xl:gap-20 items-center">
         <div class="flex flex-col sm:flex-row items-center justify-center gap-8">
           <div class="bg-black p-3 rounded-2xl shrink-0">{raw(@qr_svg)}</div>
           <div class="text-center sm:text-left">
             <p class="text-2xl text-white/60 uppercase tracking-widest">Room code</p>
-            <p class="text-8xl font-black font-mono tracking-widest">{@view.code}</p>
-            <p class="text-lg text-white/50 mt-2 break-all">Scan or go to {@join_url}</p>
+            <p class="text-8xl font-black font-mono tracking-widest whitespace-nowrap">
+              {@view.code}
+            </p>
+            <p class="text-lg text-white/50 mt-2">
+              Scan or go to <br /><span class="whitespace-nowrap">{@join_url}</span>
+            </p>
           </div>
         </div>
 
-        <div class="space-y-6 text-center lg:text-left">
+        <div class="space-y-6 text-center xl:text-left">
           <div>
             <h2 class="text-2xl font-semibold mb-3">
               Players <span class="text-white/50">({@player_count}/8)</span>
@@ -632,7 +654,7 @@ defmodule WhoseJamWeb.HostLive do
             <p :if={@view.players == []} class="text-white/40 text-xl">
               Waiting for players to join…
             </p>
-            <div class="flex flex-wrap justify-center lg:justify-start gap-3">
+            <div class="flex flex-wrap justify-center xl:justify-start gap-3">
               <span
                 :for={p <- @view.players}
                 class={[
@@ -649,7 +671,7 @@ defmodule WhoseJamWeb.HostLive do
             <h3 class="text-lg font-semibold text-white/60 mb-1">
               Audience ({length(@view.audience)})
             </h3>
-            <div class="flex flex-wrap justify-center lg:justify-start gap-2">
+            <div class="flex flex-wrap justify-center xl:justify-start gap-2">
               <span :for={p <- @view.audience} class="px-3 py-1 rounded-full text-lg bg-white/5">
                 {p.name}
               </span>
@@ -661,7 +683,7 @@ defmodule WhoseJamWeb.HostLive do
       <div class="flex flex-col items-center gap-3">
         <button
           phx-click="start"
-          disabled={not can_start?(@player_count, @music_ready?)}
+          disabled={not can_start?(@player_count, @min_players, @music_ready?)}
           class="btn btn-primary btn-lg px-12 text-xl"
         >
           Start game
@@ -675,9 +697,9 @@ defmodule WhoseJamWeb.HostLive do
             >
               Connect a music service to start
             </button>
-          <% @player_count < 3 -> %>
+          <% @player_count < @min_players -> %>
             <p class="text-lg text-white/50">
-              Waiting for at least 3 players ({@player_count} joined)
+              Waiting for at least {@min_players} players ({@player_count} joined)
             </p>
           <% true -> %>
             <p class="text-lg text-white/50">Everyone in? Let's go.</p>
@@ -766,6 +788,15 @@ defmodule WhoseJamWeb.HostLive do
             <p class="text-3xl text-white/70">
               {reveal_prompt(@view.round.style)}
             </p>
+            <p class="text-2xl text-white/50">
+              Voting opens in
+              <span
+                id="votes-open-countdown"
+                phx-hook="Countdown"
+                data-deadline={@view.round.votes_open_ms}
+                class="font-mono font-bold text-white"
+              ></span>
+            </p>
           <% :voting -> %>
             {voting(assigns)}
           <% :results -> %>
@@ -783,12 +814,16 @@ defmodule WhoseJamWeb.HostLive do
       <div class="flex items-center gap-4 justify-center lg:justify-start">
         <p class="text-3xl font-semibold">{vote_prompt(@view.round.style)}</p>
         <span
+          :if={@view.round.deadline_ms}
           id="vote-countdown"
           phx-hook="Countdown"
           data-deadline={@view.round.deadline_ms}
           class="text-5xl font-black font-mono text-amber-400"
         ></span>
       </div>
+      <p :if={!@view.round.deadline_ms} class="text-xl text-white/50">
+        Vote on your phone — the countdown starts once most of you are in.
+      </p>
 
       <div>
         <p class="text-xl text-white/50 mb-2">Votes in ({@view.round.votes_received})</p>
@@ -919,7 +954,8 @@ defmodule WhoseJamWeb.HostLive do
   # View helpers
   # =========================================================================
 
-  defp can_start?(player_count, music_ready?), do: player_count >= 3 and music_ready?
+  defp can_start?(player_count, min_players, music_ready?),
+    do: player_count >= min_players and music_ready?
 
   defp runtime_estimate(view) do
     player_count = max(length(view.players), 1)

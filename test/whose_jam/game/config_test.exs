@@ -118,6 +118,28 @@ defmodule WhoseJam.Game.ConfigTest do
       assert config.answer_timer_s == 60
     end
 
+    test "vote_delay_s defaults to 10, is overridable, and never goes negative" do
+      assert Config.build(%{}, 5).vote_delay_s == 10
+      assert Config.build(%{"vote_delay_s" => "0"}, 5).vote_delay_s == 0
+      assert Config.build(%{vote_delay_s: -4}, 5).vote_delay_s == 0
+    end
+
+    test "the all-voted countdown is a fixed 5s, not overridable" do
+      assert Config.build(%{all_voted_countdown_s: 99}, 5).all_voted_countdown_s == 5
+    end
+
+    test "min_players defaults to 3 and can be lowered to 2" do
+      assert Config.build(%{}, 5).min_players == 3
+      assert Config.build(%{min_players: 2}, 5).min_players == 2
+      assert Config.build(%{"min_players" => "2"}, 5).min_players == 2
+    end
+
+    test "min_players is clamped to 2..8" do
+      assert Config.build(%{min_players: 1}, 5).min_players == 2
+      assert Config.build(%{min_players: 0}, 5).min_players == 2
+      assert Config.build(%{min_players: 12}, 5).min_players == 8
+    end
+
     test "internal estimator fields are not overridable and stay at their constant defaults" do
       config =
         Config.build(

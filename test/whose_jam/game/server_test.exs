@@ -210,6 +210,18 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.start_game(code) == {:error, :not_enough_players}
     end
 
+    test "min_players lowers the start threshold to two" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 2)
+
+      assert Game.get_state(code).config.min_players == 3
+      assert Game.start_game(code) == {:error, :not_enough_players}
+
+      :ok = Game.set_config(code, %{"min_players" => "2"})
+      assert Game.get_state(code).config.min_players == 2
+      assert Game.start_game(code) == :ok
+    end
+
     test "requires Spotify auth and Premium verification" do
       theme = guess_who_theme()
       {:ok, code} = Game.create_game(theme.id, @fast_overrides)
@@ -251,6 +263,21 @@ defmodule WhoseJam.Game.ServerTest do
       assert is_list(final.winners.players)
       assert final.winners.audience == []
       # Everyone voted correctly every round, so guessers accrued points.
+      assert Enum.any?(Map.values(final.scores), &(&1 > 0))
+    end
+
+    test "a 2-player game (min_players: 2) plays through to a final scoreboard" do
+      theme = guess_who_theme()
+      {code, [p1, p2]} = lobby_with_players(theme, 2, %{min_players: 2})
+
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      for pid <- [p1, p2], do: submit_all(code, pid)
+
+      final = play_to_finish(code)
+
+      assert final.phase == :finished
       assert Enum.any?(Map.values(final.scores), &(&1 > 0))
     end
 
@@ -331,6 +358,67 @@ defmodule WhoseJam.Game.ServerTest do
       assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
       assert round.revealed == true
       assert round.deltas == %{}
+    end
+  end
+
+  describe "listening delay and voting countdown" do
+    # Answering ends early once everyone submits, leaving round 0 :revealing.
+    defp start_round(theme, n, overrides) do
+      {code, ids} = lobby_with_players(theme, n, overrides)
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      code
+    end
+
+    defp remaining_s(view), do: (view.round.deadline_ms - System.system_time(:millisecond)) / 1000
+
+    test "votes stay closed during the listening delay, then open with no countdown" do
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 1})
+
+      view = Game.get_state(code)
+      assert view.round_state == :revealing
+      assert is_integer(view.round.votes_open_ms)
+      submitter = view.round.song.uri
+      voter = Enum.find(view.players, &(&1.id != submitter)).id
+      assert Game.cast_vote(code, voter, submitter) == {:error, :not_voting}
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      assert_receive {:game_state, %{round_state: :voting, round: round}}, 2500
+      assert round.deadline_ms == nil
+    end
+
+    test "a majority starts the countdown and everyone voting cuts it to 5s" do
+      theme = guess_who_theme()
+      code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 30})
+
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      submitter = view.round.song.uri
+      [a, b, c, d] = for p <- view.players, p.id != submitter, do: p.id
+
+      # 2 of 4 eligible is not a majority: still no countdown.
+      for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
+      assert Game.get_state(code).round.deadline_ms == nil
+
+      # 3 of 4 starts the full countdown.
+      :ok = Game.cast_vote(code, c, submitter)
+      assert remaining_s(Game.get_state(code)) > 25
+
+      # The last vote drops it to the short final countdown.
+      :ok = Game.cast_vote(code, d, submitter)
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert remaining_s(view) <= 5
+    end
+
+    test "the song ending starts the countdown even with no votes" do
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 0, vote_timer_s: 30})
+
+      assert Game.get_state(code).round.deadline_ms == nil
+      :ok = Game.song_ended(code)
+      assert remaining_s(Game.get_state(code)) > 25
     end
   end
 

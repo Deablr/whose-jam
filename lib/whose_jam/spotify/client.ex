@@ -109,13 +109,14 @@ defmodule WhoseJam.Spotify.Client do
   end
 
   # Spotify returns images sorted largest-first (e.g. 640, 300, 64). Pick the
-  # smallest available — a thumbnail is plenty for phone search results.
+  # largest: the submitted song's art is shown big on the TV, where the 64px
+  # thumbnail looked badly pixelated. Phones scale it down fine.
   defp album_art_url(track) do
     track
     |> get_in(["album", "images"])
     |> case do
       images when is_list(images) and images != [] ->
-        images |> List.last() |> Map.get("url")
+        images |> Enum.max_by(&(&1["width"] || 0)) |> Map.get("url")
 
       _ ->
         nil

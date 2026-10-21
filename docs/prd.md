@@ -11,7 +11,7 @@ A web-based, Jackbox-style party game where:
 - The host picks a themed question pool (e.g., "Emotional Damage," "The Club"). Each theme is a curated pool of prompts like "Song that changed your life" or "Grooves to flirt to."
 - Every player is assigned a small set of questions drawn from the pool. They don't see each other's questions, and the same question may be assigned to multiple players.
 - Each player searches Spotify on their phone and submits a song for each assigned question.
-- Once answers are in, the host's TV plays submitted songs one at a time using Spotify's Web Playback SDK (requires host Premium). After each song, all connected clients (players + audience) vote to guess which player submitted it.
+- Once answers are in, the host's TV plays submitted songs one at a time using Spotify's Web Playback SDK (requires host Premium). While each song plays, all connected clients (players + audience) vote to guess which player submitted it.
 - Players score +1 per correct guess and +1 per non-audience vote they fooled onto their own song. Audience members score +1 per correct guess but are not submitters and do not win the main board.
 - At the end, a final scoreboard appears on the TV.
 
@@ -27,10 +27,10 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 4. As a host, I want to be told clearly and early if Spotify Premium is missing, so that I'm not blindsided mid-game.
 5. As a host, I want to pick a themed question pool from a short list, so that I can tune the vibe (e.g., wholesome vs. rowdy) to my friend group.
 6. As a host, I want to preview two or three example questions per pool (drawn from questions that won't be used in the actual game), so that I know what style of prompts to expect without spoiling the session.
-7. As a host, I want to open a settings panel to adjust default settings (answer timer, vote timer, questions per player, sub-rounds on/off) and manage my music-service connection, so that I can make the game shorter, longer, or structured differently for my group without settings cluttering the TV.
+7. As a host, I want to open a settings panel to adjust default settings (answer timer, listening delay, vote countdown, questions per player, sub-rounds on/off) and manage my music-service connection, so that I can make the game shorter, longer, or structured differently for my group without settings cluttering the TV.
 8. As a host, I want the default settings to produce a ~20-minute game, so that I can run it without fiddling.
 9. As a host, I want to see on the TV a live roster of who has joined as players vs. audience, so that I know when to start.
-10. As a host, I want to start the game only when at least three players have joined, so that the guessing mechanic is non-trivial.
+10. As a host, I want to start the game only when at least three players have joined, so that the guessing mechanic is non-trivial — with a "players needed to start" setting I can lower to two for development or very small groups.
 11. As a host, I want to skip a song mid-round (with a confirmation), so that a broken link or regrettable pick doesn't ruin the vibe.
 12. As a host, I want to join my own game as a player from my phone, so that I can participate.
 
@@ -110,8 +110,9 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - States: `:lobby` → (repeating per sub-round) `:answering` → `:playing` (with per-round sub-states `:revealing`, `:voting`, `:results`) → `:finished`.
 - A sub-round corresponds to one style from the theme's `style_sequence`. When the host disables sub-rounds, the sequence collapses into a single `:answering` phase that covers all styles before any `:playing`.
-- Answer timer is global per sub-round (computed from questions assigned). Vote timer runs per round (default 30s, configurable).
-- When the vote timer expires or all non-AFK voters have voted, the round advances. Voters who don't vote earn no points that round.
+- Answer timer is global per sub-round (computed from questions assigned).
+- Each round's song starts playing with votes closed for a listening delay (default 10s, configurable). Voting then opens while the song keeps playing, with no countdown yet.
+- The vote countdown (default 30s, configurable) starts once a majority of eligible (connected, non-submitter) voters have voted — or when the song ends, so a round can never stall. Once every eligible voter has voted, the countdown drops to 5s (never lengthening a shorter one). When it hits zero the round moves to the reveal. Voters who don't vote earn no points that round.
 - The host can skip songs via a button in the host screen's control bar. No pause feature in v1.
 - After `:finished`, the TV offers a "Start a new game with these players" option, which resets state but preserves the player roster.
 
@@ -147,7 +148,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 ### Timing and configuration
 
 - `Game.Config` computes concrete timings from host overrides plus player count. Defaults aim for ~20-minute games.
-- Every timing and volume parameter exposed to the host is configurable: answer timer, vote timer, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed.
+- Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8).
 - When player counts or question counts exceed what fits in the target window, the game will exceed 20 minutes; there is no hard cap on round count in v1.
 
 ### Spotify integration
@@ -176,7 +177,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - The TV display and host controls are **one screen** at `/host/:code` (`/tv/:code` is kept as an alias). It is not bound to host identity; any browser can open it. The host's typical setup is a laptop showing `/host/:code` on the TV, plus `/play/:code` on their own phone as a player.
 - The screen renders the shared game state big and dark for the room. Host controls live in a slim top bar: music-service status (prompts to connect when none is connected), skip song (during rounds), and a Settings button.
-- Settings open on demand as a panel with two sections: **Music service** (connect / reconnect / switch account) and **Game** (the five host-facing settings plus the estimated runtime; locked once the game starts).
+- Settings open on demand as a panel with two sections: **Music service** (connect / reconnect / switch account) and **Game** (the host-facing settings — including players needed to start — plus the estimated runtime; locked once the game starts).
 - In the lobby, if no premium-ready music service is connected, a "Connect your music" prompt opens automatically (dismissible), and the Start button explains what's missing. Playback failures (e.g. a browser without DRM support) are shown in the lobby, before the game starts.
 
 ### Explicitly out of the way

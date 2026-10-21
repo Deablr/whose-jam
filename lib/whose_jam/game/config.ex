@@ -14,7 +14,11 @@ defmodule WhoseJam.Game.Config do
 
     * `answer_timer_s` — global answer phase length, in seconds. Defaults to
       `questions_per_player * #{30}s` (more songs to submit ⇒ more time).
-    * `vote_timer_s` — per-round voting window, in seconds. Defaults to `30`.
+    * `vote_delay_s` — seconds the song plays before voting opens. Defaults to
+      `10`; `0` opens voting as soon as the song starts.
+    * `vote_timer_s` — the voting countdown, in seconds. It starts once a
+      majority of eligible voters have voted (or the song ends) and drops to
+      `all_voted_countdown_s` once everyone has voted. Defaults to `30`.
     * `questions_per_player` — songs each player submits. Default is tuned per
       player count so the estimated runtime lands near the 20-minute target
       (fewer questions at higher player counts, since every submitted song adds
@@ -22,13 +26,19 @@ defmodule WhoseJam.Game.Config do
     * `subrounds_enabled?` — split a multi-style theme into one sub-round per
       style. Defaults to `true`.
     * `allow_vote_change?` — let voters change a cast vote. Defaults to `false`.
+    * `min_players` — players needed before the host can start. Defaults to
+      `3` (so guessing is non-trivial); can be lowered to `2` for development
+      and small groups. Clamped to `2..8`.
 
   Internal (constants used only by the runtime estimator; documented here
   because they shape `estimated_runtime_s/3`). These are fixed values and are
-  **not** overridable via `build/2` — only the five host-facing settings above
+  **not** overridable via `build/2` — only the seven host-facing settings above
   can be overridden:
 
-    * `song_playback_s` — seconds of song audio played per round. Default `30`.
+    * `song_playback_s` — typical listening time before most votes are in.
+      Default `30`.
+    * `all_voted_countdown_s` — the countdown once every eligible voter has
+      voted (never lengthens a shorter remaining countdown). Default `5`.
     * `reveal_padding_s` — pause to reveal the submitter each round. Default `5`.
     * `results_padding_s` — pause on the running scoreboard each round.
       Default `5`.
@@ -36,27 +46,37 @@ defmodule WhoseJam.Game.Config do
 
   @answer_s_per_question 30
   @default_vote_timer_s 30
+  @default_vote_delay_s 10
+  @all_voted_countdown_s 5
   @default_song_playback_s 30
   @default_reveal_padding_s 5
   @default_results_padding_s 5
+  @default_min_players 3
+  @min_players_range 2..8
 
   @type t :: %__MODULE__{
           answer_timer_s: pos_integer(),
           vote_timer_s: pos_integer(),
+          vote_delay_s: non_neg_integer(),
           questions_per_player: pos_integer(),
           subrounds_enabled?: boolean(),
           allow_vote_change?: boolean(),
+          min_players: pos_integer(),
           song_playback_s: non_neg_integer(),
+          all_voted_countdown_s: pos_integer(),
           reveal_padding_s: non_neg_integer(),
           results_padding_s: non_neg_integer()
         }
 
   defstruct answer_timer_s: nil,
             vote_timer_s: @default_vote_timer_s,
+            vote_delay_s: @default_vote_delay_s,
             questions_per_player: nil,
             subrounds_enabled?: true,
             allow_vote_change?: false,
+            min_players: @default_min_players,
             song_playback_s: @default_song_playback_s,
+            all_voted_countdown_s: @all_voted_countdown_s,
             reveal_padding_s: @default_reveal_padding_s,
             results_padding_s: @default_results_padding_s
 
@@ -67,9 +87,9 @@ defmodule WhoseJam.Game.Config do
   may use atom or string keys (LiveView forms send strings), and string values
   are coerced for known fields (`"45"` → `45`, `"true"` → `true`).
 
-  Only the five host-facing settings can be overridden (`answer_timer_s`,
-  `vote_timer_s`, `questions_per_player`, `subrounds_enabled?`,
-  `allow_vote_change?`); any other key in `overrides` is ignored. The internal
+  Only the seven host-facing settings can be overridden (`answer_timer_s`,
+  `vote_timer_s`, `vote_delay_s`, `questions_per_player`, `subrounds_enabled?`,
+  `allow_vote_change?`, `min_players`); any other key in `overrides` is ignored. The internal
   estimator fields stay fixed at their constant defaults.
 
   Resolution order matters: `questions_per_player` is resolved first, then
@@ -88,10 +108,14 @@ defmodule WhoseJam.Game.Config do
     %__MODULE__{
       answer_timer_s: answer_timer_s,
       vote_timer_s: fetch_int(overrides, :vote_timer_s, @default_vote_timer_s),
+      vote_delay_s: overrides |> fetch_int(:vote_delay_s, @default_vote_delay_s) |> max(0),
       questions_per_player: qpp,
       subrounds_enabled?: fetch_bool(overrides, :subrounds_enabled?, true),
       allow_vote_change?: fetch_bool(overrides, :allow_vote_change?, false),
+      min_players:
+        overrides |> fetch_int(:min_players, @default_min_players) |> clamp_min_players(),
       song_playback_s: @default_song_playback_s,
+      all_voted_countdown_s: @all_voted_countdown_s,
       reveal_padding_s: @default_reveal_padding_s,
       results_padding_s: @default_results_padding_s
     }
@@ -101,7 +125,8 @@ defmodule WhoseJam.Game.Config do
   Estimate the total wall-clock length of a game, in seconds.
 
   Model: one answer phase per sub-round, then one round per submitted song.
-  Each round is a song snippet + a voting window + reveal/results padding.
+  Each round is listening time before most votes are in (at least the vote
+  delay) + the voting countdown + reveal/results padding.
   Round count is `player_count * questions_per_player` (total across all
   sub-rounds), since every submitted song becomes its own play-and-vote round.
 
@@ -123,8 +148,8 @@ defmodule WhoseJam.Game.Config do
     round_count = player_count * config.questions_per_player
 
     per_round_s =
-      config.song_playback_s + config.vote_timer_s + config.reveal_padding_s +
-        config.results_padding_s
+      max(config.song_playback_s, config.vote_delay_s) + config.vote_timer_s +
+        config.reveal_padding_s + config.results_padding_s
 
     answer_phases = if config.subrounds_enabled?, do: subround_count, else: 1
 
@@ -137,6 +162,9 @@ defmodule WhoseJam.Game.Config do
   defp default_questions_per_player(player_count) do
     max(2, round(15 / player_count))
   end
+
+  defp clamp_min_players(n),
+    do: n |> max(@min_players_range.first) |> min(@min_players_range.last)
 
   # --- override helpers: atom-or-string key lookup + value coercion ---
 

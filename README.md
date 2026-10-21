@@ -40,7 +40,8 @@ identity — any browser can open it.
    without it.
 3. Friends scan the QR code on the TV (or type the room code), pick a display
    name, and land in the lobby.
-4. Start once at least **3 players** have joined.
+4. Start once at least **3 players** have joined (the host can lower this to
+   2 in Settings → "Players needed to start", handy for development).
 
 **Players vs. audience:** the first 8 joiners are **players** — they get
 assigned questions and submit songs. Anyone who joins after that, or after the
@@ -232,9 +233,10 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `SPOTIFY_CLIENT_ID` | For Spotify | — | Spotify app Client ID. Without it, search/playback are disabled. |
 | `SPOTIFY_CLIENT_SECRET` | For Spotify | — | Spotify app Client Secret. |
 
-Host-facing **game** settings (answer timer, vote timer, questions per player,
-sub-rounds on/off, allow vote-changing) are not env vars — they're chosen per
-game in the host console and default to a ~20-minute session.
+Host-facing **game** settings (answer timer, listening delay before voting,
+vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
+players needed to start) are not env vars — they're chosen per game in the host
+screen's Settings panel and default to a ~20-minute session.
 
 ---
 
