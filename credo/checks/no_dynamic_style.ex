@@ -63,22 +63,33 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyle do
 
   defp traverse(ast, issues, _issue_meta, _allowed), do: {ast, issues}
 
-  # `rest` is the template text right after the attribute's `{`. The closing
-  # brace is the first `}` whose preceding text parses as Elixir: an earlier `}`
-  # sits inside an open string, map or other bracket, so its prefix does not.
-  # Letting the Elixir parser decide keeps char literals like `?(` and `?"`
-  # from confusing a hand-written scanner. `:error` (nothing parsed) is treated
-  # as a violation by `allowed_call?/2`.
+  # `rest` is the template text right after the attribute's `{`. The body ends
+  # where HEEx ends it, not where Elixir would: Phoenix.LiveView's tokenizer
+  # counts `{` and `}` depth without looking at strings or comments, treats
+  # `\{` and `\}` as plain text, and closes the attribute at the first `}` at
+  # depth 0. Ending it anywhere else lets a comment hide a brace and the check
+  # approve a shorter expression than the one HEEx compiles. A body that never
+  # closes (`:error`) is a violation, like one that does not parse.
   defp attr_ast(rest) do
-    rest
-    |> :binary.matches("}")
-    |> Enum.find_value(:error, fn {close, _len} ->
-      case Code.string_to_quoted(binary_part(rest, 0, close)) do
-        {:ok, ast} -> {:ok, ast}
-        {:error, _} -> nil
-      end
-    end)
+    with {:ok, body} <- attr_body(rest, 0, []),
+         {:ok, ast} <- Code.string_to_quoted(body, warnings: false) do
+      {:ok, ast}
+    else
+      _ -> :error
+    end
   end
+
+  defp attr_body(<<>>, _depth, _acc), do: :error
+
+  defp attr_body(<<?}, _rest::binary>>, 0, acc),
+    do: {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
+
+  defp attr_body(<<?\\, c, rest::binary>>, depth, acc) when c in [?{, ?}],
+    do: attr_body(rest, depth, [c, ?\\ | acc])
+
+  defp attr_body(<<?{, rest::binary>>, depth, acc), do: attr_body(rest, depth + 1, [?{ | acc])
+  defp attr_body(<<?}, rest::binary>>, depth, acc), do: attr_body(rest, depth - 1, [?} | acc])
+  defp attr_body(<<c, rest::binary>>, depth, acc), do: attr_body(rest, depth, [c | acc])
 
   # Allowed only when the whole expression is one call to an allowed helper:
   # `<>`, `|>`, remote calls, variables and everything else are different ASTs.

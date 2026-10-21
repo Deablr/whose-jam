@@ -82,7 +82,7 @@ Run all of these and record pass/fail with the relevant output:
 | Format | `mix format --check-formatted` | any unformatted file **in the diff** (pre-existing ones are noted, not blamed) |
 | Unused deps | `mix deps.unlock --check-unused` | the lockfile has unused deps |
 | Lint | `mix credo` (strict, includes the project checks in `credo/checks/`) | any issue **in the diff**; a new `credo:disable` without a reason comment |
-| Security scan | `mix sobelow --config` | any finding not in `.sobelow-skips`; a new skip entry or `sobelow_skip` without a reason |
+| Security scan | `mix sobelow --config` | any Sobelow finding that isn't skipped (inline `# sobelow_skip` with a reason, or a `.sobelow-skips` entry); a new skip without a reason, or a `.sobelow-skips` / `.sobelow-conf` change without user approval |
 | Docs | `MIX_ENV=test mix docs --warnings-as-errors` | any warning (usually a doc referencing a deleted or renamed function) |
 | Dependency advisories | `mix hex.audit` | a **new** advisory introduced by the diff (pre-existing ones are listed in the summary, not blamed) |
 | Tests | `mix test` | any failure |

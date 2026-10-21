@@ -87,10 +87,36 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyleTest do
     end)
   end
 
-  test "an allowed helper's string arguments may contain braces, parens and escaped quotes" do
-    ~S|<div style={progress_style("}")}></div>| |> check() |> refute_issues()
-    ~S|<div style={progress_style("a)b\"}")}></div>| |> check() |> refute_issues()
+  test "an allowed helper's arguments may contain parens and balanced braces" do
+    ~S|<div style={progress_style("a)b")}></div>| |> check() |> refute_issues()
     ~S|<div style={progress_style(%{a: 1})}></div>| |> check() |> refute_issues()
+  end
+
+  # HEEx closes the attribute by counting braces, ignoring strings, comments and
+  # char literals (and treating `\{` / `\}` as text). The check has to see the
+  # same body HEEx compiles, or a comment can hide a concatenation.
+  test "a comment cannot hide a brace from the check" do
+    for template <- [
+          ~S|<div style={progress_style(1) # \}
+  <> @x}></div>|,
+          ~S|<div style={progress_style("{") # }
+  <> @x}></div>|,
+          ~S|<div style={progress_style(1) # {}
+  <> @x}></div>|
+        ] do
+      template |> check() |> assert_issue()
+    end
+  end
+
+  test "a brace char literal leaves the body unterminated, which is a violation" do
+    ~S|<div style={progress_style(?{) <> @x}></div>| |> check() |> assert_issue()
+  end
+
+  test "a bare } in a comment ends the attribute for HEEx too, so the allowed call stands" do
+    ~S|<div style={progress_style(1) # }
+  <> @x}></div>|
+    |> check()
+    |> refute_issues()
   end
 
   test "char literals cannot hide a concatenation onto an allowed helper" do

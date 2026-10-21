@@ -77,6 +77,19 @@ defmodule WhoseJam.Credo.Checks.NoGlobalEnvInAsyncTestTest do
     |> refute_issues()
   end
 
+  test "a later use with other options does not undo async: true" do
+    """
+    defmodule SampleTest do
+      use ExUnit.Case, async: true
+      use Other, opt: 1
+
+      test "x", do: System.put_env("A", "1")
+    end
+    """
+    |> check()
+    |> assert_issues(1)
+  end
+
   test "each module is judged on its own async flag" do
     """
     defmodule AsyncTest do

@@ -68,7 +68,7 @@ General Phoenix, Elixir and LiveView guidance from `phx.new`, trimmed to what ap
 ### Phoenix v1.8 guidelines
 
 - This app has no auth and no `current_scope`. Its LiveViews (`HomeLive`, `HostLive`, `PlayLive`) render their own full-screen layouts and do not wrap their templates in `<Layouts.app>`; match the surrounding LiveView rather than the generated default
-- Phoenix v1.8 moved the `<.flash_group>` component to the `Layouts` module. You are **forbidden** from calling `<.flash_group>` outside of the `layouts.ex` module
+- Phoenix v1.8 moved the `<.flash_group>` component to the `Layouts` module. Render flash with `<Layouts.flash_group flash={@flash} />` as `HomeLive` and `PlayLive` do; don't call `<.flash_group>` unqualified outside `layouts.ex` or re-implement it
 - Out of the box, `core_components.ex` imports an `<.icon name="hero-x-mark" class="w-5 h-5"/>` component for hero icons. **Always** use the `<.icon>` component for icons, **never** use `Heroicons` modules or similar
 - **Always** use the imported `<.input>` component for form inputs from `core_components.ex` when available. `<.input>` is imported and using it will save steps and prevent errors
 - If you override the default input classes (`<.input class="myclass px-2 py-1 rounded-lg">)`) class with your own values, no default classes are inherited, so your
