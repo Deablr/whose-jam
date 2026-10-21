@@ -8,14 +8,14 @@ defmodule WhoseJam.Content do
   ## Question shape for gameplay
 
   `game_questions/2` returns the runtime question shape used across the game
-  modules (see CLAUDE.md): `%{id: String.t(), prompt: String.t(), style: atom()}`.
+  modules (see AGENTS.md): `%{id: String.t(), prompt: String.t(), style: atom()}`.
   IDs are stringified so the rest of the system can treat all IDs uniformly.
   """
 
   import Ecto.Query, warn: false
 
-  alias WhoseJam.Repo
   alias WhoseJam.Content.{Question, Theme}
+  alias WhoseJam.Repo
 
   @doc """
   Lists all themes, ordered by name.

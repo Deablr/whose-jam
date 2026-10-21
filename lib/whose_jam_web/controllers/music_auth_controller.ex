@@ -163,7 +163,12 @@ defmodule WhoseJamWeb.MusicAuthController do
   # :spotify_redirect_uri from SPOTIFY_REDIRECT_URI, e.g. an https URI when
   # deployed behind TLS). Must exactly match — including port — a redirect URI
   # registered with the provider.
+  #
+  # The interpolated atom is safe: `provider` is always one of the configured
+  # provider modules (resolved via Music.fetch_provider/1), never raw input.
+  # sobelow_skip ["DOS.BinToAtom"]
   defp redirect_uri(provider) do
+    # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
     Application.get_env(:whose_jam, :"#{provider.id()}_redirect_uri") ||
       "http://127.0.0.1:#{public_port()}/auth/#{provider.id()}/callback"
   end

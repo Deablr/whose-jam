@@ -16,6 +16,9 @@ defmodule WhoseJam.Release do
   @doc """
   Runs priv/repo/seeds.exs (idempotent) inside the release.
   """
+  # `Code.eval_file/1` runs the seeds file bundled in the release; the path is
+  # fixed, never input.
+  # sobelow_skip ["RCE.CodeModule"]
   def seed do
     load_app()
 

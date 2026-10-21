@@ -713,6 +713,12 @@ defmodule WhoseJamWeb.HostLive do
 
   # ---- lobby --------------------------------------------------------------
 
+  # `raw/1` is safe here: EQRCode.svg/2 emits only numeric rect coordinates and
+  # the literal colours set in qr_svg/1, so no player data reaches the markup.
+  # It sits in its own component so the Sobelow skip covers just this one call.
+  # sobelow_skip ["XSS.Raw"]
+  defp qr_code(assigns), do: ~H"{raw(@svg)}"
+
   defp lobby(assigns) do
     assigns =
       assign(assigns,
@@ -730,7 +736,7 @@ defmodule WhoseJamWeb.HostLive do
 
       <div class="grid xl:grid-cols-[auto_minmax(18rem,1fr)] gap-14 xl:gap-24 items-start">
         <div class="flex flex-col sm:flex-row sm:items-center gap-10">
-          <div class="rounded-[1.75rem] bg-jam-cream p-4 shrink-0">{raw(@qr_svg)}</div>
+          <div class="rounded-[1.75rem] bg-jam-cream p-4 shrink-0"><.qr_code svg={@qr_svg} /></div>
           <div class="space-y-2">
             <p class="jam-eyebrow">Room code</p>
             <p class="font-display text-8xl xl:text-9xl leading-none tracking-[0.12em] whitespace-nowrap">
@@ -1115,9 +1121,7 @@ defmodule WhoseJamWeb.HostLive do
         "Game over"
 
       ids ->
-        ids
-        |> Enum.map(&name_of(view, &1))
-        |> Enum.join(" & ")
+        Enum.map_join(ids, " & ", &name_of(view, &1))
     end
   end
 end

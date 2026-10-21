@@ -11,6 +11,9 @@ defmodule WhoseJamWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # Origins are checked in production: config/runtime.exs sets `check_origin`
+  # to this app's host plus the loopback hosts.
+  # (Baselined in .sobelow-skips: Sobelow cannot skip this finding inline.)
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
@@ -30,6 +33,8 @@ defmodule WhoseJamWeb.Endpoint do
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
+    # Development-only socket; dev.exs sets `check_origin: false`.
+    # (Baselined in .sobelow-skips: Sobelow cannot skip this finding inline.)
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
     plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader

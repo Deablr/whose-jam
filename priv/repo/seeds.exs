@@ -9,8 +9,8 @@
 
 import Ecto.Query, only: [from: 2]
 
-alias WhoseJam.Repo
 alias WhoseJam.Content.{Question, Theme}
+alias WhoseJam.Repo
 
 now = DateTime.utc_now() |> DateTime.truncate(:second)
 

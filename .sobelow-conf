@@ -1,0 +1,17 @@
+[
+  verbose: false,
+  private: true,
+  skip: true,
+  router: "lib/whose_jam_web/router.ex",
+  exit: "low",
+  format: "txt",
+  out: "",
+  threshold: "low",
+  # Dependency advisories come from `mix hex.audit` (run it after changing deps;
+  # REVIEW.md runs it too). It needs network, so it isn't in `mix precommit`.
+  # Sobelow's Vuln checks use a stale built-in list and emit parser warnings on
+  # mix.lock.
+  ignore: ["Vuln"],
+  ignore_files: [""],
+  version: false
+]

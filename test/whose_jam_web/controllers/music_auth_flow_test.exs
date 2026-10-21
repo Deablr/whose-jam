@@ -8,8 +8,8 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
   """
   use WhoseJamWeb.ConnCase, async: false
 
-  alias WhoseJam.Game
   alias WhoseJam.Content.{Question, Theme}
+  alias WhoseJam.Game
   alias WhoseJam.Repo
 
   defmodule OauthStub do
