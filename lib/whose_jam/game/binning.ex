@@ -70,16 +70,12 @@ defmodule WhoseJam.Game.Binning do
         |> Enum.with_index()
         |> Map.new(fn {question, index} -> {index, question.id} end)
 
-      players
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {player, i} ->
-        base = i * per_player
+      slots =
+        for {player, i} <- Enum.with_index(players), j <- 0..(per_player - 1) do
+          {Map.fetch!(id_by_index, rem(i * per_player + j, k)), player}
+        end
 
-        Enum.map(0..(per_player - 1), fn j ->
-          {Map.fetch!(id_by_index, rem(base + j, k)), player}
-        end)
-      end)
-      |> Enum.group_by(fn {qid, _pid} -> qid end, fn {_qid, pid} -> pid end)
+      Enum.group_by(slots, fn {qid, _pid} -> qid end, fn {_qid, pid} -> pid end)
     end
   end
 

@@ -1,6 +1,6 @@
 # Code review — agent instructions
 
-How an agent reviews a pull request on `Deablr/whose-jam`. Read `CLAUDE.md` and
+How an agent reviews a pull request on `Deablr/whose-jam`. Read `AGENTS.md` and
 `docs/prd.md` first; the conventions and contracts there are the standard the
 code is held to.
 
@@ -81,6 +81,10 @@ Run all of these and record pass/fail with the relevant output:
 | Compile (lint) | `mix compile --warnings-as-errors --force` | any warning |
 | Format | `mix format --check-formatted` | any unformatted file **in the diff** (pre-existing ones are noted, not blamed) |
 | Unused deps | `mix deps.unlock --check-unused` | the lockfile has unused deps |
+| Lint | `mix credo` (strict, includes the project checks in `credo/checks/`) | any issue **in the diff**; a new `credo:disable` without a reason comment |
+| Security scan | `mix sobelow --config` | any finding not in `.sobelow-skips`; a new skip entry or `sobelow_skip` without a reason |
+| Docs | `MIX_ENV=test mix docs --warnings-as-errors` | any warning (usually a doc referencing a deleted or renamed function) |
+| Dependency advisories | `mix hex.audit` | a **new** advisory introduced by the diff (pre-existing ones are listed in the summary, not blamed) |
 | Tests | `mix test` | any failure |
 | Assets build | `mix assets.build` | Tailwind/esbuild errors |
 | Release build (only if `Dockerfile`, `rel/`, `config/runtime.exs`, or `mix.exs` changed) | `docker build -t whose-jam-review .` | build fails |
@@ -99,7 +103,7 @@ metadata and threads, the check results, and the worktree path. Each reads the
 | Agent | Lens | Look for |
 | --- | --- | --- |
 | `bugs` | Correctness | Logic errors, wrong state transitions in `Game.Server`, race conditions and timer leaks (`Process.send_after` without cancel), nil/missing-key crashes, off-by-one, broken pattern-match clauses, LiveView assigns used before they're set, JS hook lifecycle mistakes. |
-| `quality` | Code quality & conventions | Violations of `CLAUDE.md`: pure modules staying pure, the shared domain shapes, runtime state never persisted, no new deps, `req`/`eqrcode` only. Naming, dead code, duplicated logic, comments that don't match the code, code that doesn't read like its surroundings. |
+| `quality` | Code quality & conventions | Violations of `AGENTS.md` (including "Rules from past code reviews"): pure modules staying pure, the shared domain shapes, runtime state never persisted, no new deps, `req`/`eqrcode` only. Naming, dead code, duplicated logic, comments that don't match the code, code that doesn't read like its surroundings. |
 | `simplicity` | Over-engineering | Abstractions with one caller, config nobody sets, speculative extensibility, layers that could be a function, long `cond`/`case` trees that could be a clause. **Prefer the simpler solution**; propose the concrete simpler version. |
 | `security` | Vulnerabilities | See the checklist below. |
 | `tests` | Coverage | New behaviour without tests, tests asserting internals rather than the public contract, flaky timing (sleeps instead of `assert_receive`), missing edge cases. Respect the PRD rule: no LiveView/Spotify/Registry tests in v1. |
@@ -137,6 +141,7 @@ Rules for reviewers:
 - `line` must be a line **in the diff on the PR head** (RIGHT side), or the comment can't be anchored. Findings outside the diff go in the summary only.
 - Every finding needs a concrete failure scenario. "Could be cleaner" without a reason is not a finding.
 - Don't report what the checks in step 2 already caught; reference the check instead.
+- If a finding is mechanical enough that a linter could catch it next time, say so in the `suggestion`, so it can become a check in `credo/checks/`.
 - Don't post anything to GitHub.
 
 ---

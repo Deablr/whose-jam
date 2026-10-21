@@ -1115,9 +1115,7 @@ defmodule WhoseJamWeb.HostLive do
         "Game over"
 
       ids ->
-        ids
-        |> Enum.map(&name_of(view, &1))
-        |> Enum.join(" & ")
+        Enum.map_join(ids, " & ", &name_of(view, &1))
     end
   end
 end

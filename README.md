@@ -119,7 +119,7 @@ pass an explicit compose file skip the local override). In Dokploy:
 ## Music providers
 
 Everything music-service-specific sits behind the `WhoseJam.Music.Provider`
-behaviour (see `CLAUDE.md` for the contract and how to add one). Spotify is the
+behaviour (see `AGENTS.md` for the contract and how to add one). Spotify is the
 only provider that ships. In **dev and test** a fake **Mock Music** provider is
 also enabled (`config :whose_jam, :music_providers`): a handful of made-up
 tracks, no credentials and no audio — each song just "ends" after a few
@@ -296,7 +296,7 @@ transport code.
 ```
 
 For the full specification see [`docs/prd.md`](docs/prd.md); for the module
-contracts and agent rules see [`CLAUDE.md`](CLAUDE.md).
+contracts and agent rules see [`AGENTS.md`](AGENTS.md).
 
 ---
 
@@ -327,6 +327,29 @@ internal state. Deliberately **manual** (per PRD): LiveViews, the Spotify client
 and the Registry — LiveView tests are brittle, Spotify tests need unstable
 external mocks, and the Registry is a thin wrapper. These are validated by
 playtesting in v1.
+
+### Checks before you push
+
+```sh
+mix precommit
+```
+
+Runs every check without rewriting anything: compile with warnings as errors,
+unused-dependency check, format check, [Credo](https://hexdocs.pm/credo) (lint),
+[Sobelow](https://hexdocs.pm/sobelow) (Phoenix security scan), a docs build that
+fails on references to missing modules and functions, and the tests. Run
+`mix format <files>` on the files you touched to fix formatting.
+
+Credo also runs four project checks in `credo/checks/`, each written after the
+same problem came up repeatedly in code review: bare `{:ok, _} =` matches in
+`lib/`, `style` attributes built from data in templates, global env changes
+in `async: true` tests, and sleeping in tests. Sobelow's accepted findings are
+recorded in `.sobelow-skips`, so only new ones fail.
+
+`mix hex.audit` lists security advisories against the locked dependencies.
+
+If `mix` asks to install Hex and then hangs, point it at the mise install:
+`export MIX_HOME=$HOME/.local/share/mise/installs/elixir/1.20.2-otp-28/.mix`.
 
 ---
 
@@ -384,7 +407,9 @@ whose-jam/
 │   ├── dev.exs            # local DB creds, dev server, PORT override
 │   └── runtime.exs        # env-var config read at boot (prod/release)
 ├── docs/prd.md            # full product spec — source of truth
-├── CLAUDE.md              # module contracts + agent rules
+├── AGENTS.md              # module contracts + agent rules (CLAUDE.md is a symlink to it)
+├── REVIEW.md              # how agents review a pull request
+├── .credo.exs             # lint config; credo/checks/ holds the project's own checks
 ├── docker-compose.yml     # Postgres + app; runs migrate/seed/server on boot
 ├── Dockerfile             # multi-stage prod release (Elixir 1.20.2 / OTP 28)
 ├── rel/overlays/bin/      # migrate, seed, server scripts baked into the release

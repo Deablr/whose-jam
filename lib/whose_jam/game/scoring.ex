@@ -49,18 +49,17 @@ defmodule WhoseJam.Game.Scoring do
   @spec score_round(round(), [vote()]) :: %{id() => non_neg_integer()}
   def score_round(%{submitter_id: submitter_id, correct_choice: correct_choice}, votes)
       when is_list(votes) do
-    Enum.reduce(votes, %{}, fn vote, acc ->
-      if vote.choice == correct_choice do
-        # Correct guess: +1 to the voter (player or audience).
-        add(acc, vote.voter_id, 1)
-      else
-        # Incorrect guess: submitter is fooled only by non-audience voters.
-        case vote.voter_role do
-          :audience -> acc
-          _ -> add(acc, submitter_id, 1)
-        end
-      end
-    end)
+    Enum.reduce(votes, %{}, &tally(&1, &2, submitter_id, correct_choice))
+  end
+
+  defp tally(vote, acc, submitter_id, correct_choice) do
+    cond do
+      # Correct guess: +1 to the voter (player or audience).
+      vote.choice == correct_choice -> add(acc, vote.voter_id, 1)
+      # Incorrect guess: submitter is fooled only by non-audience voters.
+      vote.voter_role == :audience -> acc
+      true -> add(acc, submitter_id, 1)
+    end
   end
 
   defp add(acc, id, points), do: Map.update(acc, id, points, &(&1 + points))

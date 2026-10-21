@@ -1,9 +1,69 @@
-This is a web application written using the Phoenix web framework.
+# whose-jam
 
-## Project guidelines
+Jackbox-style song-guessing party game. Phoenix 1.8 + LiveView. Full spec: `docs/prd.md` — read it before implementing anything.
 
-- Use `mix precommit` alias when you are done with all changes and fix any pending issues
-- Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
+This file is the agent guide for every tool; `CLAUDE.md` is a symlink to it. Edit `AGENTS.md`, never replace the symlink.
+
+## Commands
+
+- `mix precommit` — must pass before any work is considered done. Runs, in the test env: `compile --warnings-as-errors`, `deps.unlock --check-unused`, `format --check-formatted`, `credo`, `sobelow --config`, `docs --warnings-as-errors`, `test`. It only checks; it never rewrites files.
+- `mix test <path>` — run a specific test file
+- `mix format <files>` — format only the files you changed, never the whole project
+- `mix credo <files>` — lint (strict mode is on in `.credo.exs`); `mix credo explain <file>:<line>` explains an issue
+- `mix hex.audit` — known security advisories in locked dependencies
+
+Toolchain: Elixir 1.20.2 / OTP 28 via mise (`.tool-versions`). If `mix` prompts to install Hex and hangs, point it at the mise install: `export MIX_HOME=$HOME/.local/share/mise/installs/elixir/1.20.2-otp-28/.mix`.
+
+## Conventions
+
+- Elixir 1.20 / OTP 28, Phoenix 1.8, LiveView 1.1.
+- Runtime game state lives in one GenServer per game (`WhoseJam.Game.Server`), registered by room code. Postgres holds only seed content (themes/questions). Never persist runtime game state.
+- Pure modules (`Game.Binning`, `Game.Scoring`, `Game.Config`) take plain data in, return plain data out — no processes, no Repo calls, no side effects.
+- Tests target external behavior/contracts, not internals. No LiveView tests, no live music-provider API tests, no Registry tests in v1 (manual playtesting per PRD). Provider behavior is covered by the shared contract test (`test/whose_jam/music/provider_contract_test.exs`, one set of expectations run against every enabled provider), the facade's search tests (a stub provider), the OAuth controller's tests (guard rails and an authorize-to-callback flow via a stub redirect provider), and `Game.Server` playing the same game on every provider — never the network. Spotify's response mapping is manual-playtest only.
+- HTTP calls use `req` (never `:httpoison`, `:tesla` or `:httpc`). QR codes use `eqrcode` (server-rendered SVG). No other new deps without explicit approval.
+- Music-provider credentials come from env vars read at runtime (`System.get_env/1`), never compiled in: `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` (and `SPOTIFY_REDIRECT_URI` override). A provider without credentials reports `configured?/0` false rather than crashing.
+- Everything provider-specific lives behind the `WhoseJam.Music.Provider` behaviour (`lib/whose_jam/music/providers/*.ex`, plus a JS player module of the same id in `assets/js/hooks/music/`). `Game.Server`, scoring and the LiveViews must stay provider-neutral — no `if provider == :spotify`. To add a provider: implement the behaviour, add its JS player module and a fixture in `test/support/music_fixtures.ex` (the contract test fails without one), and list it in `config :whose_jam, :music_providers`.
+
+## Shared domain shapes (contracts between modules)
+
+All IDs are strings. These plain-map shapes are the interfaces between independently built modules — do not deviate from them.
+
+- **Player**: `%{id: id, name: String.t(), role: :player | :audience, connected?: boolean()}`
+- **Runtime question**: `%{id: id, prompt: String.t(), style: :guess_who | :guess_question}`
+- **Vote**: `%{voter_id: id, voter_role: :player | :audience, choice: term()}` — for `:guess_who` the choice is a player id; for `:guess_question` a question id.
+- **`Game.Binning.assign(player_ids, questions, questions_per_player, opts \\ [])`** → `%{question_id => [player_id]}`. Guarantees: each player assigned exactly `questions_per_player` questions when feasible, never the same question twice per player, every selected question has ≥ 2 submitters when mathematically feasible. Deterministic under `opts[:seed]`.
+- **`Game.Scoring.score_round(round, votes)`** → `%{id => non_neg_integer()}` (point deltas only for scorers). `round` is `%{style: style, submitter_id: id, correct_choice: term()}`. Correct vote: +1 to voter. Submitter: +1 per *incorrect* vote cast by a *non-audience* voter. Audience can earn guess points but never fool-points.
+- **`Game.Config`** struct with host-facing fields `answer_timer_s`, `vote_delay_s` (default 10), `vote_timer_s` (countdown, default 30), `questions_per_player`, `subrounds_enabled?`, `allow_vote_change?`, `min_players` (default 3, clamped 2..8; `Game.Config.min_players_range/0`) (plus internal non-overridable constants `song_playback_s`, `reveal_padding_s`, `results_padding_s`). `Game.Config.build(overrides_map, player_count)` → struct (defaults target ~20-min game; only the seven host-facing keys are overridable, and integer overrides are clamped: `answer_timer_s` 1..1800, `vote_delay_s` 0..60, `vote_timer_s` 1..300, `questions_per_player` 1..10, `min_players` 2..8 — exposed via `Game.Config.range(key)`; the derived `questions_per_player` default is clamped too); the 5s all-voted countdown is a `Game.Server` constant, not a config field; `Game.Config.estimated_runtime_s(config, player_count, subround_count \\ 1)` → integer.
+- **`WhoseJam.Music.Provider`** (behaviour; modules in `WhoseJam.Music.Providers.*`: `Spotify`, dev/test-only `Mock`): identity (`id/0`, `name/0`, `requirement/0`, `ineligible_message/0`), capabilities (`connect_kind/0` ∈ `:oauth_redirect | :none`, `video?/0`, `configured?/0`), catalog (`search/2`, `valid_uri?/1`, `valid_art_url?/1`), host connection (`connect/1` → `{:ok, auth}`, `authorize_url/2` for redirect providers, `eligible?/1`, optional `refresh/1`), and `client_config/1` (JSON for the browser player). Optional: `playback_error_message/1`. One provider per game, set with `Game.set_music(code, provider_id, auth)`; switching is lobby-only.
+- **`WhoseJam.Music`** (facade): `providers/0`, `fetch_provider/1`, `search(provider_id, query, auth)` → `{:ok, [track]} | {:error, term()}` (blank → `{:ok, []}`; the provider is searched with the normalized query and results cached per `{provider, normalized query}`, errors never cached; also `{:error, :unknown_provider}` / `{:error, :not_configured}`), `normalize_track/2`, `playback_error_message/2`, `refresh_if_due/2`, `refresh_delay_ms/1`. LiveViews search through `Game.search_songs(code, query)`.
+- **Submitted song** (`Game.submit_song/4`, validated by `Music.Track`): `%{uri, name, artist, album_art_url}` where `uri` is a provider-namespaced string that the *room's* provider's `valid_uri?/1` accepts (Spotify: `spotify:track:<22 alphanumerics>`; another provider's URI is rejected), else the submit returns `{:error, :invalid_song}`; `name`/`artist` are trimmed and capped at 200 codepoints, so ≤ 800 bytes (non-strings → `""`); `album_art_url` is kept only if the provider's `valid_art_url?/1` accepts it (Spotify: `https://i.scdn.co/image/<id>`), else `nil`.
+- **PubSub**: topic `"game:" <> code`; the Game.Server broadcasts `{:game_state, view}` where `view` is the public state map returned by `Game.Server.get_state(code)`. LiveViews are pure renderers of that view. The public view carries `music: %{id, name, video?, eligible?} | nil` (never the auth); the host-scoped `Game.host_state(code)` adds `music_auth`.
+
+## Rules from past code reviews
+
+Each of these came up more than once in review. The ones marked *(Credo)* are enforced by a project check in `credo/checks/`; the rest are on you.
+
+- **Never assume success.** Handle `{:error, _}` from `Game.*`, providers and controllers with `with`/`case` — a bare `:ok = ...` or `{:ok, x} = ...` crashes the LiveView (the TV player restarts) or the game process. *(Credo: `NoBareOkMatch`)*
+- **Validate every external input at the boundary.** `handle_event` and controller params can be any JSON type or missing: guard string params with `is_binary/1`, and add a fallback clause that flashes or returns 400 rather than raising.
+- **Never build a `style` attribute from player or provider data** — HEEx escapes HTML, not CSS, so a crafted album-art URL breaks out of `url(...)`. Use a class, or `<img src={...}>`. A helper that only emits server-computed values can be added to `allowed_helpers` in `.credo.exs`. *(Credo: `NoDynamicStyle`)*
+- **One source for limits.** Take ranges from `Game.Config.range/1` and `min_players_range/0`; don't hard-code `2..8`, `1..10` or a player cap in a LiveView.
+- **Keep docs in step with the code, in the same change.** When you delete or rename a module, function, callback, config key or behaviour, grep for its name in `lib/` (moduledocs and comments), `test/`, `README.md`, `AGENTS.md`, `REVIEW.md` and `docs/prd.md`. `mix docs --warnings-as-errors` catches stale `Mod.fun/arity` references, but not prose.
+- **Tests must be able to fail.** Check that a test fails when the behaviour it names is removed (watch for unit mismatches, e.g. `Phoenix.Token`'s `:signed_at` is in seconds). Test range edges (min, max, max + 1), not only extremes. Drive timers through short test config and `assert_receive` with explicit timeouts. *(Credo: `NoSleepInTests`, `NoGlobalEnvInAsyncTest` — global env changes need `async: false` and an `on_exit` restore.)*
+- **Commits and PRs:** imperative subject under ~70 characters; the PR description lists behaviour/config changes and a Testing section of what was actually run (see `REVIEW.md`).
+
+## Hard rules for agents
+
+- Touch only files explicitly assigned to you. `mix.exs`, `config/*`, `lib/whose_jam/application.ex`, `lib/whose_jam_web/router.ex`, `assets/js/app.js`, `.credo.exs`, `credo/checks/*` and `.sobelow-skips` are OFF-LIMITS unless your task says otherwise.
+- Don't silence a linter to get green. A `# credo:disable-for-next-line` or `# sobelow_skip` needs a comment explaining why the code is safe, and new `.sobelow-skips` entries need the user's approval.
+- Never run `git stash`, `git checkout`, `git switch`, `git branch`, `git commit`, `git push`, `git reset`, or any other git command that mutates state. Read-only git (`git diff`, `git log`, `git status`) is fine.
+- Never run `mix format` bare (whole project) — only on your own files.
+- Never run `mix ecto.reset`/`drop` — other agents may share the dev database.
+
+---
+
+# Phoenix, Elixir and LiveView guidelines
+
+General framework guidance from `phx.new`, trimmed to what applies here. Where it conflicts with the project sections above, the project sections win.
 
 ### Phoenix v1.8 guidelines
 
@@ -43,10 +103,6 @@ custom classes must fully style the input
 - Ensure **clean typography, spacing, and layout balance** for a refined, premium look
 - Focus on **delightful details** like hover effects, loading states, and smooth page transitions
 
-
-<!-- usage-rules-start -->
-
-<!-- phoenix:elixir-start -->
 ## Elixir guidelines
 
 - Elixir lists **do not support index based access via the access syntax**
@@ -101,9 +157,7 @@ custom classes must fully style the input
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
 
    - Instead of sleeping to synchronize before the next call, **always** use `_ = :sys.get_state/1` to ensure the process has handled prior messages
-<!-- phoenix:elixir-end -->
 
-<!-- phoenix:phoenix-start -->
 ## Phoenix guidelines
 
 - Remember Phoenix router `scope` blocks include an optional alias which is prefixed for all routes within the scope. **Always** be mindful of this when creating routes within a scope to avoid duplicate module prefixes.
@@ -119,21 +173,17 @@ custom classes must fully style the input
   the UserLive route would point to the `AppWeb.Admin.UserLive` module
 
 - `Phoenix.View` no longer is needed or included with Phoenix, don't use it
-<!-- phoenix:phoenix-end -->
 
-<!-- phoenix:ecto-start -->
 ## Ecto Guidelines
 
 - **Always** preload Ecto associations in queries when they'll be accessed in templates, ie a message that needs to reference the `message.user.email`
 - Remember `import Ecto.Query` and other supporting modules when you write `seeds.exs`
 - `Ecto.Schema` fields always use the `:string` type, even for `:text`, columns, ie: `field :name, :string`
-- `Ecto.Changeset.validate_number/2` **DOES NOT SUPPORT the `:allow_nil` option**. By default, Ecto validations only run if a change for the given field exists and the change value is not nil, so such as option is never needed
+- `Ecto.Changeset.validate_number/3` **DOES NOT SUPPORT the `:allow_nil` option**. By default, Ecto validations only run if a change for the given field exists and the change value is not nil, so such as option is never needed
 - You **must** use `Ecto.Changeset.get_field(changeset, :field)` to access changeset fields
 - Fields which are set programmatically, such as `user_id`, must not be listed in `cast` calls or similar for security purposes. Instead they must be explicitly set when creating the struct
 - **Always** invoke `mix ecto.gen.migration migration_name_using_underscores` when generating migration files, so the correct timestamp and conventions are applied
-<!-- phoenix:ecto-end -->
 
-<!-- phoenix:html-start -->
 ## Phoenix HTML guidelines
 
 - Phoenix templates **always** use `~H` or .html.heex files (known as HEEx), **never** use `~E`
@@ -210,9 +260,7 @@ custom classes must fully style the input
         {if @invalid_block_construct do}
         {end}
       </div>
-<!-- phoenix:html-end -->
 
-<!-- phoenix:liveview-start -->
 ## Phoenix LiveView guidelines
 
 - **Never** use the deprecated `live_redirect` and `live_patch` functions, instead **always** use the `<.link navigate={href}>` and  `<.link patch={href}>` in templates, and `push_navigate` and `push_patch` functions LiveViews
@@ -366,23 +414,6 @@ Where the server handled it via:
       {:reply, %{two: 2}, socket}
     end
 
-### LiveView tests
-
-- `Phoenix.LiveViewTest` module and `LazyHTML` (included) for making your assertions
-- Form tests are driven by `Phoenix.LiveViewTest`'s `render_submit/2` and `render_change/2` functions
-- Come up with a step-by-step test plan that splits major test cases into small, isolated files. You may start with simpler tests that verify content exists, gradually add interaction tests
-- **Always reference the key element IDs you added in the LiveView templates in your tests** for `Phoenix.LiveViewTest` functions like `element/2`, `has_element/2`, selectors, etc
-- **Never** tests again raw HTML, **always** use `element/2`, `has_element/2`, and similar: `assert has_element?(view, "#my-form")`
-- Instead of relying on testing text content, which can change, favor testing for the presence of key elements
-- Focus on testing outcomes rather than implementation details
-- Be aware that `Phoenix.Component` functions like `<.form>` might produce different HTML than expected. Test against the output HTML structure, not your mental model of what you expect it to be
-- When facing test failures with element selectors, add debug statements to print the actual HTML, but use `LazyHTML` selectors to limit the output, ie:
-
-      html = render(view)
-      document = LazyHTML.from_fragment(html)
-      matches = LazyHTML.filter(document, "your-complex-selector")
-      IO.inspect(matches, label: "Matches")
-
 ### Form handling
 
 #### Creating a form from params
@@ -444,6 +475,4 @@ And **never** do this:
 
 - You are FORBIDDEN from accessing the changeset in the template as it will cause errors
 - **Never** use `<.form let={f} ...>` in the template, instead **always use `<.form for={@form} ...>`**, then drive all form references from the form assign as in `@form[:field]`. The UI should **always** be driven by a `to_form/2` assigned in the LiveView module that is derived from a changeset
-<!-- phoenix:liveview-end -->
 
-<!-- usage-rules-end -->
