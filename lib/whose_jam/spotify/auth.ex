@@ -4,7 +4,7 @@ defmodule WhoseJam.Spotify.Auth do
 
   Used to authenticate the host's **Premium** account so the TV browser can
   drive the Web Playback SDK. This is entirely separate from the app-level
-  Client Credentials token used for search (`WhoseJam.Spotify`).
+  Client Credentials token used for search (`WhoseJam.Spotify.Client`).
 
   ## Flow
 

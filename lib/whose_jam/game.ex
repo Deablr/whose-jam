@@ -16,6 +16,7 @@ defmodule WhoseJam.Game do
 
   alias WhoseJam.Content
   alias WhoseJam.Game.{Codes, Server}
+  alias WhoseJam.Music
 
   @registry WhoseJam.Game.Registry
   @supervisor WhoseJam.Game.Supervisor
@@ -45,8 +46,9 @@ defmodule WhoseJam.Game do
   def get_state(code), do: read(code, :get_state)
 
   @doc """
-  Host-scoped view for `code`: the public view plus the Spotify auth held in
-  state (including the access token). `nil` if no such game.
+  Host-scoped view for `code`: the public view plus `:music_auth`, the host's
+  music-service auth held in state (including any access token). `nil` if no
+  such game.
   """
   @spec host_state(String.t()) :: map() | nil
   def host_state(code), do: read(code, :host_state)
@@ -82,28 +84,48 @@ defmodule WhoseJam.Game do
   def set_config(code, overrides), do: command(code, {:set_config, overrides})
 
   @doc """
-  Store the host's Spotify auth result in state. Expects a map with
-  `:access_token`, `:refresh_token`, `:expires_at`, and `:premium?`.
+  Store the host's music-service auth: `provider_id` (an enabled
+  `WhoseJam.Music.Provider` id) and the provider-specific `auth` map returned
+  by that provider's `connect/1`. Re-calling with the same provider (a token
+  refresh) is always allowed; switching provider is lobby-only. Errors:
+  `:unknown_provider`, `:not_lobby`.
   """
-  @spec set_spotify(String.t(), map()) :: :ok | {:error, term()}
-  def set_spotify(code, spotify), do: command(code, {:set_spotify, spotify})
+  @spec set_music(String.t(), atom() | String.t(), map()) :: :ok | {:error, term()}
+  def set_music(code, provider_id, auth), do: command(code, {:set_music, provider_id, auth})
+
+  @doc """
+  Search the room's music service for songs matching `query` (what players do
+  while answering). `{:ok, [track]}`, or `{:error, :not_configured}`,
+  `{:error, :no_music}` (the host hasn't connected a service), `{:error, :not_found}`
+  (no such game) or a provider error.
+  """
+  @spec search_songs(String.t(), String.t()) :: {:ok, [map()]} | {:error, term()}
+  def search_songs(code, query) do
+    case host_state(code) do
+      nil -> {:error, :not_found}
+      %{music: nil} -> {:error, :no_music}
+      %{music: %{id: provider}, music_auth: auth} -> Music.search(provider, query, auth)
+    end
+  end
 
   @doc """
   Start the game. Requires at least `min_players` players (a host setting,
-  default three) and a Premium-verified Spotify auth. Errors: `:not_enough_players`, `:not_authenticated`, `:not_premium`,
-  `:already_started`.
+  default three) and a connected music service whose account is eligible to
+  play full songs. Errors: `:not_enough_players`, `:not_authenticated`,
+  `:not_eligible`, `:already_started`.
   """
   @spec start_game(String.t()) :: :ok | {:error, term()}
   def start_game(code), do: command(code, :start_game)
 
   @doc """
   Submit (or re-submit, until the answer timer ends) a song for `question_id`.
-  `song` is `%{uri, name, artist, album_art_url}`. `uri` must be a Spotify
-  track URI (`spotify:track:<22 alphanumerics>`), otherwise the submission is
-  rejected with `{:error, :invalid_song}`. `name`/`artist` are trimmed and
-  capped at 200 characters (non-strings become `""`). `album_art_url` is kept
-  only if it is a Spotify image-CDN URL (`https://i.scdn.co/image/<id>`);
-  anything else is stored as `nil`.
+  `song` is `%{uri, name, artist, album_art_url}`. `uri` must be a well-formed
+  song URI of the room's music provider (e.g. `spotify:track:<22 alphanumerics>`),
+  otherwise the submission is rejected with `{:error, :invalid_song}`.
+  `name`/`artist` are trimmed and capped at 200 characters (non-strings become
+  `""`). `album_art_url` is kept only if the provider recognizes it as its own
+  art host (e.g. `https://i.scdn.co/image/<id>`); anything else is stored as
+  `nil`. See `WhoseJam.Music.Track`.
   """
   @spec submit_song(String.t(), String.t(), String.t(), map()) :: :ok | {:error, term()}
   def submit_song(code, player_id, question_id, song),

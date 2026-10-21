@@ -24,8 +24,8 @@ defmodule WhoseJamWeb.Router do
     live "/tv/:code", HostLive
 
     get "/claim/:token", PlayerSessionController, :claim
-    get "/auth/spotify", SpotifyAuthController, :authorize
-    get "/auth/spotify/callback", SpotifyAuthController, :callback
+    get "/auth/:provider", MusicAuthController, :authorize
+    get "/auth/:provider/callback", MusicAuthController, :callback
   end
 
   # Other scopes may use custom stacks.

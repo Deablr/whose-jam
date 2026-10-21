@@ -41,14 +41,15 @@ defmodule WhoseJam.Game.Server do
   `public_view/1` (and is broadcast on `"game:" <> code`). The public view is a
   plain map safe for every client — it never leaks who submitted the current
   song, anyone else's pending submissions, or vote choices before the reveal.
-  The Spotify access token is exposed only through the host-scoped `:host_state`
-  query.
+  The host's music-service auth (including any access token) is exposed only
+  through the host-scoped `:host_state` query.
   """
 
   use GenServer, restart: :temporary
 
   alias WhoseJam.Content
   alias WhoseJam.Game.{Binning, Config, Scoring}
+  alias WhoseJam.Music
 
   # --- capacity / timing constants -----------------------------------------
 
@@ -68,9 +69,6 @@ defmodule WhoseJam.Game.Server do
 
   @guess_question_decoys 3
 
-  # Submitted song name/artist are trimmed to this many characters.
-  @max_song_text_length 200
-
   # --- server state ---------------------------------------------------------
 
   defstruct code: nil,
@@ -78,7 +76,8 @@ defmodule WhoseJam.Game.Server do
             overrides: %{},
             # frozen at start_game; nil while in :lobby
             config: nil,
-            spotify: nil,
+            # %{provider: id, auth: map} once the host connects a music service
+            music: nil,
             phase: :lobby,
             round_state: nil,
             # id => %{id, name, role, connected?}
@@ -203,8 +202,21 @@ defmodule WhoseJam.Game.Server do
     {:reply, {:error, :not_lobby}, state}
   end
 
-  def handle_call({:set_spotify, spotify}, _from, state) when is_map(spotify) do
-    {:reply, :ok, touch(%{state | spotify: spotify})}
+  def handle_call({:set_music, provider_id, auth}, _from, state) when is_map(auth) do
+    case Music.fetch_provider(provider_id) do
+      :error ->
+        {:reply, {:error, :unknown_provider}, state}
+
+      {:ok, mod} ->
+        if switching_mid_game?(state, mod.id()) do
+          {:reply, {:error, :not_lobby}, state}
+        else
+          # Broadcast: the public view carries which service this is, and the
+          # host screen re-derives its player from the change.
+          state = touch(%{state | music: %{provider: mod.id(), auth: auth}})
+          {:reply, :ok, broadcast(state)}
+        end
+    end
   end
 
   def handle_call(:start_game, _from, state) do
@@ -215,11 +227,11 @@ defmodule WhoseJam.Game.Server do
       role_count(state, :player) < current_config(state).min_players ->
         {:reply, {:error, :not_enough_players}, state}
 
-      is_nil(state.spotify) ->
+      is_nil(state.music) ->
         {:reply, {:error, :not_authenticated}, state}
 
-      not premium?(state.spotify) ->
-        {:reply, {:error, :not_premium}, state}
+      not music_eligible?(state.music) ->
+        {:reply, {:error, :not_eligible}, state}
 
       true ->
         state = start_game(state)
@@ -237,7 +249,7 @@ defmodule WhoseJam.Game.Server do
         %{phase: :answering} = state
       ) do
     with true <- assigned?(state, player_id, question_id) || {:error, :not_assigned},
-         {:ok, song} <- normalize_song(song) do
+         {:ok, song} <- normalize_song(state, song) do
       submissions = Map.put(state.submissions, {player_id, question_id}, song)
       state = %{state | submissions: submissions} |> touch() |> maybe_end_answering()
       {:reply, :ok, broadcast(state)}
@@ -821,6 +833,7 @@ defmodule WhoseJam.Game.Server do
       phase: state.phase,
       round_state: state.round_state,
       theme: theme_view(state.theme),
+      music: music_view(state.music),
       config: config_view(state),
       players: players_view(state),
       audience: audience_view(state),
@@ -834,9 +847,9 @@ defmodule WhoseJam.Game.Server do
     }
   end
 
-  # Host-scoped view: the shared view plus the Spotify auth held in state.
+  # Host-scoped view: the shared view plus the music-service auth held in state.
   defp host_view(state) do
-    Map.put(public_view(state), :spotify, state.spotify)
+    Map.put(public_view(state), :music_auth, state.music && state.music.auth)
   end
 
   # Player-scoped view: the shared view plus THIS player's own assignments and
@@ -1116,8 +1129,39 @@ defmodule WhoseJam.Game.Server do
 
   defp reset_scores(state), do: Map.new(state.participants, fn {id, _p} -> {id, 0} end)
 
-  defp premium?(spotify) do
-    fetch_field(spotify, :premium?) == true
+  # Switching service mid-game would strand every submitted song; a
+  # same-provider update (a token refresh) is always fine.
+  defp switching_mid_game?(%{phase: :lobby}, _provider_id), do: false
+
+  defp switching_mid_game?(%{music: %{provider: provider}}, provider_id),
+    do: provider != provider_id
+
+  defp switching_mid_game?(_state, _provider_id), do: false
+
+  defp music_eligible?(%{provider: provider, auth: auth}) do
+    case Music.fetch_provider(provider) do
+      {:ok, mod} -> mod.eligible?(auth)
+      :error -> false
+    end
+  end
+
+  # The part of the music service every client may see: which service it is and
+  # whether the host's account can play. Never the auth itself.
+  defp music_view(nil), do: nil
+
+  defp music_view(%{provider: provider} = music) do
+    case Music.fetch_provider(provider) do
+      {:ok, mod} ->
+        %{
+          id: mod.id(),
+          name: mod.name(),
+          video?: mod.video?(),
+          eligible?: music_eligible?(music)
+        }
+
+      :error ->
+        nil
+    end
   end
 
   # Internal pacing durations. Each has an estimator-consistent default; a
@@ -1144,62 +1188,12 @@ defmodule WhoseJam.Game.Server do
     end
   end
 
-  # Fetch a value from a map that may use atom or string keys.
-  defp fetch_field(map, key) when is_map(map) do
-    case Map.fetch(map, key) do
-      {:ok, v} -> v
-      :error -> Map.get(map, Atom.to_string(key))
-    end
-  end
+  # The whole song comes from the client; the room's music provider decides what
+  # a valid uri / art URL looks like (see `WhoseJam.Music.Track`).
+  defp normalize_song(%{music: %{provider: provider}}, song),
+    do: Music.normalize_track(provider, song)
 
-  defp fetch_field(_map, _key), do: nil
-
-  # The whole song comes from the client, so validate every field: the uri
-  # must be a Spotify track URI (it is handed to the Web Playback SDK) or the
-  # submission is rejected; name/artist are display text, so non-strings
-  # become "" and long strings are trimmed to @max_song_text_length
-  # codepoints (not graphemes, so stacked combining marks can't bypass the cap;
-  # the stored value is at most 4 * @max_song_text_length bytes).
-  defp normalize_song(song) do
-    uri = fetch_field(song, :uri)
-
-    if is_binary(uri) and Regex.match?(~r/\Aspotify:track:[A-Za-z0-9]{22}\z/, uri) do
-      {:ok,
-       %{
-         uri: uri,
-         name: song |> fetch_field(:name) |> safe_song_text(),
-         artist: song |> fetch_field(:artist) |> safe_song_text(),
-         album_art_url: song |> fetch_field(:album_art_url) |> safe_album_art_url()
-       }}
-    else
-      {:error, :invalid_song}
-    end
-  end
-
-  defp safe_song_text(text) when is_binary(text) do
-    trimmed = String.trim(text)
-    binary_part(trimmed, 0, codepoint_prefix_size(trimmed, @max_song_text_length, 0))
-  end
-
-  defp safe_song_text(_text), do: ""
-
-  # Byte size of the first `n` codepoints of `text`.
-  defp codepoint_prefix_size(_text, 0, size), do: size
-
-  defp codepoint_prefix_size(text, n, size) do
-    case String.next_codepoint(text) do
-      nil -> size
-      {codepoint, rest} -> codepoint_prefix_size(rest, n - 1, size + byte_size(codepoint))
-    end
-  end
-
-  # The album-art URL comes from the client and ends up in every screen's
-  # markup, so only Spotify image-CDN URLs survive; anything else becomes nil.
-  defp safe_album_art_url(url) when is_binary(url) do
-    if Regex.match?(~r{\Ahttps://i\.scdn\.co/image/[A-Za-z0-9]+\z}, url), do: url, else: nil
-  end
-
-  defp safe_album_art_url(_url), do: nil
+  defp normalize_song(_state, _song), do: {:error, :invalid_song}
 
   # --- timers ---------------------------------------------------------------
 

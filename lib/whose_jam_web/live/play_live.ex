@@ -13,7 +13,7 @@ defmodule WhoseJamWeb.PlayLive do
   """
   use WhoseJamWeb, :live_view
 
-  alias WhoseJam.{Game, Spotify}
+  alias WhoseJam.Game
   alias WhoseJamWeb.{Endpoint, Presence}
 
   @token_salt "player session"
@@ -66,7 +66,7 @@ defmodule WhoseJamWeb.PlayLive do
       edit_qid: nil,
       search_query: "",
       search_results: [],
-      spotify_error: nil,
+      search_error: nil,
       show_times_up: false,
       times_up_dismissed: false,
       # voting
@@ -102,7 +102,7 @@ defmodule WhoseJamWeb.PlayLive do
     query = String.trim(q)
 
     if query == "" do
-      {:noreply, assign(socket, search_query: "", search_results: [], spotify_error: nil)}
+      {:noreply, assign(socket, search_query: "", search_results: [], search_error: nil)}
     else
       {:noreply, run_search(socket, query)}
     end
@@ -122,20 +122,20 @@ defmodule WhoseJamWeb.PlayLive do
       :ok ->
         socket =
           socket
-          |> assign(search_query: "", search_results: [], spotify_error: nil, edit_qid: nil)
+          |> assign(search_query: "", search_results: [], search_error: nil, edit_qid: nil)
           |> refresh_view()
 
         {:noreply, socket}
 
       {:error, _reason} ->
         {:noreply,
-         assign(socket, spotify_error: "Couldn't lock in that pick — the timer may have ended.")}
+         assign(socket, search_error: "Couldn't lock in that pick — the timer may have ended.")}
     end
   end
 
   def handle_event("change_pick", %{"question" => qid}, socket) do
     {:noreply,
-     assign(socket, edit_qid: qid, search_query: "", search_results: [], spotify_error: nil)}
+     assign(socket, edit_qid: qid, search_query: "", search_results: [], search_error: nil)}
   end
 
   def handle_event("next_q", _params, socket) do
@@ -209,22 +209,22 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   defp run_search(socket, query) do
-    case Spotify.search(query) do
+    case Game.search_songs(socket.assigns.code, query) do
       {:ok, results} ->
-        assign(socket, search_query: query, search_results: results, spotify_error: nil)
+        assign(socket, search_query: query, search_results: results, search_error: nil)
 
-      {:error, :not_configured} ->
+      {:error, reason} when reason in [:not_configured, :no_music] ->
         assign(socket,
           search_query: query,
           search_results: [],
-          spotify_error: "Song search isn't set up on this server right now."
+          search_error: "Song search isn't set up on this server right now."
         )
 
       {:error, _other} ->
         assign(socket,
           search_query: query,
           search_results: [],
-          spotify_error: "Couldn't reach Spotify — try that search again."
+          search_error: "Couldn't reach the music service — try that search again."
         )
     end
   end
@@ -239,7 +239,7 @@ defmodule WhoseJamWeb.PlayLive do
       edit_qid: nil,
       search_query: "",
       search_results: [],
-      spotify_error: nil
+      search_error: nil
     )
   end
 
@@ -670,6 +670,9 @@ defmodule WhoseJamWeb.PlayLive do
     """
   end
 
+  defp search_placeholder(%{music: %{name: name}}), do: "Search #{name} for a song…"
+  defp search_placeholder(_view), do: "Search for a song…"
+
   # The search-or-submitted body for the current question.
   defp answer_body(assigns) do
     editing? = not assigns.question.submitted? or assigns.edit_qid == assigns.question.question_id
@@ -710,13 +713,13 @@ defmodule WhoseJamWeb.PlayLive do
             value={@search_query}
             autocomplete="off"
             phx-debounce="300"
-            placeholder="Search Spotify for a song…"
+            placeholder={search_placeholder(@view)}
             class="w-full rounded-2xl border-2 border-jam-cream/10 bg-jam-ink/60 px-5 py-4 text-white placeholder-white/40 focus:border-jam-pink focus:outline-none"
           />
         </form>
 
-        <p :if={@spotify_error} class="mt-3 rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          {@spotify_error}
+        <p :if={@search_error} class="mt-3 rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {@search_error}
         </p>
 
         <div class="mt-3 space-y-2">
@@ -750,7 +753,7 @@ defmodule WhoseJamWeb.PlayLive do
         </div>
 
         <p
-          :if={@search_results == [] and @search_query != "" and is_nil(@spotify_error)}
+          :if={@search_results == [] and @search_query != "" and is_nil(@search_error)}
           class="mt-3 text-center text-sm text-white/40"
         >
           No matches — try another search.

@@ -11,38 +11,41 @@ defmodule WhoseJamWeb.HostLive do
   ## Music services
 
   The UI treats the music service as a pluggable choice: `music_services/2`
-  lists the providers the host can connect (Spotify today), and everything else
-  speaks in terms of "the music service". When no premium-ready service is
-  connected the lobby prompts the host to connect one.
+  lists every enabled `WhoseJam.Music.Provider`, and everything else speaks in
+  terms of "the music service". How a provider is connected depends on its
+  `connect_kind/0`: `:oauth_redirect` providers are a plain link to
+  `/auth/:provider`; `:none` providers connect on click. When no eligible
+  service is connected the lobby prompts the host to connect one.
 
   ## Playback approach
 
-  Playback is **attribute-driven**, not command-driven. The hook element carries
-  three data attributes:
+  Playback is **attribute-driven**, not command-driven. The `MusicPlayer` hook
+  element carries these data attributes:
 
-    * `data-token` — the host's current access token (refreshed server-side on a
-      timer via `WhoseJam.Spotify.Auth.refresh/1` + `Game.set_spotify/2`).
-    * `data-uri` — the Spotify track URI to be playing *right now*, or `""`.
+    * `data-provider` — which JS player module to run
+      (`assets/js/hooks/music/<id>.js`).
+    * `data-config` — the provider's `client_config/1` as JSON (for Spotify the
+      host's access token, refreshed server-side on a timer via
+      `WhoseJam.Music.refresh_if_due/2` + `Game.set_music/3`).
+    * `data-uri` — the song URI to be playing *right now*, or `""`.
     * `data-round` — the current round's identity (sub-round + round index).
 
   `data-uri` holds the current round's song for the whole `:playing` phase
   (listening, voting and the reveal), and `data-round` identifies the round so
   a track repeated in back-to-back rounds still restarts. The hook reconciles
-  real playback toward them (`PUT /v1/me/player/play` with the device id). When
-  the track finishes the hook pushes `"song_ended"`, which opens voting (or
-  starts the vote countdown if voting is already open). Any token/SDK failure
-  pushes `"playback_error"` and we show a visible banner — if the TV never
-  reports the end, the server's voting-safety timer starts the countdown, so a
-  dead player never wedges the game.
+  real playback toward them. When the track finishes the player module reports
+  it and the hook pushes `"song_ended"`, which opens voting (or starts the vote
+  countdown if voting is already open). Any failure pushes `"playback_error"`
+  and we show a visible banner — if the TV never reports the end, the server's
+  voting-safety timer starts the countdown, so a dead player never wedges the
+  game. Providers with `video?/0` get the player shown on screen instead of
+  hidden.
   """
   use WhoseJamWeb, :live_view
 
   alias WhoseJam.Game
   alias WhoseJam.Game.Config
-  alias WhoseJam.Spotify.Auth
-
-  @token_refresh_lead_s 60
-  @token_refresh_floor_ms 30_000
+  alias WhoseJam.Music
 
   @impl true
   def mount(%{"code" => code}, _session, socket) do
@@ -75,11 +78,11 @@ defmodule WhoseJamWeb.HostLive do
   def handle_info({:game_state, _public}, socket) do
     # The broadcast payload omits the music-service auth; refetch the host view
     # so the connect status always reflects the latest token/premium state.
-    previous = spotify_of(socket.assigns.view)
+    previous = music_of(socket.assigns.view)
     socket = assign(socket, view: Game.host_state(socket.assigns.code))
 
     socket =
-      if spotify_of(socket.assigns.view) != previous, do: assign_playback(socket), else: socket
+      if music_of(socket.assigns.view) != previous, do: assign_playback(socket), else: socket
 
     {:noreply, socket}
   end
@@ -111,6 +114,9 @@ defmodule WhoseJamWeb.HostLive do
       :ok ->
         {:noreply, socket}
 
+      {:error, :not_eligible} ->
+        {:noreply, put_flash(socket, :error, ineligible_message(socket.assigns.view))}
+
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, start_error(reason))}
     end
@@ -136,8 +142,30 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   def handle_event("playback_error", params, socket) do
+    provider_id =
+      case socket.assigns.view do
+        %{music: %{id: id}} -> id
+        _ -> nil
+      end
+
     {:noreply,
-     assign(socket, playback_ready?: false, playback_error: playback_error_message(params))}
+     assign(socket,
+       playback_ready?: false,
+       playback_error: Music.playback_error_message(provider_id, params)
+     )}
+  end
+
+  # Connect a provider on click: `:none` providers connect on the spot,
+  # `:oauth_redirect` ones send the host through the OAuth round-trip.
+  def handle_event("connect_music", %{"provider" => provider_id}, socket) do
+    case Music.fetch_provider(provider_id) do
+      {:ok, provider} -> connect_music(provider, socket)
+      :error -> {:noreply, put_flash(socket, :error, "Unknown music service.")}
+    end
+  end
+
+  def handle_event("connect_music", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Unknown music service.")}
   end
 
   @host_settings ~w(answer_timer_s vote_delay_s vote_timer_s questions_per_player
@@ -155,9 +183,38 @@ defmodule WhoseJamWeb.HostLive do
 
   defp start_error(:not_enough_players), do: "Not enough players have joined yet."
   defp start_error(:not_authenticated), do: "Connect a music service first."
-  defp start_error(:not_premium), do: "That Spotify account isn't Premium — playback won't work."
   defp start_error(:already_started), do: "The game has already started."
   defp start_error(_), do: "Couldn't start the game. Please try again."
+
+  defp connect_music(provider, socket) do
+    case provider.connect_kind() do
+      :none ->
+        with {:ok, auth} <- provider.connect(%{}),
+             :ok <- Game.set_music(socket.assigns.code, provider.id(), auth) do
+          {:noreply, announce_connected(socket, provider, auth)}
+        else
+          {:error, :not_lobby} ->
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "The game has started — you can't switch music service now."
+             )}
+
+          _ ->
+            {:noreply, put_flash(socket, :error, "Couldn't connect #{provider.name()}.")}
+        end
+
+      :oauth_redirect ->
+        {:noreply, redirect(socket, to: ~p"/auth/#{provider.id()}?code=#{socket.assigns.code}")}
+    end
+  end
+
+  defp announce_connected(socket, provider, auth) do
+    if provider.eligible?(auth),
+      do: put_flash(socket, :info, "#{provider.name()} connected."),
+      else: put_flash(socket, :error, provider.ineligible_message())
+  end
 
   # =========================================================================
   # Playback token
@@ -166,67 +223,76 @@ defmodule WhoseJamWeb.HostLive do
   defp assign_playback(socket) do
     if ref = socket.assigns.refresh_timer, do: Process.cancel_timer(ref)
 
-    case usable_spotify(socket.assigns.view) do
-      {:ok, spotify} ->
-        {token, expires_at} = ensure_fresh_token(socket.assigns.code, spotify)
+    case usable_music(socket.assigns.view) do
+      {:ok, provider, auth} ->
+        auth = ensure_fresh_auth(socket.assigns.code, provider, auth)
 
-        assign(socket,
-          spotify_token: token,
-          spotify_status: :ok,
-          refresh_timer: schedule_token_refresh(expires_at)
+        assign(reset_player_status(socket, provider.id()),
+          music_status: :ok,
+          music_provider: provider.id(),
+          music_video?: provider.video?(),
+          music_config: Jason.encode!(provider.client_config(auth)),
+          refresh_timer: schedule_refresh(Music.refresh_delay_ms(auth))
         )
 
       {:unavailable, reason} ->
         assign(socket,
-          spotify_token: nil,
-          spotify_status: {:unavailable, reason},
+          music_status: {:unavailable, reason},
+          music_provider: nil,
+          music_video?: false,
+          music_config: "{}",
           playback_ready?: false,
           refresh_timer: nil
         )
     end
   end
 
-  defp usable_spotify(%{spotify: spotify}) when is_map(spotify) do
-    if Map.get(spotify, :premium?) == true do
-      {:ok, spotify}
-    else
-      {:unavailable, "The connected Spotify account isn't Premium, so playback is disabled."}
+  # A different provider means a new player element: its readiness and errors
+  # are not the previous one's.
+  defp reset_player_status(socket, provider_id) do
+    if socket.assigns[:music_provider] == provider_id,
+      do: socket,
+      else: assign(socket, playback_ready?: false, playback_error: nil)
+  end
+
+  defp usable_music(%{music: %{id: id, eligible?: true}, music_auth: auth}) do
+    case Music.fetch_provider(id) do
+      {:ok, provider} -> {:ok, provider, auth}
+      :error -> {:unavailable, "That music service isn't available on this server."}
     end
   end
 
-  defp usable_spotify(_view), do: {:unavailable, "No music service is connected."}
+  defp usable_music(%{music: %{eligible?: false}} = view),
+    do: {:unavailable, ineligible_message(view)}
 
-  defp spotify_of(%{spotify: spotify}), do: spotify
-  defp spotify_of(_view), do: nil
+  defp usable_music(_view), do: {:unavailable, "No music service is connected."}
 
-  # Returns {access_token, expires_at}, refreshing (and persisting) if the token
-  # is within the refresh lead of expiring.
-  defp ensure_fresh_token(code, spotify) do
-    access_token = Map.get(spotify, :access_token)
-    expires_at = Map.get(spotify, :expires_at)
-    threshold = DateTime.add(DateTime.utc_now(), @token_refresh_lead_s, :second)
-
-    if is_nil(expires_at) or DateTime.compare(expires_at, threshold) == :gt do
-      {access_token, expires_at}
-    else
-      case Auth.refresh(Map.get(spotify, :refresh_token)) do
-        {:ok, %{access_token: new_token, expires_at: new_expiry}} ->
-          Game.set_spotify(code, %{spotify | access_token: new_token, expires_at: new_expiry})
-          {new_token, new_expiry}
-
-        _ ->
-          {access_token, expires_at}
-      end
+  defp ineligible_message(%{music: %{id: id}}) do
+    case Music.fetch_provider(id) do
+      {:ok, provider} -> provider.ineligible_message()
+      :error -> "That music account can't play full songs."
     end
   end
 
-  defp schedule_token_refresh(nil), do: nil
+  defp ineligible_message(_view), do: "Connect a music service first."
 
-  defp schedule_token_refresh(%DateTime{} = expires_at) do
-    secs = DateTime.diff(expires_at, DateTime.utc_now(), :second)
-    ms = max(@token_refresh_floor_ms, (secs - @token_refresh_lead_s) * 1000)
-    Process.send_after(self(), :refresh_token, ms)
+  defp music_of(%{music: music, music_auth: auth}), do: {music, auth}
+  defp music_of(_view), do: nil
+
+  # Refreshes (and stores) the host's credentials if they are about to expire.
+  defp ensure_fresh_auth(code, provider, auth) do
+    case Music.refresh_if_due(provider, auth) do
+      {fresh, true} ->
+        Game.set_music(code, provider.id(), fresh)
+        fresh
+
+      {auth, false} ->
+        auth
+    end
   end
+
+  defp schedule_refresh(nil), do: nil
+  defp schedule_refresh(ms), do: Process.send_after(self(), :refresh_token, ms)
 
   defp qr_svg(url) do
     url
@@ -247,24 +313,6 @@ defmodule WhoseJamWeb.HostLive do
 
   defp play_round(_view), do: ""
 
-  defp playback_error_message(%{"reason" => "initialization_error"}),
-    do:
-      "This browser can't play protected Spotify audio (DRM/Widevine unavailable). " <>
-        "Open this page in desktop Chrome, Edge, or Firefox — built-in app browsers " <>
-        "(editor/IDE previews, Electron apps) don't include Widevine. Use https, or " <>
-        "localhost on this machine; http on a LAN IP also disables DRM."
-
-  defp playback_error_message(%{"reason" => "no_token"}),
-    do: "No Spotify token — reconnect Spotify in Settings."
-
-  defp playback_error_message(%{"reason" => "authentication_error"}),
-    do: "Spotify rejected the token — reconnect Spotify in Settings."
-
-  defp playback_error_message(%{"reason" => "account_error"}),
-    do: "Spotify playback needs a Premium account."
-
-  defp playback_error_message(_), do: "Spotify playback is unavailable right now."
-
   # Lobby: only real player failures (missing connection is handled by the
   # connect prompt). In game: anything that stops audio.
   defp playback_banner(assigns) do
@@ -272,7 +320,7 @@ defmodule WhoseJamWeb.HostLive do
       assigns.view.phase == :finished -> nil
       assigns.playback_error -> assigns.playback_error
       assigns.view.phase == :lobby -> nil
-      match?({:unavailable, _}, assigns.spotify_status) -> elem(assigns.spotify_status, 1)
+      match?({:unavailable, _}, assigns.music_status) -> elem(assigns.music_status, 1)
       true -> nil
     end
   end
@@ -281,23 +329,34 @@ defmodule WhoseJamWeb.HostLive do
   # Music services
   # =========================================================================
 
-  # Every provider the host can connect. Spotify is the only one today; new
-  # services slot in here with the same shape.
+  # Every provider the host can connect, with its status in this room.
   defp music_services(view, code) do
-    [
+    for provider <- Music.providers() do
       %{
-        id: :spotify,
-        name: "Spotify",
-        requirement: "Premium account required for full-song playback.",
-        status: spotify_connection(view.spotify),
-        connect_href: ~p"/auth/spotify?code=#{code}"
+        id: provider.id(),
+        name: provider.name(),
+        requirement: provider.requirement(),
+        ineligible_message: provider.ineligible_message(),
+        status: service_status(provider, view),
+        connect_href:
+          if(provider.connect_kind() == :oauth_redirect,
+            do: ~p"/auth/#{provider.id()}?code=#{code}"
+          )
       }
-    ]
+    end
   end
 
-  defp spotify_connection(%{premium?: true}), do: :connected
-  defp spotify_connection(spotify) when is_map(spotify), do: :not_premium
-  defp spotify_connection(_), do: :disconnected
+  defp service_status(provider, view) do
+    provider_id = provider.id()
+
+    case view.music do
+      %{id: ^provider_id, eligible?: eligible?} ->
+        if eligible?, do: :connected, else: :ineligible
+
+      _ ->
+        if provider.configured?(), do: :disconnected, else: :unconfigured
+    end
+  end
 
   # =========================================================================
   # Render
@@ -342,15 +401,29 @@ defmodule WhoseJamWeb.HostLive do
         <img src={@art_url} alt="" />
       </div>
 
+      <%!-- Keyed by provider, so switching service remounts the player. Video
+           providers must stay visible while a song plays. --%>
       <div
-        :if={@spotify_status == :ok}
-        id="spotify-player"
-        phx-hook="SpotifyPlayer"
-        data-token={@spotify_token}
+        :if={@music_status == :ok}
+        id={"music-player-#{@music_provider}"}
+        phx-hook="MusicPlayer"
+        data-provider={@music_provider}
+        data-config={@music_config}
         data-uri={play_uri(@view)}
         data-round={play_round(@view)}
-        class="hidden"
+        class={
+          if @music_video? and @view.phase == :playing,
+            do: "fixed bottom-6 left-6 z-20 aspect-video w-[30rem] overflow-hidden rounded-2xl",
+            else: "hidden"
+        }
       >
+        <div
+          :if={@music_video?}
+          id={"music-video-#{@music_provider}"}
+          phx-update="ignore"
+          data-music-video
+        >
+        </div>
       </div>
 
       {top_bar(assigns)}
@@ -478,11 +551,21 @@ defmodule WhoseJamWeb.HostLive do
           </p>
         </div>
         <a
+          :if={service.connect_href && service.status != :unconfigured}
           href={service.connect_href}
           class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
         >
           {service_action(service.status)}
         </a>
+        <button
+          :if={is_nil(service.connect_href) && service.status != :unconfigured}
+          type="button"
+          phx-click="connect_music"
+          phx-value-provider={service.id}
+          class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
+        >
+          {service_action(service.status)}
+        </button>
       </li>
       <li class="flex items-center gap-4 rounded-box border border-dashed border-jam-cream/15 p-4 text-base-content/50">
         <div class="grid place-items-center size-11 rounded-full bg-base-300 shrink-0">
@@ -496,17 +579,18 @@ defmodule WhoseJamWeb.HostLive do
 
   defp service_status_text(%{status: :connected, name: name}), do: "Connected — #{name} is ready."
 
-  defp service_status_text(%{status: :not_premium}),
-    do: "This account isn't Premium. Reconnect with a Premium account."
+  defp service_status_text(%{status: :ineligible, ineligible_message: message}), do: message
+
+  defp service_status_text(%{status: :unconfigured}), do: "Not configured on this server."
 
   defp service_status_text(%{requirement: requirement}), do: requirement
 
   defp service_status_class(:connected), do: "text-success"
-  defp service_status_class(:not_premium), do: "text-error"
+  defp service_status_class(:ineligible), do: "text-error"
   defp service_status_class(_), do: "text-base-content/60"
 
   defp service_action(:connected), do: "Switch account"
-  defp service_action(:not_premium), do: "Reconnect"
+  defp service_action(:ineligible), do: "Reconnect"
   defp service_action(_), do: "Connect"
 
   # ---- settings panel ----------------------------------------------------

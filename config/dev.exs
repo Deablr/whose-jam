@@ -75,3 +75,9 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Music providers offered to the host. Mock is a fake catalog for local play.
+config :whose_jam, :music_providers, [
+  WhoseJam.Music.Providers.Spotify,
+  WhoseJam.Music.Providers.Mock
+]

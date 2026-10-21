@@ -3,8 +3,9 @@ defmodule WhoseJam.Spotify.Client do
   Low-level HTTP client for the Spotify Web API.
 
   Pure request/response helpers — no caching, no processes. All HTTP goes
-  through `req`. Callers (the cache and the facade) layer token caching and
-  result caching on top of these functions.
+  through `req`. The provider (`WhoseJam.Music.Providers.Spotify`) and
+  `WhoseJam.Music.Cache` layer token caching and result caching on top of
+  these functions.
 
   This module implements the **app-level Client Credentials flow**: an
   application token (not tied to any host account) used only for track search.
@@ -16,12 +17,7 @@ defmodule WhoseJam.Spotify.Client do
   @search_url "https://api.spotify.com/v1/search"
   @search_limit 8
 
-  @type track :: %{
-          uri: String.t(),
-          name: String.t(),
-          artist: String.t(),
-          album_art_url: String.t() | nil
-        }
+  @type track :: WhoseJam.Music.Track.t()
 
   @doc """
   Fetches a fresh app-level access token via the Client Credentials flow.

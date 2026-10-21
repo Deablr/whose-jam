@@ -61,6 +61,15 @@ defmodule WhoseJam.Game.ServerTest do
     end)
   end
 
+  # Drop any `{:game_state, _}` broadcasts already in the mailbox.
+  defp flush_game_state do
+    receive do
+      {:game_state, _} -> flush_game_state()
+    after
+      0 -> :ok
+    end
+  end
+
   defp insert_theme(style_sequence) do
     %Theme{}
     |> Theme.changeset(%{
@@ -90,7 +99,7 @@ defmodule WhoseJam.Game.ServerTest do
     theme
   end
 
-  # Create a game, join `n` players, verify Spotify Premium, apply fast timers.
+  # Create a game, join `n` players, connect Spotify Premium, apply fast timers.
   defp lobby_with_players(theme, n, extra_overrides \\ %{}) do
     {:ok, code} = Game.create_game(theme.id, Map.merge(@fast_overrides, extra_overrides))
 
@@ -100,7 +109,7 @@ defmodule WhoseJam.Game.ServerTest do
         id
       end
 
-    :ok = Game.set_spotify(code, @premium)
+    :ok = Game.set_music(code, :spotify, @premium)
     {code, ids}
   end
 
@@ -236,7 +245,7 @@ defmodule WhoseJam.Game.ServerTest do
       {:ok, code} = Game.create_game(theme.id)
       {:ok, _} = Game.join(code, "A")
       {:ok, _} = Game.join(code, "B")
-      :ok = Game.set_spotify(code, @premium)
+      :ok = Game.set_music(code, :spotify, @premium)
 
       assert Game.start_game(code) == {:error, :not_enough_players}
     end
@@ -253,17 +262,17 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.start_game(code) == :ok
     end
 
-    test "requires Spotify auth and Premium verification" do
+    test "requires a connected music service whose account is eligible" do
       theme = guess_who_theme()
       {:ok, code} = Game.create_game(theme.id, @fast_overrides)
       for i <- 1..3, do: Game.join(code, "P#{i}")
 
       assert Game.start_game(code) == {:error, :not_authenticated}
 
-      :ok = Game.set_spotify(code, %{access_token: "t", premium?: false})
-      assert Game.start_game(code) == {:error, :not_premium}
+      :ok = Game.set_music(code, :spotify, %{access_token: "t", premium?: false})
+      assert Game.start_game(code) == {:error, :not_eligible}
 
-      :ok = Game.set_spotify(code, @premium)
+      :ok = Game.set_music(code, :spotify, @premium)
       assert Game.start_game(code) == :ok
     end
   end
@@ -888,16 +897,153 @@ defmodule WhoseJam.Game.ServerTest do
     end
   end
 
-  describe "host_state" do
-    test "exposes the Spotify token only through the host-scoped query" do
+  describe "music providers" do
+    alias WhoseJam.Music
+    alias WhoseJam.MusicFixtures
+
+    # The same game runs unchanged on every provider: the runtime only ever
+    # sees the provider-neutral song shape.
+    for id <- WhoseJam.MusicFixtures.sample_ids() do
+      @id id
+
+      test "#{id}: connect, start, submit its own song, and see it back" do
+        sample = MusicFixtures.sample(@id)
+        {:ok, provider} = Music.fetch_provider(@id)
+
+        theme = guess_who_theme()
+        {:ok, code} = Game.create_game(theme.id, @fast_overrides)
+        ids = for i <- 1..3, do: elem(Game.join(code, "P#{i}"), 1).player_id
+
+        assert Game.start_game(code) == {:error, :not_authenticated}
+        :ok = Game.set_music(code, @id, sample.auth)
+
+        assert Game.get_state(code).music ==
+                 %{
+                   id: @id,
+                   name: provider.name(),
+                   video?: provider.video?(),
+                   eligible?: true
+                 }
+
+        :ok = Game.start_game(code)
+        [p1 | _] = ids
+        [q] = Game.player_view(code, p1).me.assigned
+
+        assert Game.submit_song(code, p1, q.question_id, sample.song) == :ok
+        assert hd(Game.player_view(code, p1).me.assigned).song == sample.song
+      end
+
+      test "#{id}: an ineligible account can't start the game" do
+        sample = MusicFixtures.sample(@id)
+
+        if sample.ineligible_auth do
+          theme = guess_who_theme()
+          {:ok, code} = Game.create_game(theme.id, @fast_overrides)
+          for i <- 1..3, do: Game.join(code, "P#{i}")
+
+          :ok = Game.set_music(code, @id, sample.ineligible_auth)
+          assert Game.get_state(code).music.eligible? == false
+          assert Game.start_game(code) == {:error, :not_eligible}
+        end
+      end
+    end
+
+    test "a song from another provider is rejected" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      [q] = Game.player_view(code, p1).me.assigned
+
+      for other <- [:mock] do
+        foreign = MusicFixtures.sample(other).song
+
+        assert Game.submit_song(code, p1, q.question_id, foreign) == {:error, :invalid_song}
+      end
+    end
+
+    test "an unknown or disabled provider can't be connected" do
       theme = guess_who_theme()
       {:ok, code} = Game.create_game(theme.id)
-      :ok = Game.set_spotify(code, @premium)
 
-      # Never in the shared view...
-      refute Map.has_key?(Game.get_state(code), :spotify)
-      # ...but present for the host.
-      assert Game.host_state(code).spotify.access_token == "tok"
+      assert Game.set_music(code, :nope, %{}) == {:error, :unknown_provider}
+      assert Game.get_state(code).music == nil
+    end
+
+    test "the service can be switched in the lobby but not mid-game" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+
+      :ok = Game.set_music(code, :mock, %{})
+      assert Game.get_state(code).music.id == :mock
+      :ok = Game.set_music(code, :spotify, @premium)
+
+      :ok = Game.start_game(code)
+      assert Game.set_music(code, :mock, %{}) == {:error, :not_lobby}
+      # A same-provider update (token refresh) is still fine mid-game.
+      assert Game.set_music(code, :spotify, %{@premium | access_token: "fresh"}) == :ok
+      assert Game.host_state(code).music_auth.access_token == "fresh"
+    end
+
+    test "connecting broadcasts the new service, never its auth, to every client" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      flush_game_state()
+
+      :ok = Game.set_music(code, :mock, %{secret: "s3cr3t"})
+
+      assert_receive {:game_state, %{music: %{id: :mock}} = view}
+      refute Map.has_key?(view, :music_auth)
+      refute inspect(view) =~ "s3cr3t"
+      refute Map.has_key?(Game.player_view(code, p1), :music_auth)
+      assert Game.host_state(code).music_auth == %{secret: "s3cr3t"}
+    end
+
+    test "a fresh game has no music auth, and a non-map auth is rejected" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      assert Game.host_state(code).music_auth == nil
+      assert {:error, _} = Game.set_music(code, :mock, nil)
+      assert Game.get_state(code).music == nil
+    end
+
+    test "provider ids may be strings (as events and URLs carry them)" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      # Same-provider refresh mid-game is allowed; a different one is not.
+      assert Game.set_music(code, "spotify", %{@premium | access_token: "fresh"}) == :ok
+      assert Game.set_music(code, "mock", %{}) == {:error, :not_lobby}
+      assert Game.get_state(code).music.id == :spotify
+    end
+
+    test "players search the room's service" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      assert Game.search_songs(code, "neon") == {:error, :no_music}
+      assert Game.search_songs("NOPE", "neon") == {:error, :not_found}
+
+      :ok = Game.set_music(code, :mock, %{})
+      assert {:ok, [%{name: "Neon Overdrive"}]} = Game.search_songs(code, "neon")
+    end
+  end
+
+  describe "host_state" do
+    test "exposes the music auth (and its token) only through the host-scoped query" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+      :ok = Game.set_music(code, :spotify, @premium)
+
+      # The shared view says which service and whether it can play — no auth...
+      assert Game.get_state(code).music ==
+               %{id: :spotify, name: "Spotify", video?: false, eligible?: true}
+
+      refute Map.has_key?(Game.get_state(code), :music_auth)
+      # ...but the host gets the auth.
+      assert Game.host_state(code).music_auth.access_token == "tok"
     end
   end
 
