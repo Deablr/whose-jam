@@ -86,4 +86,49 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyleTest do
       assert Enum.map(issues, & &1.line_no) |> Enum.sort() == [5, 7]
     end)
   end
+
+  test "an allowed helper's string arguments may contain braces, parens and escaped quotes" do
+    ~S|<div style={progress_style("}")}></div>| |> check() |> refute_issues()
+    ~S|<div style={progress_style("a)b\"}")}></div>| |> check() |> refute_issues()
+    ~S|<div style={progress_style(%{a: 1})}></div>| |> check() |> refute_issues()
+  end
+
+  test "char literals cannot hide a concatenation onto an allowed helper" do
+    ~S|<div style={progress_style(?() <> @x <> to_string(?))}></div>| |> check() |> assert_issue()
+    ~S|<div style={progress_style(?") <> @x <> to_string(?")}></div>| |> check() |> assert_issue()
+  end
+
+  test "a body that cannot be parsed is a violation, not a pass" do
+    ~S|<div style={"a" <> <<?">> <> @song.art}></div>| |> check() |> assert_issue()
+    ~S|<div style={progress_style(1)></div>| |> check() |> assert_issue()
+    ~S|<div style={}></div>| |> check() |> assert_issue()
+  end
+
+  test "pipes, remote calls and bare variables are not a call to an allowed helper" do
+    ~S'''
+    <div style={@p |> progress_style()}></div>
+    '''
+    |> check()
+    |> assert_issue()
+
+    ~S|<div style={Foo.progress_style(@p)}></div>| |> check() |> assert_issue()
+    ~S|<div style={progress_style}></div>| |> check() |> assert_issue()
+  end
+
+  test "attribute names are matched case-insensitively" do
+    ~S|<div STYLE={@x}></div>| |> check() |> assert_issue()
+    ~S|<div Style={@x}></div>| |> check() |> assert_issue()
+  end
+
+  test "line numbers are right for ~H heredocs and inline sigils" do
+    "defmodule Sample do\n  def render(assigns) do\n    ~H\'\'\'\n    <div style={@x}></div>\n    \'\'\'\n  end\nend\n"
+    |> to_source_file()
+    |> run_check(NoDynamicStyle, @allowed)
+    |> assert_issue(fn issue -> assert issue.line_no == 4 end)
+
+    "defmodule Sample do\n  def render(assigns) do\n    ~H\"<div style={@x}></div>\"\n  end\nend\n"
+    |> to_source_file()
+    |> run_check(NoDynamicStyle, @allowed)
+    |> assert_issue(fn issue -> assert issue.line_no == 3 end)
+  end
 end

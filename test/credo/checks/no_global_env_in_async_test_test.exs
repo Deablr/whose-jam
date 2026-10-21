@@ -108,4 +108,45 @@ defmodule WhoseJam.Credo.Checks.NoGlobalEnvInAsyncTestTest do
     |> check()
     |> assert_issue(fn issue -> assert issue.line_no == 8 end)
   end
+
+  test "a nested serial module inside an async module is judged on its own flag" do
+    """
+    defmodule OuterTest do
+      use ExUnit.Case, async: true
+
+      defmodule InnerTest do
+        use ExUnit.Case, async: false
+        test "x", do: Application.put_env(:app, :key, 1)
+      end
+    end
+    """
+    |> check()
+    |> refute_issues()
+  end
+
+  test "a nested async module inside a serial module is flagged at its own line" do
+    """
+    defmodule OuterTest do
+      use ExUnit.Case, async: false
+
+      defmodule InnerTest do
+        use ExUnit.Case, async: true
+        test "x", do: Application.put_env(:app, :key, 1)
+      end
+    end
+    """
+    |> check()
+    |> assert_issue(fn issue -> assert issue.line_no == 6 end)
+  end
+
+  test "the keyword form of defmodule is checked too" do
+    """
+    defmodule AsyncTest, do: (
+      use ExUnit.Case, async: true
+      def helper, do: System.put_env("A", "1")
+    )
+    """
+    |> check()
+    |> assert_issue()
+  end
 end

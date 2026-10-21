@@ -17,13 +17,14 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyle do
       a class or an `<img src={...}>`, which HEEx escapes correctly.
 
       Only `~H` sigils in `.ex` files are scanned: Credo does not parse
-      standalone `.html.heex` templates, so keep dynamic `style` out of those by
-      hand.
+      standalone `.html.heex` templates, and a style passed through a spread
+      (`<div {@rest}>`) is not visible either, so keep dynamic `style` out of
+      those by hand.
       """,
       params: [allowed_helpers: "Function names allowed to produce a `style` value."]
     ]
 
-  @style_attr ~r/(?<![\w:-])style\s*=\s*\{/
+  @style_attr ~r/(?<![\w:-])style\s*=\s*\{/i
 
   @impl true
   def run(%SourceFile{} = source_file, params) do
@@ -40,12 +41,12 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyle do
          allowed
        )
        when is_binary(template) do
-    first_line = meta[:line] + if(meta[:delimiter] == ~s("""), do: 1, else: 0)
+    first_line = meta[:line] + if(meta[:delimiter] in [~s("""), "'''"], do: 1, else: 0)
 
     new_issues =
       for [{start, len}] <- Regex.scan(@style_attr, template, return: :index),
-          body = attr_body(binary_part(template, start + len, byte_size(template) - start - len)),
-          not allowed_call?(body, allowed) do
+          rest = binary_part(template, start + len, byte_size(template) - start - len),
+          not allowed_call?(attr_ast(rest), allowed) do
         before = binary_part(template, 0, start)
         line_no = first_line + length(String.split(before, "\n")) - 1
 
@@ -62,54 +63,27 @@ defmodule WhoseJam.Credo.Checks.NoDynamicStyle do
 
   defp traverse(ast, issues, _issue_meta, _allowed), do: {ast, issues}
 
-  # The text of the `{...}` expression, given the text right after its `{`.
-  defp attr_body(rest), do: attr_body(rest, 1, false, [])
-
-  defp attr_body(<<>>, _depth, _in_string, _acc), do: nil
-
-  defp attr_body(<<?\\, c, rest::binary>>, depth, true, acc),
-    do: attr_body(rest, depth, true, [c, ?\\ | acc])
-
-  defp attr_body(<<?", rest::binary>>, depth, in_string, acc),
-    do: attr_body(rest, depth, not in_string, [?" | acc])
-
-  defp attr_body(<<?{, rest::binary>>, depth, false, acc),
-    do: attr_body(rest, depth + 1, false, [?{ | acc])
-
-  defp attr_body(<<?}, _rest::binary>>, 1, false, acc),
-    do: acc |> Enum.reverse() |> IO.iodata_to_binary()
-
-  defp attr_body(<<?}, rest::binary>>, depth, false, acc),
-    do: attr_body(rest, depth - 1, false, [?} | acc])
-
-  defp attr_body(<<c, rest::binary>>, depth, in_string, acc),
-    do: attr_body(rest, depth, in_string, [c | acc])
-
-  # True only when the whole expression is one call to an allowed helper.
-  defp allowed_call?(body, allowed) do
-    case Regex.run(~r/\A\s*([a-z_][a-zA-Z0-9_]*[?!]?)\(/, body, return: :index) do
-      [{_, _}, {name_start, name_len}] ->
-        rest_start = name_start + name_len + 1
-
-        binary_part(body, name_start, name_len) in allowed and
-          sole_call?(binary_part(body, rest_start, byte_size(body) - rest_start))
-
-      nil ->
-        false
-    end
+  # `rest` is the template text right after the attribute's `{`. The closing
+  # brace is the first `}` whose preceding text parses as Elixir: an earlier `}`
+  # sits inside an open string, map or other bracket, so its prefix does not.
+  # Letting the Elixir parser decide keeps char literals like `?(` and `?"`
+  # from confusing a hand-written scanner. `:error` (nothing parsed) is treated
+  # as a violation by `allowed_call?/2`.
+  defp attr_ast(rest) do
+    rest
+    |> :binary.matches("}")
+    |> Enum.find_value(:error, fn {close, _len} ->
+      case Code.string_to_quoted(binary_part(rest, 0, close)) do
+        {:ok, ast} -> {:ok, ast}
+        {:error, _} -> nil
+      end
+    end)
   end
 
-  # `rest` starts just after the call's `(`: is the matching `)` the last thing?
-  defp sole_call?(rest), do: sole_call?(rest, 1, false)
+  # Allowed only when the whole expression is one call to an allowed helper:
+  # `<>`, `|>`, remote calls, variables and everything else are different ASTs.
+  defp allowed_call?({:ok, {name, _meta, args}}, allowed) when is_atom(name) and is_list(args),
+    do: to_string(name) in allowed
 
-  defp sole_call?(<<>>, _depth, _in_string), do: false
-  defp sole_call?(<<?\\, _c, rest::binary>>, depth, true), do: sole_call?(rest, depth, true)
-
-  defp sole_call?(<<?", rest::binary>>, depth, in_string),
-    do: sole_call?(rest, depth, not in_string)
-
-  defp sole_call?(<<?(, rest::binary>>, depth, false), do: sole_call?(rest, depth + 1, false)
-  defp sole_call?(<<?), rest::binary>>, 1, false), do: String.trim(rest) == ""
-  defp sole_call?(<<?), rest::binary>>, depth, false), do: sole_call?(rest, depth - 1, false)
-  defp sole_call?(<<_c, rest::binary>>, depth, in_string), do: sole_call?(rest, depth, in_string)
+  defp allowed_call?(_ast, _allowed), do: false
 end

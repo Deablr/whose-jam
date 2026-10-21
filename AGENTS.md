@@ -86,11 +86,11 @@ custom classes must fully style the input
 
 - **Always use and maintain this import syntax** in the app.css file for projects generated with `phx.new`
 - **Never** use `@apply` when writing raw css
-- **Always** manually write your own tailwind-based components instead of using daisyUI for a unique, world-class design
-- Out of the box **only the app.js and app.css bundles are supported**
-  - You cannot reference an external vendor'd script `src` or link `href` in the layouts
-  - You must import the vendor deps into app.js and app.css to use them
-  - **Never write inline <script>custom js</script> tags within templates**
+- This app does use daisyUI: `app.css` loads it as a Tailwind plugin and `core_components.ex` builds on its component classes. Keep using it there; game screens are plain Tailwind plus the `jam-*` classes in `app.css`
+- Only the app.js and app.css bundles are supported
+  - Don't add external vendor script `src` or link `href` to the layouts. The Google Fonts links in `root.html.heex` are the one existing exception
+  - Import vendor deps into app.js and app.css to use them
+  - Don't add inline `<script>` tags to templates. The theme script in `root.html.heex` is the one existing exception
 
 ### UI/UX & design guidelines
 
@@ -99,7 +99,7 @@ custom classes must fully style the input
 - Ensure **clean typography, spacing, and layout balance** for a refined, premium look
 - Focus on **delightful details** like hover effects, loading states, and smooth page transitions
 
-## Elixir guidelines
+### Elixir guidelines
 
 - Elixir lists **do not support index based access via the access syntax**
 
@@ -137,13 +137,13 @@ custom classes must fully style the input
 - Elixir's builtin OTP primitives like `DynamicSupervisor` and `Registry`, require names in the child spec, such as `{DynamicSupervisor, name: MyApp.MyDynamicSup}`, then you can use `DynamicSupervisor.start_child(MyApp.MyDynamicSup, child_spec)`
 - Use `Task.async_stream(collection, callback, options)` for concurrent enumeration with back-pressure. The majority of times you will want to pass `timeout: :infinity` as option
 
-## Mix guidelines
+### Mix guidelines
 
 - Read the docs and options before using tasks (by using `mix help task_name`)
 - To debug test failures, run tests in a specific file with `mix test test/my_test.exs` or run all previously failed tests with `mix test --failed`
 - `mix deps.clean --all` is **almost never needed**. **Avoid** using it unless you have good reason
 
-## Test guidelines
+### Test guidelines
 
 - **Always use `start_supervised!/1`** to start processes in tests as it guarantees cleanup between tests
 - **Avoid** `Process.sleep/1` and `Process.alive?/1` in tests
@@ -154,7 +154,7 @@ custom classes must fully style the input
 
    - Instead of sleeping to synchronize before the next call, **always** use `_ = :sys.get_state/1` to ensure the process has handled prior messages
 
-## Phoenix guidelines
+### Phoenix guidelines
 
 - Remember Phoenix router `scope` blocks include an optional alias which is prefixed for all routes within the scope. **Always** be mindful of this when creating routes within a scope to avoid duplicate module prefixes.
 
@@ -170,7 +170,7 @@ custom classes must fully style the input
 
 - `Phoenix.View` no longer is needed or included with Phoenix, don't use it
 
-## Ecto Guidelines
+### Ecto Guidelines
 
 - **Always** preload Ecto associations in queries when they'll be accessed in templates, ie a message that needs to reference the `message.user.email`
 - Remember `import Ecto.Query` and other supporting modules when you write `seeds.exs`
@@ -180,7 +180,7 @@ custom classes must fully style the input
 - Fields which are set programmatically, such as `user_id`, must not be listed in `cast` calls or similar for security purposes. Instead they must be explicitly set when creating the struct
 - **Always** invoke `mix ecto.gen.migration migration_name_using_underscores` when generating migration files, so the correct timestamp and conventions are applied
 
-## Phoenix HTML guidelines
+### Phoenix HTML guidelines
 
 - Phoenix templates **always** use `~H` or .html.heex files (known as HEEx), **never** use `~E`
 - **Always** use the imported `Phoenix.Component.form/1` and `Phoenix.Component.inputs_for/1` function to build forms. **Never** use `Phoenix.HTML.form_for` or `Phoenix.HTML.inputs_for` as they are outdated
@@ -257,13 +257,13 @@ custom classes must fully style the input
         {end}
       </div>
 
-## Phoenix LiveView guidelines
+### Phoenix LiveView guidelines
 
 - **Never** use the deprecated `live_redirect` and `live_patch` functions, instead **always** use the `<.link navigate={href}>` and  `<.link patch={href}>` in templates, and `push_navigate` and `push_patch` functions LiveViews
 - **Avoid LiveComponent's** unless you have a strong, specific need for them
 - LiveViews should be named like `AppWeb.WeatherLive`, with a `Live` suffix. When you go to add LiveView routes to the router, the default `:browser` scope is **already aliased** with the `AppWeb` module, so you can just do `live "/weather", WeatherLive`
 
-### LiveView streams
+#### LiveView streams
 
 - **Always** use LiveView streams for collections for assigning regular lists to avoid memory ballooning and runtime termination with the following operations:
   - basic append of N items - `stream(socket, :messages, [new_msg])`
@@ -334,7 +334,7 @@ custom classes must fully style the input
 
 - **Never** use the deprecated `phx-update="append"` or `phx-update="prepend"` for collections
 
-### LiveView JavaScript interop
+#### LiveView JavaScript interop
 
 - Remember anytime you use `phx-hook="MyHook"` and that JS hook manages its own DOM, you **must** also set the `phx-update="ignore"` attribute
 - **Always** provide an unique DOM id alongside `phx-hook` otherwise a compiler error will be raised
@@ -342,7 +342,7 @@ custom classes must fully style the input
 LiveView hooks come in two flavors, 1) colocated js hooks for "inline" scripts defined inside HEEx,
 and 2) external `phx-hook` annotations where JavaScript object literals are defined and passed to the `LiveSocket` constructor.
 
-#### Inline colocated js hooks
+##### Inline colocated js hooks
 
 **Never** write raw embedded `<script>` tags in heex as they are incompatible with LiveView.
 Instead, **always use a colocated js hook script tag (`:type={Phoenix.LiveView.ColocatedHook}`)
@@ -365,7 +365,7 @@ when writing scripts inside the template**:
 - colocated hooks are automatically integrated into the app.js bundle
 - colocated hooks names **MUST ALWAYS** start with a `.` prefix, i.e. `.PhoneNumber`
 
-#### External phx-hook
+##### External phx-hook
 
 External JS hooks (`<div id="myhook" phx-hook="MyHook">`) must be placed in `assets/js/` and passed to the
 LiveSocket constructor:
@@ -377,7 +377,7 @@ LiveSocket constructor:
       hooks: { MyHook }
     });
 
-#### Pushing events between client and server
+##### Pushing events between client and server
 
 Use LiveView's `push_event/3` when you need to push events/data to the client for a phx-hook to handle.
 **Always** return or rebind the socket on `push_event/3` when pushing events:
@@ -410,9 +410,9 @@ Where the server handled it via:
       {:reply, %{two: 2}, socket}
     end
 
-### Form handling
+#### Form handling
 
-#### Creating a form from params
+##### Creating a form from params
 
 If you want to create a form based on `handle_event` params:
 
@@ -428,7 +428,7 @@ You can also specify a name to nest the params:
       {:noreply, assign(socket, form: to_form(user_params, as: :user))}
     end
 
-#### Creating a form from changesets
+##### Creating a form from changesets
 
 When using changesets, the underlying data, form params, and errors are retrieved from it. The `:as` option is automatically computed too. E.g. if you have a user schema:
 
@@ -453,7 +453,7 @@ In the template, the form form assign can be passed to the `<.form>` function co
 
 Always give the form an explicit, unique DOM ID, like `id="todo-form"`.
 
-#### Avoiding form errors
+##### Avoiding form errors
 
 **Always** use a form assigned via `to_form/2` in the LiveView, and the `<.input>` component in the template. In the template **always access forms this**:
 
