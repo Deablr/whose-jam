@@ -142,7 +142,11 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   def handle_event("playback_error", params, socket) do
-    provider_id = socket.assigns.view.music && socket.assigns.view.music.id
+    provider_id =
+      case socket.assigns.view do
+        %{music: %{id: id}} -> id
+        _ -> nil
+      end
 
     {:noreply,
      assign(socket,
@@ -158,6 +162,10 @@ defmodule WhoseJamWeb.HostLive do
       {:ok, provider} -> connect_music(provider, socket)
       :error -> {:noreply, put_flash(socket, :error, "Unknown music service.")}
     end
+  end
+
+  def handle_event("connect_music", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Unknown music service.")}
   end
 
   @host_settings ~w(answer_timer_s vote_delay_s vote_timer_s questions_per_player

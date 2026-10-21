@@ -36,9 +36,32 @@ defmodule WhoseJam.Music.SearchTest do
     end
   end
 
+  # Same shape as Stub, under another id: the cache must keep them apart.
+  defmodule OtherStub do
+    @behaviour WhoseJam.Music.Provider
+
+    def id, do: :other_stub
+    def name, do: "Other"
+    def requirement, do: "none"
+    def ineligible_message, do: "none"
+    def connect_kind, do: :none
+    def video?, do: false
+    def configured?, do: true
+    def valid_uri?(_uri), do: true
+    def valid_art_url?(_url), do: false
+    def connect(_params), do: {:ok, %{}}
+    def eligible?(_auth), do: true
+    def client_config(_auth), do: %{}
+
+    def search(query, _auth) do
+      send(self(), {:other_searched, query})
+      {:ok, [%{uri: "other:1", name: query, artist: "b", album_art_url: nil}]}
+    end
+  end
+
   setup do
     previous = Application.fetch_env!(:whose_jam, :music_providers)
-    Application.put_env(:whose_jam, :music_providers, [Stub | previous])
+    Application.put_env(:whose_jam, :music_providers, [Stub, OtherStub | previous])
     on_exit(fn -> Application.put_env(:whose_jam, :music_providers, previous) end)
 
     # Results are cached in a shared table: every test searches its own terms.
@@ -62,6 +85,21 @@ defmodule WhoseJam.Music.SearchTest do
     {:ok, _} = Music.search(:stub, "#{term} b", %{})
     assert_received {:searched, _}
     assert_received {:searched, _}
+  end
+
+  test "the cache is scoped per provider", %{term: term} do
+    {:ok, [%{uri: "stub:1"}]} = Music.search(:stub, term, %{})
+    assert_received {:searched, _}
+
+    # Same term, other provider: must be searched, and must not see :stub's results.
+    assert {:ok, [%{uri: "other:1"}]} = Music.search(:other_stub, term, %{})
+    assert_received {:other_searched, _}
+
+    # ...and each is now served from its own entry.
+    assert {:ok, [%{uri: "stub:1"}]} = Music.search(:stub, term, %{})
+    assert {:ok, [%{uri: "other:1"}]} = Music.search(:other_stub, term, %{})
+    refute_received {:searched, _}
+    refute_received {:other_searched, _}
   end
 
   test "errors are never cached", %{term: term} do

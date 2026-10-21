@@ -154,7 +154,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 ### Music providers
 
-The game is bound to one music provider per room, chosen by the host in the lobby. Everything provider-specific sits behind the `WhoseJam.Music.Provider` behaviour; the game runtime, scoring and screens only ever see the provider-neutral song `%{uri, name, artist, album_art_url}`. Providers differ in six places: catalog search and song validation, how the host connects, whether the account is eligible, token refresh, the browser player (a JS module of the same id), and capabilities (`video?`).
+The game is bound to one music provider per room, chosen by the host in the lobby. Everything provider-specific sits behind the `WhoseJam.Music.Provider` behaviour; the game runtime, scoring and screens only ever see the provider-neutral song `%{uri, name, artist, album_art_url}`. Providers differ in seven places: identity and host-facing copy, catalog search and song validation, how the host connects, whether the account is eligible, token refresh, the browser player (a JS module of the same id), and capabilities (`configured?`, `video?`).
 
 Enabled providers come from `config :whose_jam, :music_providers`. Spotify is the only provider that ships; dev and test also enable the fake **Mock** provider.
 

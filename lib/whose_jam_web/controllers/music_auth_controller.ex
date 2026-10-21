@@ -8,8 +8,8 @@ defmodule WhoseJamWeb.MusicAuthController do
   game via `WhoseJam.Game.set_music/3`. Every failure branch redirects back to
   the host screen (or `/`) with a clear flash — never a crash page.
 
-  Providers that authorize in the browser (`:browser`) or need no
-  authorization (`:none`) never touch this controller; `HostLive` handles them.
+  Providers whose `connect_kind/0` is `:none` never touch this controller;
+  `HostLive` connects them on click.
   """
   use WhoseJamWeb, :controller
 
@@ -49,7 +49,7 @@ defmodule WhoseJamWeb.MusicAuthController do
   # =========================================================================
 
   # Host denied the authorization prompt.
-  def callback(conn, %{"error" => _error, "state" => state} = params) do
+  def callback(conn, %{"error" => _error, "state" => state} = params) when is_binary(state) do
     case recover_state(conn, params["provider"], state) do
       {:ok, room_code, provider} ->
         conn
@@ -63,7 +63,8 @@ defmodule WhoseJamWeb.MusicAuthController do
     end
   end
 
-  def callback(conn, %{"code" => auth_code, "state" => state} = params) do
+  def callback(conn, %{"code" => auth_code, "state" => state} = params)
+      when is_binary(auth_code) and is_binary(state) do
     case recover_state(conn, params["provider"], state) do
       {:ok, room_code, provider} ->
         finish_callback(conn, provider, room_code, auth_code)

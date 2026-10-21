@@ -73,11 +73,32 @@ defmodule WhoseJamWeb.MusicAuthControllerTest do
       assert redirected_to(conn) == "/"
     end
 
-    test "an expired state is rejected", %{conn: conn} do
-      stale = state("ABCD", "spotify", signed_at: System.system_time(:millisecond) - 2_000_000)
-      conn = get(conn, "/auth/spotify/callback?code=c&state=#{stale}")
-      assert redirected_to(conn) == "/"
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "could not be verified"
+    test "a state is accepted until max_age (900s) and rejected after", %{conn: conn} do
+      # `signed_at` is in seconds. The fresh one is the control: it proves age,
+      # not the token's shape, is what rejects the stale one.
+      fresh = state("ABCD", "spotify", signed_at: System.system_time(:second) - 800)
+      stale = state("ABCD", "spotify", signed_at: System.system_time(:second) - 1_000)
+
+      conn1 = get(conn, "/auth/spotify/callback?error=access_denied&state=#{fresh}")
+      assert redirected_to(conn1) == "/host/ABCD"
+
+      conn2 = get(build_conn(), "/auth/spotify/callback?error=access_denied&state=#{stale}")
+      assert redirected_to(conn2) == "/"
+    end
+
+    test "non-string state or code is a flash, not a crash", %{conn: conn} do
+      valid = state("ABCD", "spotify")
+
+      for query <- [
+            "code=c&state[a]=b",
+            "code=c&state[]=x",
+            "error=x&state[a]=b",
+            "code[a]=b&state=#{valid}"
+          ] do
+        conn = get(conn, "/auth/spotify/callback?" <> query)
+        assert redirected_to(conn) == "/", "expected #{query} to redirect home"
+        assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "unexpected response"
+      end
     end
 
     test "a callback with neither code nor error is an unexpected-response flash", %{conn: conn} do

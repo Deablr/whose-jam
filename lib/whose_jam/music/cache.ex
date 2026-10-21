@@ -8,7 +8,7 @@ defmodule WhoseJam.Music.Cache do
       fetched lazily by a caller-supplied function and reused until it is near
       expiry. Fetches are serialized through this GenServer so concurrent
       searches never trigger a thundering herd of token requests.
-    * **Search result cache** — results keyed by `{provider, scope, term}` with
+    * **Search result cache** — results keyed by `{provider_id, normalized_query}` with
       a short TTL (~5 min), to keep repeated identical searches (a room full of
       people typing the same hit) off the provider's API.
 

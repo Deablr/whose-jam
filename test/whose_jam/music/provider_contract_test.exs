@@ -38,6 +38,15 @@ defmodule WhoseJam.Music.ProviderContractTest do
         end
       end
 
+      test "a redirect provider can build its authorize URL" do
+        # `authorize_url/2` is optional in the behaviour, but the OAuth
+        # controller calls it for every :oauth_redirect provider.
+        if call(@provider, :connect_kind) == :oauth_redirect do
+          assert function_exported?(@provider, :authorize_url, 2),
+                 "#{inspect(@provider)} is :oauth_redirect but has no authorize_url/2"
+        end
+      end
+
       test "declares its identity and capabilities" do
         # Via `call/2`: the type checker would otherwise flag these as always true.
         assert is_atom(call(@provider, :id))
@@ -94,11 +103,9 @@ defmodule WhoseJam.Music.ProviderContractTest do
         assert @provider.eligible?(@sample.auth)
       end
 
-      test "an ineligible account is not" do
-        # Read at runtime: not every provider has an ineligible state (Mock).
-        case MusicFixtures.sample(@provider.id()).ineligible_auth do
-          nil -> :ok
-          auth -> refute @provider.eligible?(auth)
+      if @sample.ineligible_auth do
+        test "an ineligible account is not" do
+          refute @provider.eligible?(@sample.ineligible_auth)
         end
       end
 
@@ -115,6 +122,9 @@ defmodule WhoseJam.Music.ProviderContractTest do
 
   test "an unknown provider id is an error, not a new atom" do
     assert Music.fetch_provider("nope") == :error
+    assert Music.fetch_provider(%{}) == :error
+    assert Music.fetch_provider(nil) == :error
+    assert Music.fetch_provider([[1]]) == :error
     assert Music.search(:nope, "x", %{}) == {:error, :unknown_provider}
     assert Music.normalize_track(:nope, %{}) == {:error, :invalid_song}
   end

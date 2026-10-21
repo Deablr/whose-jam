@@ -30,13 +30,15 @@ defmodule WhoseJam.Music do
   Look up an enabled provider by id (atom, or the string form a URL / event
   carries). Never creates atoms from the input.
   """
-  @spec fetch_provider(atom() | String.t()) :: {:ok, module()} | :error
-  def fetch_provider(id) do
+  @spec fetch_provider(term()) :: {:ok, module()} | :error
+  def fetch_provider(id) when is_atom(id) or is_binary(id) do
     case Enum.find(providers(), &(Atom.to_string(&1.id()) == to_string(id))) do
       nil -> :error
       mod -> {:ok, mod}
     end
   end
+
+  def fetch_provider(_id), do: :error
 
   @doc """
   Search `provider_id`'s catalog for `query`, using the room's host `auth`.
