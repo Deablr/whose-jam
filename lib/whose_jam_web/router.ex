@@ -1,6 +1,9 @@
 defmodule WhoseJamWeb.Router do
   use WhoseJamWeb, :router
 
+  # No Content-Security-Policy yet: a useful one has to allow the Spotify
+  # Web Playback SDK, its iframes and Google Fonts. Tracked as a follow-up.
+  # sobelow_skip ["Config.CSP"]
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session

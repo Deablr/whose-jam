@@ -338,15 +338,17 @@ Runs every check without rewriting anything: compile with warnings as errors,
 unused-dependency check, format check, [Credo](https://hexdocs.pm/credo) (lint),
 [Sobelow](https://hexdocs.pm/sobelow) (Phoenix security scan), a docs build that
 fails on references to missing modules and functions, and the tests. Run
-`mix format <files>` on the files you touched to fix formatting.
+`mix format <files>` on the files you touched to fix formatting. After changing
+dependencies, also run `mix hex.audit` (security advisories; needs network, so it
+isn't part of `precommit`).
 
 Credo also runs four project checks in `credo/checks/`, each written after the
 same problem came up repeatedly in code review: bare `{:ok, _} =` matches in
 `lib/`, `style` attributes built from data in templates, global env changes
-in `async: true` tests, and sleeping in tests. Sobelow's accepted findings are
-recorded in `.sobelow-skips`, so only new ones fail.
-
-`mix hex.audit` lists security advisories against the locked dependencies.
+in `async: true` tests, and sleeping in tests. They have their own tests in
+`test/credo/`. Accepted Sobelow findings are skipped inline with a
+`# sobelow_skip` comment that says why; the two websocket-origin findings
+can't be skipped inline and are baselined in `.sobelow-skips`.
 
 If `mix` asks to install Hex and then hangs, point it at the mise install:
 `export MIX_HOME=$HOME/.local/share/mise/installs/elixir/1.20.2-otp-28/.mix`.

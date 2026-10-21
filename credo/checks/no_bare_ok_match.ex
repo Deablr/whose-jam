@@ -5,7 +5,7 @@ defmodule WhoseJam.Credo.Checks.NoBareOkMatch do
     explanations: [
       check: """
       Don't assert success with a bare match (`:ok = ...` or `{:ok, x} = ...`)
-      in LiveViews, controllers or the Game.Server.
+      anywhere in `lib/` (release tasks are excluded in `.credo.exs`).
 
       A refused call (`{:error, :not_lobby}`, a provider error, a bad param)
       raises a MatchError, which crashes the LiveView (the TV player restarts)
@@ -18,8 +18,9 @@ defmodule WhoseJam.Credo.Checks.NoBareOkMatch do
             {:error, reason} -> {:noreply, put_flash(socket, :error, message(reason))}
           end
 
-      Code that should crash on failure (release tasks, tests) is excluded in
-      `.credo.exs`.
+      Patterns are fine: `def f({:ok, _} = result)`, `{:ok, _} = r ->` in a
+      `case`/`fn`, and the left side of `<-` bind a value without asserting, so
+      they are not flagged.
       """
     ]
 
@@ -28,6 +29,18 @@ defmodule WhoseJam.Credo.Checks.NoBareOkMatch do
     issue_meta = IssueMeta.for(source_file, params)
     Credo.Code.prewalk(source_file, &traverse(&1, &2, issue_meta))
   end
+
+  # Function heads, clause patterns and generators are patterns, not assertions.
+  # Replacing them lets the walk carry on into bodies without seeing their `=`.
+  defp traverse({kind, meta, [_head | rest]}, issues, _issue_meta)
+       when kind in [:def, :defp, :defmacro, :defmacrop],
+       do: {{kind, meta, [:_ | rest]}, issues}
+
+  defp traverse({:->, meta, [_patterns, body]}, issues, _issue_meta),
+    do: {{:->, meta, [[], body]}, issues}
+
+  defp traverse({:<-, meta, [_pattern, rhs]}, issues, _issue_meta),
+    do: {{:<-, meta, [:_, rhs]}, issues}
 
   defp traverse({:=, meta, [lhs, _rhs]} = ast, issues, issue_meta) do
     if ok_pattern?(lhs) do

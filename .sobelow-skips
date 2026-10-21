@@ -1,5 +1,2 @@
-Config.CSP: Missing Content-Security-Policy,lib/whose_jam_web/router.ex:10,5482517
-Config.CSWH: Cross-Site Websocket Hijacking,lib/whose_jam_web/endpoint.ex:14,4E566C4
-Config.CSWH: Cross-Site Websocket Hijacking,lib/whose_jam_web/endpoint.ex:33,3A07163
-RCE.CodeModule: Code Execution in `Code.eval_file`,lib/whose_jam/release.ex:26,36A9FB9
-XSS.Raw: XSS,lib/whose_jam_web/live/host_live.ex:733,22F155F
+Config.CSWH: Cross-Site Websocket Hijacking,lib/whose_jam_web/endpoint.ex:17,3344551
+Config.CSWH: Cross-Site Websocket Hijacking,lib/whose_jam_web/endpoint.ex:38,60C9EA

@@ -713,6 +713,10 @@ defmodule WhoseJamWeb.HostLive do
 
   # ---- lobby --------------------------------------------------------------
 
+  # `raw/1` renders the QR code from EQRCode.svg/2. That output is server-built
+  # from the join URL (a percent-encoded path), so no player data reaches the
+  # markup.
+  # sobelow_skip ["XSS.Raw"]
   defp lobby(assigns) do
     assigns =
       assign(assigns,

@@ -10,13 +10,13 @@ This file is the agent guide for every tool; `CLAUDE.md` is a symlink to it. Edi
 - `mix test <path>` — run a specific test file
 - `mix format <files>` — format only the files you changed, never the whole project
 - `mix credo <files>` — lint (strict mode is on in `.credo.exs`); `mix credo explain <file>:<line>` explains an issue
-- `mix hex.audit` — known security advisories in locked dependencies
+- `mix hex.audit` — known security advisories in locked dependencies. Not part of `precommit` (it needs network), so run it after changing dependencies; code review runs it too
 
 Toolchain: Elixir 1.20.2 / OTP 28 via mise (`.tool-versions`). If `mix` prompts to install Hex and hangs, point it at the mise install: `export MIX_HOME=$HOME/.local/share/mise/installs/elixir/1.20.2-otp-28/.mix`.
 
 ## Conventions
 
-- Elixir 1.20 / OTP 28, Phoenix 1.8, LiveView 1.1.
+- Elixir 1.20 / OTP 28, Phoenix 1.8, LiveView 1.2.
 - Runtime game state lives in one GenServer per game (`WhoseJam.Game.Server`), registered by room code. Postgres holds only seed content (themes/questions). Never persist runtime game state.
 - Pure modules (`Game.Binning`, `Game.Scoring`, `Game.Config`) take plain data in, return plain data out — no processes, no Repo calls, no side effects.
 - Tests target external behavior/contracts, not internals. No LiveView tests, no live music-provider API tests, no Registry tests in v1 (manual playtesting per PRD). Provider behavior is covered by the shared contract test (`test/whose_jam/music/provider_contract_test.exs`, one set of expectations run against every enabled provider), the facade's search tests (a stub provider), the OAuth controller's tests (guard rails and an authorize-to-callback flow via a stub redirect provider), and `Game.Server` playing the same game on every provider — never the network. Spotify's response mapping is manual-playtest only.
@@ -45,7 +45,7 @@ Each of these came up more than once in review. The ones marked *(Credo)* are en
 
 - **Never assume success.** Handle `{:error, _}` from `Game.*`, providers and controllers with `with`/`case` — a bare `:ok = ...` or `{:ok, x} = ...` crashes the LiveView (the TV player restarts) or the game process. *(Credo: `NoBareOkMatch`)*
 - **Validate every external input at the boundary.** `handle_event` and controller params can be any JSON type or missing: guard string params with `is_binary/1`, and add a fallback clause that flashes or returns 400 rather than raising.
-- **Never build a `style` attribute from player or provider data** — HEEx escapes HTML, not CSS, so a crafted album-art URL breaks out of `url(...)`. Use a class, or `<img src={...}>`. A helper that only emits server-computed values can be added to `allowed_helpers` in `.credo.exs`. *(Credo: `NoDynamicStyle`)*
+- **Never build a `style` attribute from player or provider data** — HEEx escapes HTML, not CSS, so a crafted album-art URL breaks out of `url(...)`. Use a class, or `<img src={...}>`. The one exception is a helper that only emits server-computed values (like `progress_style/1`): the attribute must be exactly one call to it, and adding a helper to `allowed_helpers` in `.credo.exs` needs the user's approval. *(Credo: `NoDynamicStyle`, which scans `~H` sigils in `.ex` files only — keep dynamic `style` out of standalone `.html.heex` templates by hand.)*
 - **One source for limits.** Take ranges from `Game.Config.range/1` and `min_players_range/0`; don't hard-code `2..8`, `1..10` or a player cap in a LiveView.
 - **Keep docs in step with the code, in the same change.** When you delete or rename a module, function, callback, config key or behaviour, grep for its name in `lib/` (moduledocs and comments), `test/`, `README.md`, `AGENTS.md`, `REVIEW.md` and `docs/prd.md`. `mix docs --warnings-as-errors` catches stale `Mod.fun/arity` references, but not prose.
 - **Tests must be able to fail.** Check that a test fails when the behaviour it names is removed (watch for unit mismatches, e.g. `Phoenix.Token`'s `:signed_at` is in seconds). Test range edges (min, max, max + 1), not only extremes. Drive timers through short test config and `assert_receive` with explicit timeouts. *(Credo: `NoSleepInTests`, `NoGlobalEnvInAsyncTest` — global env changes need `async: false` and an `on_exit` restore.)*
@@ -53,25 +53,21 @@ Each of these came up more than once in review. The ones marked *(Credo)* are en
 
 ## Hard rules for agents
 
-- Touch only files explicitly assigned to you. `mix.exs`, `config/*`, `lib/whose_jam/application.ex`, `lib/whose_jam_web/router.ex`, `assets/js/app.js`, `.credo.exs`, `credo/checks/*` and `.sobelow-skips` are OFF-LIMITS unless your task says otherwise.
-- Don't silence a linter to get green. A `# credo:disable-for-next-line` or `# sobelow_skip` needs a comment explaining why the code is safe, and new `.sobelow-skips` entries need the user's approval.
+- Touch only files explicitly assigned to you. `mix.exs`, `config/*`, `lib/whose_jam/application.ex`, `lib/whose_jam_web/router.ex`, `assets/js/app.js`, `.credo.exs`, `credo/checks/*`, `.sobelow-conf` and `.sobelow-skips` are OFF-LIMITS unless your task says otherwise.
+- Don't silence a linter to get green. A `# credo:disable-for-next-line` or `# sobelow_skip ["Class"]` needs a comment explaining why the code is safe. Prefer the inline `sobelow_skip` over a `.sobelow-skips` entry (those fingerprints include the line number, so they break when code above them moves); new `.sobelow-skips` entries and any `.sobelow-conf` change need the user's approval.
 - Never run `git stash`, `git checkout`, `git switch`, `git branch`, `git commit`, `git push`, `git reset`, or any other git command that mutates state. Read-only git (`git diff`, `git log`, `git status`) is fine.
 - Never run `mix format` bare (whole project) — only on your own files.
 - Never run `mix ecto.reset`/`drop` — other agents may share the dev database.
 
 ---
 
-# Phoenix, Elixir and LiveView guidelines
+## Framework guidelines
 
-General framework guidance from `phx.new`, trimmed to what applies here. Where it conflicts with the project sections above, the project sections win.
+General Phoenix, Elixir and LiveView guidance from `phx.new`, trimmed to what applies here. Where it conflicts with the project sections above, the project sections win.
 
 ### Phoenix v1.8 guidelines
 
-- **Always** begin your LiveView templates with `<Layouts.app flash={@flash} ...>` which wraps all inner content
-- The `MyAppWeb.Layouts` module is aliased in the `my_app_web.ex` file, so you can use it without needing to alias it again
-- Anytime you run into errors with no `current_scope` assign:
-  - You failed to follow the Authenticated Routes guidelines, or you failed to pass `current_scope` to `<Layouts.app>`
-  - **Always** fix the `current_scope` error by moving your routes to the proper `live_session` and ensure you pass `current_scope` as needed
+- This app has no auth and no `current_scope`. Its LiveViews (`HomeLive`, `HostLive`, `PlayLive`) render their own full-screen layouts and do not wrap their templates in `<Layouts.app>`; match the surrounding LiveView rather than the generated default
 - Phoenix v1.8 moved the `<.flash_group>` component to the `Layouts` module. You are **forbidden** from calling `<.flash_group>` outside of the `layouts.ex` module
 - Out of the box, `core_components.ex` imports an `<.icon name="hero-x-mark" class="w-5 h-5"/>` component for hero icons. **Always** use the `<.icon>` component for icons, **never** use `Heroicons` modules or similar
 - **Always** use the imported `<.input>` component for form inputs from `core_components.ex` when available. `<.input>` is imported and using it will save steps and prevent errors
