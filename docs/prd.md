@@ -11,7 +11,7 @@ A web-based, Jackbox-style party game where:
 - The host picks a themed question pool (e.g., "Emotional Damage," "The Club"). Each theme is a curated pool of prompts like "Song that changed your life" or "Grooves to flirt to."
 - Every player is assigned a small set of questions drawn from the pool. They don't see each other's questions, and the same question may be assigned to multiple players.
 - Each player searches Spotify on their phone and submits a song for each assigned question.
-- Once answers are in, the host's TV plays submitted songs one at a time using Spotify's Web Playback SDK (requires host Premium). After each song, all connected clients (players + audience) vote to guess which player submitted it.
+- Once answers are in, the host's TV plays submitted songs one at a time using Spotify's Web Playback SDK (requires host Premium). While each song plays, all connected clients (players + audience) vote to guess which player submitted it.
 - Players score +1 per correct guess and +1 per non-audience vote they fooled onto their own song. Audience members score +1 per correct guess but are not submitters and do not win the main board.
 - At the end, a final scoreboard appears on the TV.
 
@@ -23,14 +23,14 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 1. As a host, I want to open a single URL on my laptop and create a new game with one click, so that I can get a party started quickly without signing up for anything.
 2. As a host, I want to see a QR code and a short alphanumeric room code on the TV, so that friends can join either by scanning or typing.
-3. As a host, I want to authenticate my Spotify Premium account via OAuth before the game begins, so that the TV can play full songs during rounds.
+3. As a host, I want to connect a music service (Spotify Premium via OAuth in v1) before the game begins — and be prompted to connect one if I open the lobby without it — so that the TV can play full songs during rounds.
 4. As a host, I want to be told clearly and early if Spotify Premium is missing, so that I'm not blindsided mid-game.
 5. As a host, I want to pick a themed question pool from a short list, so that I can tune the vibe (e.g., wholesome vs. rowdy) to my friend group.
 6. As a host, I want to preview two or three example questions per pool (drawn from questions that won't be used in the actual game), so that I know what style of prompts to expect without spoiling the session.
-7. As a host, I want to adjust default settings (answer timer, vote timer, questions per player, sub-rounds on/off), so that I can make the game shorter, longer, or structured differently for my group.
+7. As a host, I want to open a settings panel to adjust default settings (answer timer, listening delay, vote countdown, questions per player, sub-rounds on/off) and manage my music-service connection, so that I can make the game shorter, longer, or structured differently for my group without settings cluttering the TV.
 8. As a host, I want the default settings to produce a ~20-minute game, so that I can run it without fiddling.
 9. As a host, I want to see on the TV a live roster of who has joined as players vs. audience, so that I know when to start.
-10. As a host, I want to start the game only when at least three players have joined, so that the guessing mechanic is non-trivial.
+10. As a host, I want to start the game only when at least three players have joined, so that the guessing mechanic is non-trivial — with a "players needed to start" setting I can lower to two for development or very small groups.
 11. As a host, I want to skip a song mid-round (with a confirmation), so that a broken link or regrettable pick doesn't ruin the vibe.
 12. As a host, I want to join my own game as a player from my phone, so that I can participate.
 
@@ -95,7 +95,8 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - Each active game is one `Game.Server` GenServer, registered under a short room code in a Phoenix Registry.
 - State transitions flow through explicit events (`:join`, `:start`, `:submit_song`, `:cast_vote`, `:skip_song`). The GenServer publishes game-state broadcasts via Phoenix.PubSub on a per-room topic.
-- All LiveViews (TV, player, host) subscribe to the room topic; they are pure renderers of state received from the GenServer.
+- Submitted songs are validated server-side: the URI must be a Spotify track URI (`spotify:track:<22 alphanumerics>`) or the submission is rejected; name/artist are trimmed and capped at 200 characters; album art is kept only if it is a Spotify image-CDN URL.
+- All LiveViews (host screen, player) subscribe to the room topic; they are pure renderers of state received from the GenServer.
 - `Phoenix.Presence` tracks connected clients per room. Players absent from Presence for a short threshold are marked AFK and excluded from "waiting on N players" counts, but their existing submissions stay live.
 - When a game ends (final scoreboard shown + short idle timeout), the GenServer shuts down and its state is discarded.
 
@@ -110,9 +111,10 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - States: `:lobby` → (repeating per sub-round) `:answering` → `:playing` (with per-round sub-states `:revealing`, `:voting`, `:results`) → `:finished`.
 - A sub-round corresponds to one style from the theme's `style_sequence`. When the host disables sub-rounds, the sequence collapses into a single `:answering` phase that covers all styles before any `:playing`.
-- Answer timer is global per sub-round (computed from questions assigned). Vote timer runs per round (default 30s, configurable).
-- When the vote timer expires or all non-AFK voters have voted, the round advances. Voters who don't vote earn no points that round.
-- The host can skip songs via a button on the host LiveView. No pause feature in v1.
+- Answer timer is global per sub-round (computed from questions assigned).
+- Each round's song starts playing with votes closed for a listening delay (default 10s, configurable). Voting then opens while the song keeps playing, with no countdown yet.
+- The vote countdown (default 30s, configurable) starts once a majority of eligible (connected, non-submitter) voters have voted — or when the song ends, so a round can never stall. Once every eligible voter has voted, the countdown drops to 5s (never lengthening a shorter one). When it hits zero the round moves to the reveal. Voters who don't vote earn no points that round.
+- The host can skip songs via a button in the host screen's control bar. No pause feature in v1.
 - After `:finished`, the TV offers a "Start a new game with these players" option, which resets state but preserves the player roster.
 
 ### Question styles (v1)
@@ -147,13 +149,14 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 ### Timing and configuration
 
 - `Game.Config` computes concrete timings from host overrides plus player count. Defaults aim for ~20-minute games.
-- Every timing and volume parameter exposed to the host is configurable: answer timer, vote timer, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed.
+- Every timing and volume parameter exposed to the host is configurable: answer timer, listening delay before voting, vote countdown, questions per player, whether sub-rounds are enabled, whether vote-changing is allowed, and the minimum players needed to start (default 3, range 2–8). The server clamps every numeric setting to a safe range (answer timer 1–1800s, listening delay 0–60s, vote countdown 1–300s, questions per player 1–10, minimum players 2–8) so no value can stall or crash a game.
 - When player counts or question counts exceed what fits in the target window, the game will exceed 20 minutes; there is no hard cap on round count in v1.
 
 ### Spotify integration
 
 - **Search:** server-side, using Spotify client credentials (app-level token, not host-linked). Results cached in-memory per search term for a short TTL to reduce API calls. Key is held server-side; never shipped to players.
-- **Playback:** Spotify Web Playback SDK on the host's browser only. Host completes OAuth during game creation; the game refuses to start if the host is not authenticated and Premium-verified.
+- **Playback:** Spotify Web Playback SDK on the host screen's browser only. Host completes OAuth from the lobby (connect prompt or Settings); the game refuses to start if the host is not authenticated and Premium-verified.
+- **Music services are pluggable in the UX.** The host picks from a list of music services; Spotify is the only entry in v1, shown alongside a "more services coming soon" placeholder. Host-facing copy says "music service" rather than assuming Spotify, so adding a provider later is a new list entry rather than a UI redesign. (Search and playback internals remain Spotify-specific in v1.)
 - **Only the host plays audio.** Players may see album art and song title on their phones during rounds but do not play audio. No per-player preview audio in v1.
 - Submitted songs are stored by Spotify track URI.
 
@@ -173,7 +176,10 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 ### Host screen architecture
 
-- The TV URL (`/tv/:code`) is not bound to host identity. Any browser can open it. The host's typical setup is a laptop with two browser tabs (or two browsers): one on `/tv/:code` connected to the TV, one on `/play/:code` on their phone as a player. A separate `/host/:code` view on the laptop holds the host-only controls (start game, skip song, settings).
+- The TV display and host controls are **one screen** at `/host/:code` (`/tv/:code` is kept as an alias). It is not bound to host identity; any browser can open it. The host's typical setup is a laptop showing `/host/:code` on the TV, plus `/play/:code` on their own phone as a player.
+- The screen renders the shared game state big and dark for the room. Host controls live in a slim top bar: music-service status (prompts to connect when none is connected), skip song (during rounds), and a Settings button.
+- Settings open on demand as a panel with two sections: **Music service** (connect / reconnect / switch account) and **Game** (the host-facing settings — including players needed to start — plus the estimated runtime; locked once the game starts).
+- In the lobby, if no premium-ready music service is connected, a "Connect your music" prompt opens automatically (dismissible), and the Start button explains what's missing. Playback failures (e.g. a browser without DRM support) are shown in the lobby, before the game starts.
 
 ### Explicitly out of the way
 
@@ -195,7 +201,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - **`Game.Binning`** — correctness of assignment (every player gets their target; no player gets the same question twice), overlap guarantee (every selected question has ≥2 submitters whenever mathematically feasible), edge cases (minimum player count, more questions requested than exist).
 - **`Game.Scoring`** — a correct guess awards +1; a submitter gains +1 per fooled non-audience vote; audience cannot be "fooled onto" for scoring purposes; all-correct and all-wrong rounds produce sane totals; a round with zero votes produces zero points.
 - **`Game.Config`** — derived timings at representative player counts; overrides override; default settings produce a game whose total estimated runtime is within a configured band of the 20-minute target.
-- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; vote-timer expiry advances the round even with missing votes.
+- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than Spotify's image CDN are dropped.
 
 ### Prior art
 

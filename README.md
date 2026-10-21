@@ -17,19 +17,19 @@ No accounts, no installs for players — they scan a QR code and type a name.
 
 ## How a game night works
 
-There are three screens, each a Phoenix LiveView keyed by the game's short room
+There are two screens, each a Phoenix LiveView keyed by the game's short room
 code:
 
 | Screen | URL | Who looks at it |
 | --- | --- | --- |
-| **TV** | `/tv/:code` | The whole room. Shows the QR code + room code in the lobby, the currently-playing song and album art during rounds, the reveal, and the scoreboard. Also where audio plays. |
-| **Host console** | `/host/:code` | The host only. Start game, skip song, settings. |
+| **Host screen** | `/host/:code` (also `/tv/:code`) | The whole room, on the TV. Shows the QR code + room code in the lobby, the currently-playing song and album art during rounds, the reveal, and the scoreboard. Also where audio plays. A slim top bar carries the host controls: music-service status, skip song, and a Settings panel (music service + game settings). |
 | **Player** | `/play/:code` | Each phone. Search + submit songs, then vote. |
 
-**The host's setup** is one laptop with two tabs: `/tv/:code` cast to the TV,
-and `/host/:code` for the controls. The host also joins `/play/:code` on their
-own phone to play along. The TV URL is not tied to any identity — any browser
-can open it.
+**The host's setup** is one laptop showing `/host/:code` on the TV. If no music
+service is connected, the lobby prompts the host to connect one (Spotify today;
+the picker is built to list more services later). The host also joins
+`/play/:code` on their own phone to play along. The host URL is not tied to any
+identity — any browser can open it.
 
 **Host flow:**
 
@@ -40,7 +40,8 @@ can open it.
    without it.
 3. Friends scan the QR code on the TV (or type the room code), pick a display
    name, and land in the lobby.
-4. Start once at least **3 players** have joined.
+4. Start once at least **3 players** have joined (the host can lower this to
+   2 in Settings → "Players needed to start", handy for development).
 
 **Players vs. audience:** the first 8 joiners are **players** — they get
 assigned questions and submit songs. Anyone who joins after that, or after the
@@ -152,7 +153,7 @@ nothing and no game can play audio.
 | **Web API** | Server (Client Credentials token) | `GET /v1/search` — song search from phones, proxied server-side |
 | **Web API** | Server (host's OAuth token) | `GET /v1/me` — Premium verification after OAuth |
 | **Web API** | TV browser (host's OAuth token) | `PUT /v1/me/player/play` — start each round's track on the TV device |
-| **Web Playback SDK** | TV browser | Turns the TV tab into a Spotify Connect device; reports track end |
+| **Web Playback SDK** | TV browser | Turns the host screen into a Spotify Connect device; reports track end |
 | Accounts service | Server | OAuth authorize/token endpoints (Authorization Code + Client Credentials flows) |
 
 The Android SDK, iOS SDK, and Ads API are **not** used.
@@ -232,9 +233,10 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `SPOTIFY_CLIENT_ID` | For Spotify | — | Spotify app Client ID. Without it, search/playback are disabled. |
 | `SPOTIFY_CLIENT_SECRET` | For Spotify | — | Spotify app Client Secret. |
 
-Host-facing **game** settings (answer timer, vote timer, questions per player,
-sub-rounds on/off, allow vote-changing) are not env vars — they're chosen per
-game in the host console and default to a ~20-minute session.
+Host-facing **game** settings (answer timer, listening delay before voting,
+vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
+players needed to start) are not env vars — they're chosen per game in the host
+screen's Settings panel and default to a ~20-minute session.
 
 ---
 
@@ -253,8 +255,9 @@ transport code.
   `start_game`, `submit_song`, `cast_vote`, `skip_song`, etc. — all addressed by
   room code, all returning plain maps or `{:error, reason}`.
 - **PubSub fan-out:** the server broadcasts `{:game_state, view}` on topic
-  `"game:" <> code`. The TV, host, and every phone subscribe and are pure
-  renderers of that view.
+  `"game:" <> code`. The host screen (which is
+  also the TV display) and every phone subscribe and are pure renderers of that
+  view.
 - **Postgres holds seed content only** — the two themes and their questions
   (`WhoseJam.Content`). Never runtime game state.
 - **Pure modules** carry the game logic and hold the unit tests: `Game.Binning`
@@ -275,8 +278,8 @@ transport code.
       │  "game:"<>code              │ room code           └───────────────┘
       ▼                   ┌─────────┴───────────┐
 ┌───────────┐            │   WhoseJam.Game       │         ┌────────────┐
-│ /tv/:code │◄───────────┤   (facade LiveViews   ├────────►│  Postgres  │
-│/host/:code│  subscribe │    call)              │  seeds  │  themes /  │
+│/host/:code│◄───────────┤   (facade LiveViews   ├────────►│  Postgres  │
+│           │  subscribe │    call)              │  seeds  │  themes /  │
 │/play/:code│────────────►                       │◄────────┤ questions  │
 └───────────┘  events    └───────────────────────┘         └────────────┘
   LiveViews (pure renderers)                          (Content: seed data only)
@@ -335,9 +338,9 @@ be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. The Spotify
 redirect URI is unaffected — it stays on `127.0.0.1`. (A dev server also binds
 loopback-only by default — see Local development.)
 
-**Playback banner on the TV / console shows `EMEError: No supported keysystem`.**
+**Playback banner on the host screen shows `EMEError: No supported keysystem`.**
 The Web Playback SDK plays DRM-protected audio via EME/Widevine, and the TV
-browser can't. Fixes: use **Chrome, Edge, or Firefox** for the TV tab; allow
+browser can't. Fixes: use **Chrome, Edge, or Firefox** for the host screen; allow
 protected content (Chrome: `chrome://settings/content/protectedContent`; Brave:
 enable Widevine in `brave://settings/extensions`); and open the TV over
 **https** or on the serving machine via `localhost`/`127.0.0.1` — plain http on
@@ -385,7 +388,7 @@ whose-jam/
 │   ├── content.ex         # seeded themes/questions (Ecto)
 │   └── spotify/           # search (client creds) + host OAuth + cache
 └── lib/whose_jam_web/
-    ├── router.ex          # /, /play/:code, /tv/:code, /host/:code, /auth/spotify*
-    ├── live/              # home, play, tv, host LiveViews
+    ├── router.ex          # /, /play/:code, /host/:code (+ /tv alias), /auth/spotify*
+    ├── live/              # home, play, host LiveViews
     └── presence.ex        # Phoenix.Presence for AFK tracking
 ```

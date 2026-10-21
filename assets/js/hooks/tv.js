@@ -1,19 +1,21 @@
-// TV-screen hooks. Owned by the TV/host agent.
+// Host-screen hooks (the host screen, HostLive, is also the TV display).
 //
 // Exports one LiveView hook:
 //
-//   * "SpotifyPlayer" — drives the Spotify Web Playback SDK on the TV browser
-//     using the host's Premium OAuth token. It is entirely attribute-driven:
-//     the LiveView renders `data-token` (host access token) and `data-uri`
-//     (the track to play right now, or "" to pause) on the hook element, and
-//     the hook reconciles the real playback state toward those attributes.
+//   * "SpotifyPlayer" — drives the Spotify Web Playback SDK in the host
+//     screen's browser using the host's Premium OAuth token. It is entirely
+//     attribute-driven: the LiveView renders `data-token` (host access token),
+//     `data-uri` (the track to play right now, or "" to pause) and
+//     `data-round` (the current round's identity) on the hook element, and the
+//     hook reconciles the real playback state toward those attributes. A new
+//     round restarts the track even when its URI matches the previous round's.
 //     End-of-song is reported back to the server via a pushed "song_ended"
 //     event; any SDK/token failure pushes "playback_error" so the LiveView can
 //     surface a visible banner instead of silently dying.
 //
 // The "Countdown" hook lives in hooks/player.js and is registered globally, so
-// TV templates using phx-hook="Countdown" pick it up from there (its mm:ss +
-// stop-at-zero rendering is fine on the TV).
+// host-screen templates using phx-hook="Countdown" pick it up from there (its
+// mm:ss + stop-at-zero rendering is fine on the TV).
 
 const SDK_SRC = "https://sdk.scdn.co/spotify-player.js"
 
@@ -48,6 +50,7 @@ const SpotifyPlayer = {
   mounted() {
     this.token = this.el.dataset.token || null
     this.wantUri = this.el.dataset.uri || ""
+    this.round = this.el.dataset.round || ""
     this.deviceId = null
     this.currentUri = null
     this.wasPlaying = false
@@ -65,10 +68,17 @@ const SpotifyPlayer = {
   },
 
   updated() {
-    // Pick up a refreshed token and/or a changed target track.
+    // Pick up a refreshed token and/or a changed target track or round.
     this.token = this.el.dataset.token || this.token
     const want = this.el.dataset.uri || ""
-    if (want !== this.wantUri) {
+    const round = this.el.dataset.round || ""
+    if (round !== this.round) {
+      // A new round always (re)starts its track, even a repeat of the last one.
+      this.round = round
+      this.wantUri = want
+      if (want) this.currentUri = null
+      this.sync()
+    } else if (want !== this.wantUri) {
       this.wantUri = want
       this.sync()
     }
@@ -161,10 +171,14 @@ const SpotifyPlayer = {
   },
 
   pauseNow() {
+    // Only pause if we started something. Pausing an empty player (e.g. right
+    // after "ready" in the lobby) makes the SDK emit a spurious
+    // playback_error ("no list was loaded"), which would show a false banner.
+    const hadTrack = this.currentUri !== null
     this.currentUri = null
     this.wasPlaying = false
-    if (this.player) {
-      try { this.player.pause() } catch (_e) {}
+    if (hadTrack && this.player) {
+      this.player.pause().catch(() => {})
     }
   },
 }

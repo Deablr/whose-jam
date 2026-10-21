@@ -89,8 +89,8 @@ defmodule WhoseJam.Game do
   def set_spotify(code, spotify), do: command(code, {:set_spotify, spotify})
 
   @doc """
-  Start the game. Requires at least three players and a Premium-verified Spotify
-  auth. Errors: `:not_enough_players`, `:not_authenticated`, `:not_premium`,
+  Start the game. Requires at least `min_players` players (a host setting,
+  default three) and a Premium-verified Spotify auth. Errors: `:not_enough_players`, `:not_authenticated`, `:not_premium`,
   `:already_started`.
   """
   @spec start_game(String.t()) :: :ok | {:error, term()}
@@ -98,7 +98,12 @@ defmodule WhoseJam.Game do
 
   @doc """
   Submit (or re-submit, until the answer timer ends) a song for `question_id`.
-  `song` is `%{uri, name, artist, album_art_url}`.
+  `song` is `%{uri, name, artist, album_art_url}`. `uri` must be a Spotify
+  track URI (`spotify:track:<22 alphanumerics>`), otherwise the submission is
+  rejected with `{:error, :invalid_song}`. `name`/`artist` are trimmed and
+  capped at 200 characters (non-strings become `""`). `album_art_url` is kept
+  only if it is a Spotify image-CDN URL (`https://i.scdn.co/image/<id>`);
+  anything else is stored as `nil`.
   """
   @spec submit_song(String.t(), String.t(), String.t(), map()) :: :ok | {:error, term()}
   def submit_song(code, player_id, question_id, song),
@@ -115,7 +120,12 @@ defmodule WhoseJam.Game do
   @spec skip_song(String.t()) :: :ok | {:error, term()}
   def skip_song(code), do: command(code, :skip_song)
 
-  @doc "TV playback finished: advance the current round from `:revealing` to `:voting`."
+  @doc """
+  Host-screen playback finished. During the listening delay (`:revealing`) this
+  opens voting early; in `:revealing` or `:voting` it starts the vote countdown
+  if it isn't already running (a running countdown is left unchanged). Any
+  other state returns `{:error, :not_playing}`.
+  """
   @spec song_ended(String.t()) :: :ok | {:error, term()}
   def song_ended(code), do: command(code, :song_ended)
 

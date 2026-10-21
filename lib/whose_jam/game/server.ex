@@ -14,11 +14,20 @@ defmodule WhoseJam.Game.Server do
       :lobby
         └─ per sub-round:
              :answering ──▶ :playing
-                              ├─ round :revealing  (TV plays the song)
-                              ├─ round :voting     (clients guess)
+                              ├─ round :revealing  (listening delay: song plays, votes closed for vote_delay_s)
+                              ├─ round :voting     (song keeps playing; clients guess)
                               └─ round :results    (submitter + deltas revealed)
              ...next sub-round or...
         └─ :finished
+
+  ## Voting countdown
+
+  `:voting` opens with no deadline. The `vote_timer_s` countdown starts at the
+  first of: a majority of eligible voters (connected, not the submitter) have
+  voted, the song ends, or a safety timeout. Once every eligible voter has
+  voted the countdown drops to 5s (`@all_voted_countdown_s`) — never
+  lengthening it.
+  When the countdown hits zero the round moves to `:results`.
 
   Sub-rounds come from the theme's `style_sequence`. When
   `config.subrounds_enabled?` is false the sequence collapses into a *single*
@@ -50,11 +59,17 @@ defmodule WhoseJam.Game.Server do
   # they exist so an abandoned/finished game eventually frees its process.
   @finished_shutdown_ms 5 * 60 * 1000
   @abandoned_ttl_ms 60 * 60 * 1000
-  # Defensive ceiling on the :revealing state, in case the TV never reports the
-  # song ending. Real clients always call `song_ended/1` well before this.
-  @reveal_safety_extra_s 120
+  # Defensive ceiling on uncounted voting, in case the TV never reports the song
+  # ending and nobody votes. Real clients call `song_ended/1` well before this.
+  @voting_safety_extra_s 120
+  # Once every eligible voter has voted the countdown drops to this (never
+  # lengthening a shorter remaining countdown).
+  @all_voted_countdown_s 5
 
   @guess_question_decoys 3
+
+  # Submitted song name/artist are trimmed to this many characters.
+  @max_song_text_length 200
 
   # --- server state ---------------------------------------------------------
 
@@ -86,10 +101,16 @@ defmodule WhoseJam.Game.Server do
             rounds: [],
             round_index: 0,
             round: nil,
+            # when votes open (end of the listening delay)
+            votes_open_ms: nil,
+            # voting countdown deadline; nil until the countdown starts
             vote_deadline_ms: nil,
+            # in :voting, either the safety timer (before the countdown starts)
+            # or the countdown timer — never both
             vote_ref: nil,
             results_ref: nil,
-            reveal_ref: nil,
+            # listening-delay timer (:revealing -> :voting)
+            vote_delay_ref: nil,
             finished_ref: nil,
             winners: nil
 
@@ -191,7 +212,7 @@ defmodule WhoseJam.Game.Server do
       state.phase != :lobby ->
         {:reply, {:error, :already_started}, state}
 
-      role_count(state, :player) < 3 ->
+      role_count(state, :player) < current_config(state).min_players ->
         {:reply, {:error, :not_enough_players}, state}
 
       is_nil(state.spotify) ->
@@ -215,14 +236,13 @@ defmodule WhoseJam.Game.Server do
         _from,
         %{phase: :answering} = state
       ) do
-    cond do
-      not assigned?(state, player_id, question_id) ->
-        {:reply, {:error, :not_assigned}, state}
-
-      true ->
-        submissions = Map.put(state.submissions, {player_id, question_id}, normalize_song(song))
-        state = %{state | submissions: submissions} |> touch() |> maybe_end_answering()
-        {:reply, :ok, broadcast(state)}
+    with true <- assigned?(state, player_id, question_id) || {:error, :not_assigned},
+         {:ok, song} <- normalize_song(song) do
+      submissions = Map.put(state.submissions, {player_id, question_id}, song)
+      state = %{state | submissions: submissions} |> touch() |> maybe_end_answering()
+      {:reply, :ok, broadcast(state)}
+    else
+      {:error, _reason} = error -> {:reply, error, state}
     end
   end
 
@@ -240,7 +260,7 @@ defmodule WhoseJam.Game.Server do
          :ok <- validate_choice(state, choice),
          :ok <- validate_can_vote(state, voter_id) do
       votes = Map.put(state.round.votes, voter_id, %{choice: choice, role: voter.role})
-      state = %{state | round: %{state.round | votes: votes}} |> touch() |> maybe_end_voting()
+      state = %{state | round: %{state.round | votes: votes}} |> touch() |> update_countdown()
       {:reply, :ok, broadcast(state)}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -251,12 +271,18 @@ defmodule WhoseJam.Game.Server do
     {:reply, {:error, :not_voting}, state}
   end
 
+  # The song is over: open voting if it wasn't already, and make sure the
+  # countdown is running so the round can't stall.
   def handle_call(:song_ended, _from, %{phase: :playing, round_state: :revealing} = state) do
-    {:reply, :ok, broadcast(begin_voting(state))}
+    {:reply, :ok, broadcast(state |> begin_voting() |> start_countdown())}
+  end
+
+  def handle_call(:song_ended, _from, %{phase: :playing, round_state: :voting} = state) do
+    {:reply, :ok, broadcast(start_countdown(state))}
   end
 
   def handle_call(:song_ended, _from, state) do
-    {:reply, {:error, :not_revealing}, state}
+    {:reply, {:error, :not_playing}, state}
   end
 
   def handle_call(:skip_song, _from, %{phase: :playing} = state) do
@@ -295,7 +321,7 @@ defmodule WhoseJam.Game.Server do
     # blocking answering.
     state =
       cond do
-        state.round_state == :voting -> maybe_end_voting(state)
+        state.round_state == :voting -> update_countdown(state)
         state.phase == :answering -> maybe_end_answering(state)
         true -> state
       end
@@ -317,10 +343,19 @@ defmodule WhoseJam.Game.Server do
     {:noreply, broadcast(end_answering(state))}
   end
 
-  def handle_info({:reveal_timeout, si, ri}, state) do
+  def handle_info({:vote_delay_timeout, si, ri}, state) do
     if state.phase == :playing and state.round_state == :revealing and
          state.subround_index == si and state.round_index == ri do
       {:noreply, broadcast(begin_voting(state))}
+    else
+      {:noreply, state}
+    end
+  end
+
+  def handle_info({:voting_safety, si, ri}, state) do
+    if state.phase == :playing and state.round_state == :voting and
+         state.subround_index == si and state.round_index == ri do
+      {:noreply, broadcast(start_countdown(state))}
     else
       {:noreply, state}
     end
@@ -562,39 +597,91 @@ defmodule WhoseJam.Game.Server do
 
   defp enter_round(state, index) do
     round = Enum.at(state.rounds, index)
-    ms = reveal_safety_ms(state)
-    ref = schedule({:reveal_timeout, state.subround_index, index}, ms)
+    delay_ms = state.config.vote_delay_s * 1000
 
-    %{
+    state = %{
       state
       | phase: :playing,
         round_state: :revealing,
         round_index: index,
         round: round,
-        reveal_ref: ref,
+        votes_open_ms: now_ms() + delay_ms,
         vote_deadline_ms: nil,
         vote_ref: nil,
         results_ref: nil
     }
+
+    if delay_ms == 0 do
+      begin_voting(state)
+    else
+      ref = schedule({:vote_delay_timeout, state.subround_index, index}, delay_ms)
+      %{state | vote_delay_ref: ref}
+    end
   end
 
+  # Open voting while the song keeps playing. No countdown yet — see
+  # `update_countdown/1` — but a safety timer (held in `vote_ref` until the
+  # countdown replaces it) guarantees one eventually starts.
   defp begin_voting(state) do
-    state = cancel_timer(state, :reveal_ref)
-    ms = state.config.vote_timer_s * 1000
-    ref = schedule({:vote_timeout, state.subround_index, state.round_index}, ms)
+    state = cancel_timer(state, :vote_delay_ref)
 
-    %{state | round_state: :voting, vote_deadline_ms: now_ms() + ms, vote_ref: ref}
-    |> maybe_end_voting()
+    ref =
+      schedule({:voting_safety, state.subround_index, state.round_index}, voting_safety_ms(state))
+
+    %{
+      state
+      | round_state: :voting,
+        votes_open_ms: now_ms(),
+        vote_deadline_ms: nil,
+        vote_ref: ref
+    }
+    |> update_countdown()
   end
 
-  defp maybe_end_voting(state) do
-    if all_eligible_voted?(state), do: enter_results(state), else: state
+  # Majority in → start the countdown; everyone in → cut it to the short final
+  # countdown (never lengthening it).
+  defp update_countdown(state) do
+    cond do
+      all_eligible_voted?(state) -> countdown_at_most(state, all_voted_countdown_ms())
+      majority_voted?(state) -> start_countdown(state)
+      true -> state
+    end
+  end
+
+  # Start the full countdown unless one is already running.
+  defp start_countdown(%{vote_deadline_ms: nil} = state),
+    do: countdown_at_most(state, state.config.vote_timer_s * 1000)
+
+  defp start_countdown(state), do: state
+
+  # Set the countdown to end within `ms`, keeping an earlier deadline if any.
+  # Replacing `vote_ref` also cancels the safety timer when the countdown first
+  # starts.
+  defp countdown_at_most(state, ms) do
+    deadline = now_ms() + ms
+
+    if state.vote_deadline_ms && state.vote_deadline_ms <= deadline do
+      state
+    else
+      state = cancel_timer(state, :vote_ref)
+      ref = schedule({:vote_timeout, state.subround_index, state.round_index}, ms)
+      %{state | vote_deadline_ms: deadline, vote_ref: ref}
+    end
   end
 
   defp all_eligible_voted?(state) do
+    {eligible, voted} = eligible_vote_counts(state)
+    eligible > 0 and voted == eligible
+  end
+
+  defp majority_voted?(state) do
+    {eligible, voted} = eligible_vote_counts(state)
+    eligible > 0 and voted * 2 > eligible
+  end
+
+  defp eligible_vote_counts(state) do
     eligible = eligible_voter_ids(state)
-    voted = Map.keys(state.round.votes)
-    eligible != [] and Enum.all?(eligible, fn id -> id in voted end)
+    {length(eligible), Enum.count(eligible, &Map.has_key?(state.round.votes, &1))}
   end
 
   defp eligible_voter_ids(state) do
@@ -837,9 +924,11 @@ defmodule WhoseJam.Game.Server do
     %{
       answer_timer_s: config.answer_timer_s,
       vote_timer_s: config.vote_timer_s,
+      vote_delay_s: config.vote_delay_s,
       questions_per_player: config.questions_per_player,
       subrounds_enabled?: config.subrounds_enabled?,
-      allow_vote_change?: config.allow_vote_change?
+      allow_vote_change?: config.allow_vote_change?,
+      min_players: config.min_players
     }
   end
 
@@ -892,6 +981,7 @@ defmodule WhoseJam.Game.Server do
       choices: round.choices,
       votes_received: map_size(round.votes),
       voters: Map.keys(round.votes),
+      votes_open_ms: state.votes_open_ms,
       deadline_ms: state.vote_deadline_ms,
       revealed: round.revealed
     }
@@ -1030,19 +1120,28 @@ defmodule WhoseJam.Game.Server do
     fetch_field(spotify, :premium?) == true
   end
 
-  # The reveal/results pause is estimator-consistent by default. A test-only
-  # application-env seam (`config :whose_jam, results_pause_ms: N`) can shorten
-  # it; it is not a host-facing setting and is not overridable via the public
-  # create/set_config API.
+  # Internal pacing durations. Each has an estimator-consistent default; a
+  # test-only application-env seam (e.g. `config :whose_jam, results_pause_ms: N`
+  # or `Application.put_env/3` in a test) can shorten it. None of these are
+  # host-facing settings or overridable via the public create/set_config API.
   defp results_pause_ms(state) do
-    case Application.get_env(:whose_jam, :results_pause_ms) do
-      ms when is_integer(ms) and ms >= 0 -> ms
-      _ -> (state.config.reveal_padding_s + state.config.results_padding_s) * 1000
-    end
+    env_ms(
+      :results_pause_ms,
+      (state.config.reveal_padding_s + state.config.results_padding_s) * 1000
+    )
   end
 
-  defp reveal_safety_ms(state) do
-    (state.config.song_playback_s + @reveal_safety_extra_s) * 1000
+  defp voting_safety_ms(state) do
+    env_ms(:voting_safety_ms, (state.config.song_playback_s + @voting_safety_extra_s) * 1000)
+  end
+
+  defp all_voted_countdown_ms, do: env_ms(:all_voted_countdown_ms, @all_voted_countdown_s * 1000)
+
+  defp env_ms(key, default) do
+    case Application.get_env(:whose_jam, key) do
+      ms when is_integer(ms) and ms >= 0 -> ms
+      _ -> default
+    end
   end
 
   # Fetch a value from a map that may use atom or string keys.
@@ -1055,14 +1154,52 @@ defmodule WhoseJam.Game.Server do
 
   defp fetch_field(_map, _key), do: nil
 
+  # The whole song comes from the client, so validate every field: the uri
+  # must be a Spotify track URI (it is handed to the Web Playback SDK) or the
+  # submission is rejected; name/artist are display text, so non-strings
+  # become "" and long strings are trimmed to @max_song_text_length
+  # codepoints (not graphemes, so stacked combining marks can't bypass the cap;
+  # the stored value is at most 4 * @max_song_text_length bytes).
   defp normalize_song(song) do
-    %{
-      uri: fetch_field(song, :uri),
-      name: fetch_field(song, :name),
-      artist: fetch_field(song, :artist),
-      album_art_url: fetch_field(song, :album_art_url)
-    }
+    uri = fetch_field(song, :uri)
+
+    if is_binary(uri) and Regex.match?(~r/\Aspotify:track:[A-Za-z0-9]{22}\z/, uri) do
+      {:ok,
+       %{
+         uri: uri,
+         name: song |> fetch_field(:name) |> safe_song_text(),
+         artist: song |> fetch_field(:artist) |> safe_song_text(),
+         album_art_url: song |> fetch_field(:album_art_url) |> safe_album_art_url()
+       }}
+    else
+      {:error, :invalid_song}
+    end
   end
+
+  defp safe_song_text(text) when is_binary(text) do
+    trimmed = String.trim(text)
+    binary_part(trimmed, 0, codepoint_prefix_size(trimmed, @max_song_text_length, 0))
+  end
+
+  defp safe_song_text(_text), do: ""
+
+  # Byte size of the first `n` codepoints of `text`.
+  defp codepoint_prefix_size(_text, 0, size), do: size
+
+  defp codepoint_prefix_size(text, n, size) do
+    case String.next_codepoint(text) do
+      nil -> size
+      {codepoint, rest} -> codepoint_prefix_size(rest, n - 1, size + byte_size(codepoint))
+    end
+  end
+
+  # The album-art URL comes from the client and ends up in every screen's
+  # markup, so only Spotify image-CDN URLs survive; anything else becomes nil.
+  defp safe_album_art_url(url) when is_binary(url) do
+    if Regex.match?(~r{\Ahttps://i\.scdn\.co/image/[A-Za-z0-9]+\z}, url), do: url, else: nil
+  end
+
+  defp safe_album_art_url(_url), do: nil
 
   # --- timers ---------------------------------------------------------------
 
@@ -1074,10 +1211,10 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp cancel_round_timers(state) do
-    cancel(state.reveal_ref)
+    cancel(state.vote_delay_ref)
     cancel(state.vote_ref)
     cancel(state.results_ref)
-    %{state | reveal_ref: nil, vote_ref: nil, results_ref: nil}
+    %{state | vote_delay_ref: nil, vote_ref: nil, results_ref: nil}
   end
 
   defp cancel_all_timers(state) do

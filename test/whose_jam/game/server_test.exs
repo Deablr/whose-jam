@@ -27,6 +27,11 @@ defmodule WhoseJam.Game.ServerTest do
   @premium %{access_token: "tok", refresh_token: "ref", expires_at: 0, premium?: true}
 
   setup do
+    # Play-throughs end each round once everyone has voted; shorten that final
+    # countdown (normally 5s) so the suite stays fast. Countdown tests that
+    # assert the real 5s clear this again.
+    put_test_env(:all_voted_countdown_ms, 20)
+
     # Terminate any game servers left running after each test.
     on_exit(fn ->
       for {_, pid, _, _} <- DynamicSupervisor.which_children(WhoseJam.Game.Supervisor) do
@@ -38,6 +43,23 @@ defmodule WhoseJam.Game.ServerTest do
   end
 
   # --- fixtures -------------------------------------------------------------
+
+  # Set a test-only pacing seam read by Game.Server, restoring the previous
+  # value (or absence) when the test exits. `nil` clears it.
+  defp put_test_env(key, value) do
+    previous = Application.fetch_env(:whose_jam, key)
+
+    if is_nil(value),
+      do: Application.delete_env(:whose_jam, key),
+      else: Application.put_env(:whose_jam, key, value)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, v} -> Application.put_env(:whose_jam, key, v)
+        :error -> Application.delete_env(:whose_jam, key)
+      end
+    end)
+  end
 
   defp insert_theme(style_sequence) do
     %Theme{}
@@ -82,7 +104,16 @@ defmodule WhoseJam.Game.ServerTest do
     {code, ids}
   end
 
-  defp song(uri), do: %{uri: uri, name: "Song #{uri}", artist: "Artist", album_art_url: "art"}
+  # A valid Spotify track URI derived from `tag` (22 alphanumerics).
+  defp track_uri(tag) do
+    "spotify:track:" <> binary_part(Base.encode16(:crypto.hash(:md5, tag)), 0, 22)
+  end
+
+  # The song's `name` is the tag itself, so tests can recover which player
+  # submitted the current round's song via `submitter_of/1`.
+  defp song(tag), do: %{uri: track_uri(tag), name: tag, artist: "Artist", album_art_url: nil}
+
+  defp submitter_of(view), do: view.round.song.name
 
   # For a player, submit `song(player_id)` for each assigned question.
   defp submit_all(code, player_id) do
@@ -96,7 +127,7 @@ defmodule WhoseJam.Game.ServerTest do
   end
 
   # Drive a started game to completion by reacting to broadcasts. Voters always
-  # vote for the true submitter (identified via the song uri we chose = the
+  # vote for the true submitter (identified via the song name we chose = the
   # submitter's id), so scoring is exercised end to end.
   defp play_to_finish(code) do
     receive do
@@ -110,7 +141,7 @@ defmodule WhoseJam.Game.ServerTest do
             play_to_finish(code)
 
           {:playing, :voting} ->
-            submitter = view.round.song.uri
+            submitter = submitter_of(view)
 
             for p <- view.players, p.id != submitter, p.id not in view.round.voters do
               Game.cast_vote(code, p.id, submitter)
@@ -210,6 +241,18 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.start_game(code) == {:error, :not_enough_players}
     end
 
+    test "min_players lowers the start threshold to two" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 2)
+
+      assert Game.get_state(code).config.min_players == 3
+      assert Game.start_game(code) == {:error, :not_enough_players}
+
+      :ok = Game.set_config(code, %{"min_players" => "2"})
+      assert Game.get_state(code).config.min_players == 2
+      assert Game.start_game(code) == :ok
+    end
+
     test "requires Spotify auth and Premium verification" do
       theme = guess_who_theme()
       {:ok, code} = Game.create_game(theme.id, @fast_overrides)
@@ -254,6 +297,21 @@ defmodule WhoseJam.Game.ServerTest do
       assert Enum.any?(Map.values(final.scores), &(&1 > 0))
     end
 
+    test "a 2-player game (min_players: 2) plays through to a final scoreboard" do
+      theme = guess_who_theme()
+      {code, [p1, p2]} = lobby_with_players(theme, 2, %{min_players: 2})
+
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      for pid <- [p1, p2], do: submit_all(code, pid)
+
+      final = play_to_finish(code)
+
+      assert final.phase == :finished
+      assert Enum.any?(Map.values(final.scores), &(&1 > 0))
+    end
+
     test "re-submitting before the timer changes the pick (last write wins)" do
       theme = guess_who_theme()
       {code, [p1 | _]} = lobby_with_players(theme, 3)
@@ -264,8 +322,93 @@ defmodule WhoseJam.Game.ServerTest do
       :ok = Game.submit_song(code, p1, q.question_id, song("second"))
 
       assigned = Game.player_view(code, p1).me.assigned
-      assert hd(assigned).song.uri == "second"
+      assert hd(assigned).song.uri == track_uri("second")
       assert hd(assigned).submitted? == true
+    end
+
+    test "only Spotify image-CDN album art URLs are stored; anything else becomes nil" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      [q] = Game.player_view(code, p1).me.assigned
+
+      stored_art = fn url ->
+        :ok = Game.submit_song(code, p1, q.question_id, %{song("s") | album_art_url: url})
+        hd(Game.player_view(code, p1).me.assigned).song.album_art_url
+      end
+
+      valid = "https://i.scdn.co/image/ab67616d0000b273abcdef0123456789"
+      assert stored_art.(valid) == valid
+
+      for bad <- [
+            "x');z-index:2147483647;background:url('https://attacker/x.png",
+            "https://i.scdn.co/image/abc');color:red",
+            "http://i.scdn.co/image/abc123",
+            "https://attacker.example/image/abc123",
+            "javascript:alert(1)",
+            123
+          ] do
+        assert stored_art.(bad) == nil, "expected #{inspect(bad)} to be dropped"
+      end
+    end
+
+    test "a submission whose uri is not a Spotify track URI is rejected" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      [q] = Game.player_view(code, p1).me.assigned
+
+      for bad <- [
+            nil,
+            123,
+            "",
+            "spotify:album:4uLU6hMCjMI75M1A2tKUQC",
+            "spotify:track:4uLU6hMCjMI75M1A2tKUQ",
+            "spotify:track:4uLU6hMCjMI75M1A2tKUQCx",
+            "spotify:track:4uLU6hMCjMI75M1A2tKU-C",
+            "spotify:track:4uLU6hMCjMI75M1A2tKUQC\n",
+            "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"
+          ] do
+        assert Game.submit_song(code, p1, q.question_id, %{song("s") | uri: bad}) ==
+                 {:error, :invalid_song},
+               "expected #{inspect(bad)} to be rejected"
+      end
+
+      refute hd(Game.player_view(code, p1).me.assigned).submitted?
+
+      valid = "spotify:track:4uLU6hMCjMI75M1A2tKUQC"
+      assert Game.submit_song(code, p1, q.question_id, %{song("s") | uri: valid}) == :ok
+      assert hd(Game.player_view(code, p1).me.assigned).song.uri == valid
+    end
+
+    test "song name and artist are trimmed, capped at 200 codepoints, and non-strings become empty" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      [q] = Game.player_view(code, p1).me.assigned
+
+      stored = fn name, artist ->
+        :ok =
+          Game.submit_song(code, p1, q.question_id, %{song("s") | name: name, artist: artist})
+
+        hd(Game.player_view(code, p1).me.assigned).song
+      end
+
+      long = String.duplicate("a", 500)
+      song = stored.("  Hey Jude  ", long)
+      assert song.name == "Hey Jude"
+      assert song.artist == String.duplicate("a", 200)
+
+      song = stored.(%{evil: true}, nil)
+      assert song.name == ""
+      assert song.artist == ""
+
+      # Stacked combining marks form one grapheme; the cap still bounds bytes.
+      zalgo = "a" <> String.duplicate("\u0301", 100_000)
+      song = stored.(zalgo, zalgo)
+      assert byte_size(song.name) <= 800
+      assert byte_size(song.artist) <= 800
+      assert String.starts_with?(song.name, "a\u0301")
     end
   end
 
@@ -287,7 +430,7 @@ defmodule WhoseJam.Game.ServerTest do
       theme = guess_who_theme()
       {code, view} = start_voting(theme)
 
-      submitter = view.round.song.uri
+      submitter = submitter_of(view)
       assert Game.cast_vote(code, submitter, submitter) == {:error, :own_round}
     end
 
@@ -295,7 +438,7 @@ defmodule WhoseJam.Game.ServerTest do
       theme = guess_who_theme()
       {code, view} = start_voting(theme)
 
-      submitter = view.round.song.uri
+      submitter = submitter_of(view)
       voter = Enum.find(view.players, &(&1.id != submitter)).id
       other = Enum.find(view.players, &(&1.id != submitter and &1.id != voter)).id
 
@@ -312,7 +455,7 @@ defmodule WhoseJam.Game.ServerTest do
       :ok = Game.song_ended(code)
 
       view = Game.get_state(code)
-      submitter = view.round.song.uri
+      submitter = submitter_of(view)
       [a, b] = for p <- view.players, p.id != submitter, do: p.id
 
       assert Game.cast_vote(code, a, submitter) == :ok
@@ -334,6 +477,198 @@ defmodule WhoseJam.Game.ServerTest do
     end
   end
 
+  # Answering ends early once everyone submits, leaving round 0 :revealing
+  # (or :voting when vote_delay_s is 0).
+  defp start_round(theme, n, overrides) do
+    {code, ids} = lobby_with_players(theme, n, overrides)
+    :ok = Game.start_game(code)
+    for pid <- ids, do: submit_all(code, pid)
+    code
+  end
+
+  defp remaining_s(view), do: (view.round.deadline_ms - System.system_time(:millisecond)) / 1000
+
+  # The submitter of the current round and the other (eligible) player ids.
+  defp submitter_and_voters(code) do
+    view = Game.get_state(code)
+    submitter = submitter_of(view)
+    {submitter, for(p <- view.players, p.id != submitter, do: p.id)}
+  end
+
+  describe "listening delay and voting countdown" do
+    # These assert the real 5s all-voted countdown.
+    setup do
+      put_test_env(:all_voted_countdown_ms, nil)
+      :ok
+    end
+
+    test "votes stay closed during the listening delay, then open with no countdown" do
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 1})
+
+      view = Game.get_state(code)
+      assert view.round_state == :revealing
+      assert is_integer(view.round.votes_open_ms)
+      submitter = submitter_of(view)
+      voter = Enum.find(view.players, &(&1.id != submitter)).id
+      assert Game.cast_vote(code, voter, submitter) == {:error, :not_voting}
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      assert_receive {:game_state, %{round_state: :voting, round: round}}, 2500
+      assert round.deadline_ms == nil
+    end
+
+    test "the song ending during the listening delay opens voting with the full countdown" do
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 10, vote_timer_s: 30})
+      assert Game.get_state(code).round_state == :revealing
+
+      assert Game.song_ended(code) == :ok
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert is_integer(view.round.deadline_ms)
+      assert remaining_s(view) > 29 and remaining_s(view) <= 30
+    end
+
+    test "a majority starts the countdown and everyone voting cuts it to 5s" do
+      theme = guess_who_theme()
+      code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 30})
+
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      submitter = submitter_of(view)
+      [a, b, c, d] = for p <- view.players, p.id != submitter, do: p.id
+
+      # 2 of 4 eligible is not a majority: still no countdown.
+      for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
+      assert Game.get_state(code).round.deadline_ms == nil
+
+      # 3 of 4 starts the full countdown.
+      :ok = Game.cast_vote(code, c, submitter)
+      assert remaining_s(Game.get_state(code)) > 25
+
+      # The last vote drops it to the short final countdown.
+      :ok = Game.cast_vote(code, d, submitter)
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert remaining_s(view) > 4 and remaining_s(view) <= 5
+    end
+
+    test "the song ending starts the countdown even with no votes" do
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 0, vote_timer_s: 30})
+
+      assert Game.get_state(code).round.deadline_ms == nil
+      :ok = Game.song_ended(code)
+      assert remaining_s(Game.get_state(code)) > 25
+    end
+
+    test "everyone voting never lengthens an earlier, shorter countdown" do
+      theme = guess_who_theme()
+      code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 2})
+      {submitter, [a, b, c, d]} = submitter_and_voters(code)
+
+      for v <- [a, b, c], do: :ok = Game.cast_vote(code, v, submitter)
+      deadline = Game.get_state(code).round.deadline_ms
+      assert is_integer(deadline)
+
+      # The 5s all-voted countdown is longer than the ~2s left: keep the deadline.
+      :ok = Game.cast_vote(code, d, submitter)
+      assert Game.get_state(code).round.deadline_ms == deadline
+    end
+
+    test "the song ending during a running countdown leaves the deadline unchanged" do
+      theme = guess_who_theme()
+      code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 30})
+      {submitter, [a, b, c, _d]} = submitter_and_voters(code)
+
+      for v <- [a, b, c], do: :ok = Game.cast_vote(code, v, submitter)
+      deadline = Game.get_state(code).round.deadline_ms
+      assert is_integer(deadline)
+
+      assert Game.song_ended(code) == :ok
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert view.round.deadline_ms == deadline
+    end
+
+    test "the song ending during :results is rejected" do
+      # Hold :results long enough to act on it.
+      put_test_env(:results_pause_ms, 5_000)
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 0, vote_timer_s: 1})
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      # Starts the ~1s countdown, which then expires into :results.
+      :ok = Game.song_ended(code)
+      assert_receive {:game_state, %{round_state: :results}}, 2500
+      assert Game.song_ended(code) == {:error, :not_playing}
+      assert Game.get_state(code).round_state == :results
+    end
+
+    test "the voting safety timeout starts the countdown when nothing else does" do
+      put_test_env(:voting_safety_ms, 200)
+      theme = guess_who_theme()
+      code = start_round(theme, 3, %{vote_delay_s: 0, vote_timer_s: 30})
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      # No votes and no song_ended: the safety timer alone starts the countdown.
+      assert_receive {:game_state, %{round_state: :voting, round: %{deadline_ms: d}} = view}
+                     when is_integer(d),
+                     2000
+
+      assert remaining_s(view) > 25
+    end
+
+    test "skipping during a running countdown advances to the next round with no deadline" do
+      theme = guess_who_theme()
+      code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 1})
+      {submitter, [a, b, c, _d]} = submitter_and_voters(code)
+      index = Game.get_state(code).round.index
+
+      for v <- [a, b, c], do: :ok = Game.cast_vote(code, v, submitter)
+      assert is_integer(Game.get_state(code).round.deadline_ms)
+
+      assert Game.skip_song(code) == :ok
+
+      view = Game.get_state(code)
+      assert view.round.index == index + 1
+      assert view.round_state == :voting
+      assert view.round.deadline_ms == nil
+    end
+  end
+
+  describe "disconnection during voting" do
+    # Asserts the real 5s all-voted countdown.
+    setup do
+      put_test_env(:all_voted_countdown_ms, nil)
+      :ok
+    end
+
+    test "a disconnect can complete a majority and then everyone-voted" do
+      theme = guess_who_theme()
+      code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 30})
+      {submitter, [a, b, c, _d]} = submitter_and_voters(code)
+
+      # 2 of 4 eligible: no countdown yet.
+      for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
+      assert Game.get_state(code).round.deadline_ms == nil
+
+      # d drops: 2 of 3 connected eligible voters is a majority.
+      :ok = Game.presence_diff(code, [submitter, a, b, c])
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert remaining_s(view) > 25
+
+      # c (the last non-voter) drops: everyone still connected has voted.
+      :ok = Game.presence_diff(code, [submitter, a, b])
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert remaining_s(view) > 4 and remaining_s(view) <= 5
+    end
+  end
+
   describe "revealed round exposes the correct answer" do
     test "guess_who: correct_choice is nil pre-reveal, the submitter at results" do
       theme = guess_who_theme()
@@ -344,7 +679,7 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.round.correct_choice == nil
       assert view.round.correct_prompt == nil
 
-      submitter = view.round.song.uri
+      submitter = submitter_of(view)
       Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
       for p <- view.players, p.id != submitter, do: Game.cast_vote(code, p.id, submitter)
 
@@ -367,7 +702,7 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.round.correct_choice == nil
       assert view.round.correct_prompt == nil
 
-      submitter = view.round.song.uri
+      submitter = submitter_of(view)
       Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
       # Voting any valid choice drives the round to results (need not be correct).
       choice = hd(view.round.choices).id
@@ -387,7 +722,7 @@ defmodule WhoseJam.Game.ServerTest do
       theme = guess_who_theme()
       {code, view} = start_voting(theme)
 
-      submitter = view.round.song.uri
+      submitter = submitter_of(view)
       assert Game.player_view(code, submitter).me.own_round? == true
 
       for p <- view.players, p.id != submitter do
@@ -463,7 +798,7 @@ defmodule WhoseJam.Game.ServerTest do
 
       assert Game.cast_vote(code, pid, "x") == {:error, :not_voting}
       assert Game.submit_song(code, pid, "q", song("s")) == {:error, :not_answering}
-      assert Game.song_ended(code) == {:error, :not_revealing}
+      assert Game.song_ended(code) == {:error, :not_playing}
       assert Game.skip_song(code) == {:error, :not_playing}
       assert Game.play_again(code) == {:error, :not_finished}
       assert Game.set_config(code, %{vote_timer_s: 5}) == :ok

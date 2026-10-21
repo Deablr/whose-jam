@@ -19,8 +19,9 @@ defmodule WhoseJamWeb.Router do
 
     live "/", HomeLive
     live "/play/:code", PlayLive
-    live "/tv/:code", TvLive
     live "/host/:code", HostLive
+    # The TV and host console are one screen; keep the old TV URL working.
+    live "/tv/:code", HostLive
 
     get "/claim/:token", PlayerSessionController, :claim
     get "/auth/spotify", SpotifyAuthController, :authorize
