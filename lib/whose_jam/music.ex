@@ -41,36 +41,38 @@ defmodule WhoseJam.Music do
   @doc """
   Search `provider_id`'s catalog for `query`, using the room's host `auth`.
 
-  A blank query returns `{:ok, []}` without any network call. Results are
-  served from an in-memory cache keyed by the normalized query
-  (case-insensitive, whitespace-collapsed) so repeated identical searches
-  don't hit the provider.
+  A blank query returns `{:ok, []}` without any network call. The provider is
+  searched with the *normalized* query (case-insensitive, whitespace-collapsed)
+  and results are cached under it, so repeated identical searches don't hit the
+  provider and a provider's quirks can't poison the shared entry. Errors are
+  never cached. Returns `{:error, :unknown_provider}` or
+  `{:error, :not_configured}` before searching.
   """
   @spec search(atom(), String.t(), map()) :: {:ok, [Track.t()]} | {:error, term()}
   def search(provider_id, query, auth) when is_binary(query) do
     case fetch_provider(provider_id) do
-      {:ok, mod} -> search_with(mod, query, normalize_query(query), auth)
+      {:ok, mod} -> search_with(mod, normalize_query(query), auth)
       :error -> {:error, :unknown_provider}
     end
   end
 
-  defp search_with(mod, query, normalized, auth) do
+  defp search_with(mod, normalized, auth) do
     cond do
       normalized == "" -> {:ok, []}
       not mod.configured?() -> {:error, :not_configured}
-      true -> cached_search(mod, query, normalized, auth)
+      true -> cached_search(mod, normalized, auth)
     end
   end
 
-  defp cached_search(mod, query, normalized, auth) do
-    key = {mod.id(), optional(mod, :search_scope, [auth], nil), normalized}
+  defp cached_search(mod, normalized, auth) do
+    key = {mod.id(), normalized}
 
     case Cache.get_cached_search(key) do
       {:ok, results} ->
         {:ok, results}
 
       :miss ->
-        with {:ok, results} <- mod.search(query, auth) do
+        with {:ok, results} <- mod.search(normalized, auth) do
           Cache.put_cached_search(key, results)
           {:ok, results}
         end
@@ -93,10 +95,6 @@ defmodule WhoseJam.Music do
       :error -> {:error, :invalid_song}
     end
   end
-
-  @doc "Browser-player config for the host screen's `data-config`."
-  @spec client_config(module(), map()) :: map()
-  def client_config(mod, auth), do: mod.client_config(auth)
 
   @doc "Host-facing message for a browser `playback_error` payload."
   @spec playback_error_message(atom() | nil, map()) :: String.t()

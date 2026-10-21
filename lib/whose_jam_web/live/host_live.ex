@@ -14,10 +14,8 @@ defmodule WhoseJamWeb.HostLive do
   lists every enabled `WhoseJam.Music.Provider`, and everything else speaks in
   terms of "the music service". How a provider is connected depends on its
   `connect_kind/0`: `:oauth_redirect` providers are a plain link to
-  `/auth/:provider`; `:none` providers connect on click; `:browser` providers
-  are authorized by the `MusicConnect` hook in this browser and reported back
-  as a `"music_authorized"` event. When no eligible service is connected the
-  lobby prompts the host to connect one.
+  `/auth/:provider`; `:none` providers connect on click. When no eligible
+  service is connected the lobby prompts the host to connect one.
 
   ## Playback approach
 
@@ -153,33 +151,13 @@ defmodule WhoseJamWeb.HostLive do
      )}
   end
 
-  # Connect a provider that needs no redirect: `:none` connects on the spot;
-  # `:browser` asks the `MusicConnect` hook to authorize in this browser.
+  # Connect a provider on click: `:none` providers connect on the spot,
+  # `:oauth_redirect` ones send the host through the OAuth round-trip.
   def handle_event("connect_music", %{"provider" => provider_id}, socket) do
     case Music.fetch_provider(provider_id) do
-      {:ok, provider} ->
-        connect_music(provider, socket)
-
-      :error ->
-        {:noreply, put_flash(socket, :error, "Unknown music service.")}
+      {:ok, provider} -> connect_music(provider, socket)
+      :error -> {:noreply, put_flash(socket, :error, "Unknown music service.")}
     end
-  end
-
-  # The `MusicConnect` hook finished (or failed) a browser-side authorization.
-  def handle_event("music_authorized", %{"provider" => provider_id, "payload" => payload}, socket) do
-    with {:ok, provider} <- Music.fetch_provider(provider_id),
-         {:ok, auth} <- provider.connect(payload),
-         :ok <- Game.set_music(socket.assigns.code, provider.id(), auth) do
-      {:noreply, announce_connected(socket, provider, auth)}
-    else
-      _ -> {:noreply, put_flash(socket, :error, "Couldn't connect that music service.")}
-    end
-  end
-
-  def handle_event("music_authorize_failed", %{"provider" => provider_id} = params, socket) do
-    name = with {:ok, provider} <- Music.fetch_provider(provider_id), do: provider.name()
-    detail = if is_binary(params["message"]), do: " (#{params["message"]})", else: ""
-    {:noreply, put_flash(socket, :error, "Couldn't connect #{name}#{detail}.")}
   end
 
   @host_settings ~w(answer_timer_s vote_delay_s vote_timer_s questions_per_player
@@ -203,15 +181,21 @@ defmodule WhoseJamWeb.HostLive do
   defp connect_music(provider, socket) do
     case provider.connect_kind() do
       :none ->
-        {:ok, auth} = provider.connect(%{})
-        :ok = Game.set_music(socket.assigns.code, provider.id(), auth)
-        {:noreply, announce_connected(socket, provider, auth)}
+        with {:ok, auth} <- provider.connect(%{}),
+             :ok <- Game.set_music(socket.assigns.code, provider.id(), auth) do
+          {:noreply, announce_connected(socket, provider, auth)}
+        else
+          {:error, :not_lobby} ->
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "The game has started — you can't switch music service now."
+             )}
 
-      :browser ->
-        config = Music.client_config(provider, %{})
-
-        {:noreply,
-         push_event(socket, "music:authorize", %{provider: provider.id(), config: config})}
+          _ ->
+            {:noreply, put_flash(socket, :error, "Couldn't connect #{provider.name()}.")}
+        end
 
       :oauth_redirect ->
         {:noreply, redirect(socket, to: ~p"/auth/#{provider.id()}?code=#{socket.assigns.code}")}
@@ -235,11 +219,11 @@ defmodule WhoseJamWeb.HostLive do
       {:ok, provider, auth} ->
         auth = ensure_fresh_auth(socket.assigns.code, provider, auth)
 
-        assign(socket,
+        assign(reset_player_status(socket, provider.id()),
           music_status: :ok,
           music_provider: provider.id(),
           music_video?: provider.video?(),
-          music_config: Jason.encode!(Music.client_config(provider, auth)),
+          music_config: Jason.encode!(provider.client_config(auth)),
           refresh_timer: schedule_refresh(Music.refresh_delay_ms(auth))
         )
 
@@ -253,6 +237,14 @@ defmodule WhoseJamWeb.HostLive do
           refresh_timer: nil
         )
     end
+  end
+
+  # A different provider means a new player element: its readiness and errors
+  # are not the previous one's.
+  defp reset_player_status(socket, provider_id) do
+    if socket.assigns[:music_provider] == provider_id,
+      do: socket,
+      else: assign(socket, playback_ready?: false, playback_error: nil)
   end
 
   defp usable_music(%{music: %{id: id, eligible?: true}, music_auth: auth}) do
@@ -400,9 +392,6 @@ defmodule WhoseJamWeb.HostLive do
       <div :if={@art_url} class="jam-ambient" aria-hidden="true">
         <img src={@art_url} alt="" />
       </div>
-
-      <%!-- Authorizes browser-side providers (e.g. MusicKit) on demand. --%>
-      <div id="music-connect" phx-hook="MusicConnect" class="hidden"></div>
 
       <%!-- Keyed by provider, so switching service remounts the player. Video
            providers must stay visible while a song plays. --%>

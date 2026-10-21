@@ -5,15 +5,19 @@ defmodule WhoseJam.Music.Provider do
   A game is bound to exactly one provider, chosen by the host in the lobby. The
   game runtime itself is provider-neutral — it only ever stores
   `%{uri, name, artist, album_art_url}` songs — so everything that varies lives
-  behind these callbacks. There are six places where providers really differ:
+  behind these callbacks. There are seven places where providers really differ:
 
-    1. **Catalog search** — `search/2`, `valid_uri?/1`, `valid_art_url?/1`.
-    2. **Host connection** — `connect_kind/0`, `connect/1` (+ `authorize_url/2`).
-    3. **Eligibility** — `eligible?/1` (e.g. Spotify Premium).
-    4. **Token upkeep** — `refresh/1`.
-    5. **Browser player** — `client_config/1`, handed to the JS player module of
-       the same id (`assets/js/hooks/music/<id>.js`).
-    6. **Capabilities** — `video?/0` (does the TV need to show the player?).
+    1. **Identity & host-facing copy** — `id/0`, `name/0`, `requirement/0`,
+       `ineligible_message/0`.
+    2. **Catalog search** — `search/2`, `valid_uri?/1`, `valid_art_url?/1`.
+    3. **Host connection** — `connect_kind/0`, `connect/1` (+ `authorize_url/2`).
+    4. **Eligibility** — `eligible?/1` (e.g. Spotify Premium).
+    5. **Token upkeep** — `refresh/1` (optional).
+    6. **Browser player** — `client_config/1`, handed to the JS player module of
+       the same id (`assets/js/hooks/music/<id>.js`), and the optional
+       `playback_error_message/1` for its failures.
+    7. **Capabilities** — `configured?/0` (does the server have what it needs?)
+       and `video?/0` (does the TV need to show the player?).
 
   ## Song URIs
 
@@ -32,15 +36,17 @@ defmodule WhoseJam.Music.Provider do
 
     * `:oauth_redirect` — the host is redirected to the provider and back
       (`authorize_url/2` then `connect(%{"code" => c, "redirect_uri" => u})`).
-    * `:browser` — the provider authorizes inside the host's browser (the JS
-      module's `authorize/1`); its result is passed to `connect/1`.
     * `:none` — nothing to authorize (`connect(%{})`).
+
+  A provider that authorizes inside the host's browser (e.g. MusicKit's sign-in
+  popup) would need a third kind; none ships today, so it is left out until the
+  first one does.
   """
 
   @type id :: atom()
   @type auth :: map()
   @type track :: WhoseJam.Music.Track.t()
-  @type connect_kind :: :oauth_redirect | :browser | :none
+  @type connect_kind :: :oauth_redirect | :none
 
   # --- identity & capabilities ---------------------------------------------
 
@@ -56,6 +62,7 @@ defmodule WhoseJam.Music.Provider do
   @doc "Host-facing message when a connected account fails `eligible?/1`."
   @callback ineligible_message() :: String.t()
 
+  @doc "How the host connects: an OAuth redirect round-trip, or nothing at all."
   @callback connect_kind() :: connect_kind()
 
   @doc "Whether playback is visual and the TV must show the player."
@@ -96,23 +103,13 @@ defmodule WhoseJam.Music.Provider do
 
   # --- browser ----------------------------------------------------------------
 
-  @doc """
-  JSON-encodable config for the browser player (`data-config`). Called with
-  `%{}` before connecting too, for `:browser` providers that need a public
-  token to authorize.
-  """
+  @doc "JSON-encodable config for the browser player (`data-config`)."
   @callback client_config(auth()) :: map()
 
   # --- optional ---------------------------------------------------------------
 
-  @doc "Extra cache-key scope for search (e.g. a storefront), when results depend on auth."
-  @callback search_scope(auth()) :: term()
-
   @doc "Host-facing message for a browser `playback_error` payload, or `nil` for the generic one."
   @callback playback_error_message(params :: map()) :: String.t() | nil
 
-  @optional_callbacks authorize_url: 2,
-                      refresh: 1,
-                      search_scope: 1,
-                      playback_error_message: 1
+  @optional_callbacks authorize_url: 2, refresh: 1, playback_error_message: 1
 end

@@ -39,11 +39,14 @@ export default {
     let token = ctx.config.token || null
     let player = null
     let deviceId = null
-    let playing = false
     let wasPlaying = false
     let lastPos = 0
+    let destroyed = false
 
     const initPlayer = () => {
+      // The hook can be torn down while the SDK script is still loading.
+      if (destroyed) return
+
       if (!window.Spotify) {
         ctx.onError("sdk_unavailable")
         return
@@ -66,15 +69,17 @@ export default {
         ctx.onReady()
       })
 
-      player.addListener("not_ready", () => { deviceId = null })
+      player.addListener("not_ready", () => {
+        deviceId = null
+        ctx.onNotReady()
+      })
 
       player.addListener("player_state_changed", (state) => {
         if (!state) return
         const pos = state.position
         // A single-track play ends by pausing at position 0 after having played.
-        if (playing && wasPlaying && state.paused && pos === 0 && lastPos > 0) {
+        if (wasPlaying && state.paused && pos === 0 && lastPos > 0) {
           wasPlaying = false
-          playing = false
           ctx.onEnded()
         }
         lastPos = pos
@@ -95,7 +100,6 @@ export default {
       },
 
       play(uri) {
-        playing = true
         wasPlaying = true
         lastPos = 0
 
@@ -115,7 +119,6 @@ export default {
       },
 
       pause() {
-        playing = false
         wasPlaying = false
         if (player) player.pause().catch(() => {})
       },
@@ -123,6 +126,7 @@ export default {
       updateConfig(next) { token = next.token || token },
 
       destroy() {
+        destroyed = true
         if (player) { try { player.disconnect() } catch (_e) {} }
       },
     }

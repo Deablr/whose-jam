@@ -6,13 +6,14 @@ defmodule WhoseJam.Music.Providers.Mock do
   Search runs over a tiny in-code catalog (no network, no credentials), the
   host needs no connection step, and the browser "player"
   (`assets/js/hooks/music/mock.js`) plays no audio — it just reports the song
-  as ended after `:mock_track_ms` (default 5s), which is enough to play a whole
-  game without a Spotify account.
+  as ended after a few seconds, which is enough to play a whole game without a
+  Spotify account.
   """
 
   @behaviour WhoseJam.Music.Provider
 
-  @default_track_ms 5_000
+  # How long the browser stub "plays" each song before reporting it ended.
+  @track_ms 5_000
 
   @catalog [
     {"001", "Neon Overdrive", "The Synthetics"},
@@ -78,7 +79,5 @@ defmodule WhoseJam.Music.Providers.Mock do
   def eligible?(_auth), do: true
 
   @impl true
-  def client_config(_auth) do
-    %{track_ms: Application.get_env(:whose_jam, :mock_track_ms, @default_track_ms)}
-  end
+  def client_config(_auth), do: %{track_ms: @track_ms}
 end

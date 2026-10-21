@@ -116,6 +116,16 @@ pass an explicit compose file skip the local override). In Dokploy:
 
 ---
 
+## Music providers
+
+Everything music-service-specific sits behind the `WhoseJam.Music.Provider`
+behaviour (see `CLAUDE.md` for the contract and how to add one). Spotify is the
+only provider that ships. In **dev and test** a fake **Mock Music** provider is
+also enabled (`config :whose_jam, :music_providers`): a handful of made-up
+tracks, no credentials and no audio — each song just "ends" after a few
+seconds — so you can play a whole game locally without a Spotify account.
+Pick it in the lobby's music-service list.
+
 ## Spotify setup
 
 Spotify powers both song **search** (app-wide) and TV **playback** (host only).
@@ -296,7 +306,7 @@ contracts and agent rules see [`CLAUDE.md`](CLAUDE.md).
 mix test
 ```
 
-80 tests. In line with the PRD's testing philosophy, coverage is concentrated
+In line with the PRD's testing philosophy, coverage is concentrated
 where it pays off — the **deep pure modules** and the **GenServer's public API**:
 
 - `Game.Binning` — every player gets their target count, no duplicate
@@ -306,7 +316,11 @@ where it pays off — the **deep pure modules** and the **GenServer's public API
 - `Game.Config` — derived timings, overrides, default runtime near the 20-minute
   target.
 - `Game.Server` — the state machine happy path, rejection of invalid events,
-  submission survival across disconnects, vote-timer advance.
+  submission survival across disconnects, vote-timer advance, and the same game
+  played on every music provider.
+- Music providers — one shared contract test run against every enabled
+  provider, the facade's search caching, and the OAuth controller's signed-state
+  guard rails.
 
 `Game.Server` is exercised **through its public event API**, not by peeking at
 internal state. Deliberately **manual** (per PRD): LiveViews, the Spotify client,
@@ -386,9 +400,11 @@ whose-jam/
 │   │   ├── config.ex      # pure: timings from overrides + player count
 │   │   └── codes.ex       # room-code generation
 │   ├── content.ex         # seeded themes/questions (Ecto)
-│   └── spotify/           # search (client creds) + host OAuth + cache
+│   ├── music.ex           # provider-neutral facade: search + cache, song validation, token upkeep
+│   ├── music/             # Provider behaviour, cache, providers/{spotify,mock}.ex
+│   └── spotify/           # Spotify HTTP client + OAuth helpers (used by the Spotify provider)
 └── lib/whose_jam_web/
-    ├── router.ex          # /, /play/:code, /host/:code (+ /tv alias), /auth/spotify*
+    ├── router.ex          # /, /play/:code, /host/:code (+ /tv alias), /auth/:provider*
     ├── live/              # home, play, host LiveViews
     └── presence.ex        # Phoenix.Presence for AFK tracking
 ```

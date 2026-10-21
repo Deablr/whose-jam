@@ -670,10 +670,10 @@ defmodule WhoseJamWeb.PlayLive do
     """
   end
 
-  # The search-or-submitted body for the current question.
   defp search_placeholder(%{music: %{name: name}}), do: "Search #{name} for a song…"
   defp search_placeholder(_view), do: "Search for a song…"
 
+  # The search-or-submitted body for the current question.
   defp answer_body(assigns) do
     editing? = not assigns.question.submitted? or assigns.edit_qid == assigns.question.question_id
     assigns = assign(assigns, :editing?, editing?)

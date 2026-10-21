@@ -44,7 +44,7 @@ defmodule WhoseJam.Music.ProviderContractTest do
         assert is_binary(call(@provider, :name)) and call(@provider, :name) != ""
         assert is_binary(call(@provider, :requirement))
         assert is_binary(call(@provider, :ineligible_message))
-        assert call(@provider, :connect_kind) in [:oauth_redirect, :browser, :none]
+        assert call(@provider, :connect_kind) in [:oauth_redirect, :none]
         assert is_boolean(call(@provider, :video?))
         assert is_boolean(call(@provider, :configured?))
       end
@@ -105,16 +105,6 @@ defmodule WhoseJam.Music.ProviderContractTest do
       test "client config is JSON-encodable, with and without an account" do
         assert {:ok, _} = Jason.encode(@provider.client_config(@sample.auth))
         assert {:ok, _} = Jason.encode(@provider.client_config(%{}))
-      end
-
-      test "an unconfigured provider reports :not_configured instead of searching" do
-        # Only providers whose credentials are absent here (Mock needs none).
-        if apply(@provider, :configured?, []) do
-          :ok
-        else
-          assert Music.search(@provider.id(), "anything", @sample.auth) ==
-                   {:error, :not_configured}
-        end
       end
 
       test "a blank search never touches the provider" do

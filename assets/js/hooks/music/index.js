@@ -10,16 +10,14 @@
 //     "song_ended" and "playback_error" (so the LiveView can show a banner
 //     instead of the game silently dying).
 //
-//   * "MusicConnect" — runs a `:browser` provider's authorization in this
-//     browser when the server asks (the "music:authorize" event) and reports
-//     the result as "music_authorized" / "music_authorize_failed".
-//
 // A provider module is a plain object (see ./mock.js for the smallest one):
 //
 //   create(ctx) -> { init(), play(uri), pause(), updateConfig(config), destroy() }
-//   authorize(config) -> Promise<payload>            // `:browser` providers only
 //
-// where `ctx` is `{el, videoEl, config, onReady(), onEnded(), onError(reason, message)}`.
+// where `ctx` is `{el, videoEl, config, onReady(), onNotReady(), onEnded(), onError(reason, message)}`.
+// `onNotReady()` tells the hook the player lost its device: it holds off
+// playing until the next `onReady()`, which then plays whatever is wanted by
+// then (so a round that advanced while the device was down is not lost).
 // Modules own everything provider-specific (SDK loading, how "ended" is
 // detected); this file owns the reconciliation logic every provider shares.
 
@@ -54,6 +52,7 @@ const MusicPlayer = {
         this.pushEvent("playback_ready", {})
         this.sync()
       },
+      onNotReady: () => { this.ready = false },
       onEnded: () => {
         this.currentUri = null
         this.pushEvent("song_ended", {})
@@ -110,22 +109,4 @@ const MusicPlayer = {
   },
 }
 
-const MusicConnect = {
-  mounted() {
-    this.handleEvent("music:authorize", async ({provider, config}) => {
-      const mod = PROVIDERS[provider]
-      if (!mod || !mod.authorize) {
-        this.pushEvent("music_authorize_failed", {provider, message: "not supported"})
-        return
-      }
-      try {
-        const payload = await mod.authorize(config)
-        this.pushEvent("music_authorized", {provider, payload})
-      } catch (e) {
-        this.pushEvent("music_authorize_failed", {provider, message: (e && e.message) || ""})
-      }
-    })
-  },
-}
-
-export default {MusicPlayer, MusicConnect}
+export default {MusicPlayer}

@@ -22,7 +22,8 @@ defmodule WhoseJamWeb.MusicAuthController do
   # /auth/:provider?code=ROOMCODE  — kick off the OAuth redirect
   # =========================================================================
 
-  def authorize(conn, %{"provider" => provider_id, "code" => room_code}) do
+  def authorize(conn, %{"provider" => provider_id, "code" => room_code})
+      when is_binary(provider_id) and is_binary(room_code) do
     with {:ok, provider} <- redirect_provider(provider_id),
          :ok <- ensure_game(room_code),
          :ok <- ensure_configured(provider) do

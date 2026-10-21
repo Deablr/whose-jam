@@ -61,6 +61,15 @@ defmodule WhoseJam.Game.ServerTest do
     end)
   end
 
+  # Drop any `{:game_state, _}` broadcasts already in the mailbox.
+  defp flush_game_state do
+    receive do
+      {:game_state, _} -> flush_game_state()
+    after
+      0 -> :ok
+    end
+  end
+
   defp insert_theme(style_sequence) do
     %Theme{}
     |> Theme.changeset(%{
@@ -973,6 +982,41 @@ defmodule WhoseJam.Game.ServerTest do
       # A same-provider update (token refresh) is still fine mid-game.
       assert Game.set_music(code, :spotify, %{@premium | access_token: "fresh"}) == :ok
       assert Game.host_state(code).music_auth.access_token == "fresh"
+    end
+
+    test "connecting broadcasts the new service, never its auth, to every client" do
+      theme = guess_who_theme()
+      {code, [p1 | _]} = lobby_with_players(theme, 3)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      flush_game_state()
+
+      :ok = Game.set_music(code, :mock, %{secret: "s3cr3t"})
+
+      assert_receive {:game_state, %{music: %{id: :mock}} = view}
+      refute Map.has_key?(view, :music_auth)
+      refute inspect(view) =~ "s3cr3t"
+      refute Map.has_key?(Game.player_view(code, p1), :music_auth)
+      assert Game.host_state(code).music_auth == %{secret: "s3cr3t"}
+    end
+
+    test "a fresh game has no music auth, and a non-map auth is rejected" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      assert Game.host_state(code).music_auth == nil
+      assert {:error, _} = Game.set_music(code, :mock, nil)
+      assert Game.get_state(code).music == nil
+    end
+
+    test "provider ids may be strings (as events and URLs carry them)" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      # Same-provider refresh mid-game is allowed; a different one is not.
+      assert Game.set_music(code, "spotify", %{@premium | access_token: "fresh"}) == :ok
+      assert Game.set_music(code, "mock", %{}) == {:error, :not_lobby}
+      assert Game.get_state(code).music.id == :spotify
     end
 
     test "players search the room's service" do

@@ -203,21 +203,19 @@ defmodule WhoseJam.Game.Server do
   end
 
   def handle_call({:set_music, provider_id, auth}, _from, state) when is_map(auth) do
-    cond do
-      Music.fetch_provider(provider_id) == :error ->
+    case Music.fetch_provider(provider_id) do
+      :error ->
         {:reply, {:error, :unknown_provider}, state}
 
-      # Switching service mid-game would strand every submitted song; a
-      # same-provider update (token refresh) is always fine.
-      state.phase != :lobby and not same_provider?(state, provider_id) ->
-        {:reply, {:error, :not_lobby}, state}
-
-      true ->
-        {:ok, mod} = Music.fetch_provider(provider_id)
-        # Broadcast: the public view carries which service this is, and the host
-        # screen re-derives its player from the change.
-        state = touch(%{state | music: %{provider: mod.id(), auth: auth}})
-        {:reply, :ok, broadcast(state)}
+      {:ok, mod} ->
+        if switching_mid_game?(state, mod.id()) do
+          {:reply, {:error, :not_lobby}, state}
+        else
+          # Broadcast: the public view carries which service this is, and the
+          # host screen re-derives its player from the change.
+          state = touch(%{state | music: %{provider: mod.id(), auth: auth}})
+          {:reply, :ok, broadcast(state)}
+        end
     end
   end
 
@@ -1131,10 +1129,14 @@ defmodule WhoseJam.Game.Server do
 
   defp reset_scores(state), do: Map.new(state.participants, fn {id, _p} -> {id, 0} end)
 
-  defp same_provider?(%{music: %{provider: provider}}, provider_id),
-    do: Atom.to_string(provider) == to_string(provider_id)
+  # Switching service mid-game would strand every submitted song; a
+  # same-provider update (a token refresh) is always fine.
+  defp switching_mid_game?(%{phase: :lobby}, _provider_id), do: false
 
-  defp same_provider?(_state, _provider_id), do: false
+  defp switching_mid_game?(%{music: %{provider: provider}}, provider_id),
+    do: provider != provider_id
+
+  defp switching_mid_game?(_state, _provider_id), do: false
 
   defp music_eligible?(%{provider: provider, auth: auth}) do
     case Music.fetch_provider(provider) do

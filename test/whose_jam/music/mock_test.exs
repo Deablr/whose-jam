@@ -13,8 +13,9 @@ defmodule WhoseJam.Music.MockTest do
     assert tracks |> Enum.map(& &1.uri) |> Enum.uniq() |> length() == length(tracks)
   end
 
-  test "search matches name or artist, case-insensitively" do
+  test "search matches name or artist, case-insensitively, ignoring extra spaces" do
     assert {:ok, [%{name: "Neon Overdrive"}]} = Music.search(:mock, "neon over", %{})
+    assert {:ok, [%{name: "Neon Overdrive"}]} = Music.search(:mock, "  NEON    overdrive ", %{})
 
     {:ok, by_artist} = Music.search(:mock, "LUCY MARLOWE", %{})
     assert by_artist != [] and Enum.all?(by_artist, &(&1.artist == "Lucy Marlowe"))
@@ -28,11 +29,7 @@ defmodule WhoseJam.Music.MockTest do
     assert Mock.eligible?(auth)
   end
 
-  test "the browser stub's song length is configurable" do
-    assert Mock.client_config(%{}).track_ms == 5_000
-
-    Application.put_env(:whose_jam, :mock_track_ms, 50)
-    on_exit(fn -> Application.delete_env(:whose_jam, :mock_track_ms) end)
-    assert Mock.client_config(%{}).track_ms == 50
+  test "tells the browser stub how long a song lasts" do
+    assert Mock.client_config(%{}).track_ms > 0
   end
 end

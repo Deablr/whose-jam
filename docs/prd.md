@@ -166,16 +166,16 @@ Enabled providers come from `config :whose_jam, :music_providers`. Spotify is th
 
 **Mock** (dev/test only)
 
-A small fixed catalog of fake tracks, no credentials, no connect step, no audio: the browser stub reports each song as ended after a few seconds (`:mock_track_ms`, default 5s). It lets a whole game be played and tested without a Spotify account.
+A small fixed catalog of fake tracks, no credentials, no connect step, no audio: the browser stub reports each song as ended after a few seconds. It lets a whole game be played and tested without a Spotify account.
 
 **Researched and shelved**
 
-Throwaway proofs of concept for YouTube (a no-account, `video?` provider) and Apple Music (a provider authorized inside the browser) were built to prove the `Provider` behaviour fits both shapes, then removed. Neither is offered to hosts, because:
+Throwaway proofs of concept for YouTube (a no-account, `video?` provider) and Apple Music (a provider authorized inside the browser, via MusicKit's sign-in popup) were built to prove the `Provider` behaviour fits both shapes, then removed. Neither is offered to hosts, because:
 
 - **YouTube:** the Data API quota is per Google Cloud project (roughly 100 searches/day), embedded ads may still play for Premium viewers, and the terms require a visible, unobscured player.
 - **Apple Music:** a MusicKit developer token needs a MusicKit key, which needs a paid Apple Developer Program membership (Account Holder or Admin role). If this is ever revived, sign the ES256 developer token with `jose`.
 
-The abstraction keeps the hooks they needed (`:browser` connect kind via the `MusicConnect` hook, `video?`, `search_scope/1`), though no shipped provider uses them yet.
+What they needed beyond Spotify: a `video?` capability (kept — the host screen then shows the player), a browser-authorized connect kind (removed again as unused; a provider like Apple Music would need a third `connect_kind` plus a hook to run the sign-in in the host's browser), and a per-provider search-cache scope for storefront-dependent results (also removed as unused).
 
 - Submitted songs are stored by provider-namespaced song URI (`spotify:track:…`).
 
@@ -213,7 +213,7 @@ The abstraction keeps the hooks they needed (`:browser` connect kind via the `Mu
 - Tests target *external behavior* of a module, not its internal structure. A test should still pass after a full internal refactor as long as the module's contract is preserved.
 - Deep, pure modules are prioritized for unit tests because they offer the highest test-value-per-line-of-test.
 - The GenServer is tested through its public event API, not by peeking at internal state. Tests send events and observe the resulting public state (via the same query functions LiveViews will use).
-- LiveViews, the live provider APIs (Spotify), and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), pure response parsing is tested from fixtures, and `Game.Server` plays the same game on every provider.
+- LiveViews, the live provider APIs (Spotify), and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller's signed-state guard rails are tested without any provider API, and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
 
 ### Modules with tests
 

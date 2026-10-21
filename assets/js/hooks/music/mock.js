@@ -5,9 +5,10 @@ export default {
   create(ctx) {
     let config = ctx.config
     let timer = null
+    let readyTimer = null
 
     return {
-      init() { setTimeout(() => ctx.onReady(), 0) },
+      init() { readyTimer = setTimeout(() => ctx.onReady(), 0) },
 
       play(_uri) {
         clearTimeout(timer)
@@ -16,7 +17,11 @@ export default {
 
       pause() { clearTimeout(timer) },
       updateConfig(next) { config = next },
-      destroy() { clearTimeout(timer) },
+
+      destroy() {
+        clearTimeout(timer)
+        clearTimeout(readyTimer)
+      },
     }
   },
 }
