@@ -319,8 +319,8 @@ where it pays off — the **deep pure modules** and the **GenServer's public API
   submission survival across disconnects, vote-timer advance, and the same game
   played on every music provider.
 - Music providers — one shared contract test run against every enabled
-  provider, the facade's search caching, and the OAuth controller's signed-state
-  guard rails.
+  provider, the facade's search caching, and the OAuth controller (signed-state
+  guard rails, plus the authorize-to-callback flow via a stub redirect provider).
 
 `Game.Server` is exercised **through its public event API**, not by peeking at
 internal state. Deliberately **manual** (per PRD): LiveViews, the Spotify client,
