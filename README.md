@@ -17,19 +17,19 @@ No accounts, no installs for players — they scan a QR code and type a name.
 
 ## How a game night works
 
-There are three screens, each a Phoenix LiveView keyed by the game's short room
+There are two screens, each a Phoenix LiveView keyed by the game's short room
 code:
 
 | Screen | URL | Who looks at it |
 | --- | --- | --- |
-| **TV** | `/tv/:code` | The whole room. Shows the QR code + room code in the lobby, the currently-playing song and album art during rounds, the reveal, and the scoreboard. Also where audio plays. |
-| **Host console** | `/host/:code` | The host only. Start game, skip song, settings. |
+| **Host screen** | `/host/:code` (also `/tv/:code`) | The whole room, on the TV. Shows the QR code + room code in the lobby, the currently-playing song and album art during rounds, the reveal, and the scoreboard. Also where audio plays. A slim top bar carries the host controls: music-service status, skip song, and a Settings panel (music service + game settings). |
 | **Player** | `/play/:code` | Each phone. Search + submit songs, then vote. |
 
-**The host's setup** is one laptop with two tabs: `/tv/:code` cast to the TV,
-and `/host/:code` for the controls. The host also joins `/play/:code` on their
-own phone to play along. The TV URL is not tied to any identity — any browser
-can open it.
+**The host's setup** is one laptop showing `/host/:code` on the TV. If no music
+service is connected, the lobby prompts the host to connect one (Spotify today;
+the picker is built to list more services later). The host also joins
+`/play/:code` on their own phone to play along. The host URL is not tied to any
+identity — any browser can open it.
 
 **Host flow:**
 
@@ -275,8 +275,8 @@ transport code.
       │  "game:"<>code              │ room code           └───────────────┘
       ▼                   ┌─────────┴───────────┐
 ┌───────────┐            │   WhoseJam.Game       │         ┌────────────┐
-│ /tv/:code │◄───────────┤   (facade LiveViews   ├────────►│  Postgres  │
-│/host/:code│  subscribe │    call)              │  seeds  │  themes /  │
+│/host/:code│◄───────────┤   (facade LiveViews   ├────────►│  Postgres  │
+│           │  subscribe │    call)              │  seeds  │  themes /  │
 │/play/:code│────────────►                       │◄────────┤ questions  │
 └───────────┘  events    └───────────────────────┘         └────────────┘
   LiveViews (pure renderers)                          (Content: seed data only)
@@ -385,7 +385,7 @@ whose-jam/
 │   ├── content.ex         # seeded themes/questions (Ecto)
 │   └── spotify/           # search (client creds) + host OAuth + cache
 └── lib/whose_jam_web/
-    ├── router.ex          # /, /play/:code, /tv/:code, /host/:code, /auth/spotify*
-    ├── live/              # home, play, tv, host LiveViews
+    ├── router.ex          # /, /play/:code, /host/:code (+ /tv alias), /auth/spotify*
+    ├── live/              # home, play, host LiveViews
     └── presence.ex        # Phoenix.Presence for AFK tracking
 ```

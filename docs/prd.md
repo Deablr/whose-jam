@@ -23,11 +23,11 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 1. As a host, I want to open a single URL on my laptop and create a new game with one click, so that I can get a party started quickly without signing up for anything.
 2. As a host, I want to see a QR code and a short alphanumeric room code on the TV, so that friends can join either by scanning or typing.
-3. As a host, I want to authenticate my Spotify Premium account via OAuth before the game begins, so that the TV can play full songs during rounds.
+3. As a host, I want to connect a music service (Spotify Premium via OAuth in v1) before the game begins — and be prompted to connect one if I open the lobby without it — so that the TV can play full songs during rounds.
 4. As a host, I want to be told clearly and early if Spotify Premium is missing, so that I'm not blindsided mid-game.
 5. As a host, I want to pick a themed question pool from a short list, so that I can tune the vibe (e.g., wholesome vs. rowdy) to my friend group.
 6. As a host, I want to preview two or three example questions per pool (drawn from questions that won't be used in the actual game), so that I know what style of prompts to expect without spoiling the session.
-7. As a host, I want to adjust default settings (answer timer, vote timer, questions per player, sub-rounds on/off), so that I can make the game shorter, longer, or structured differently for my group.
+7. As a host, I want to open a settings panel to adjust default settings (answer timer, vote timer, questions per player, sub-rounds on/off) and manage my music-service connection, so that I can make the game shorter, longer, or structured differently for my group without settings cluttering the TV.
 8. As a host, I want the default settings to produce a ~20-minute game, so that I can run it without fiddling.
 9. As a host, I want to see on the TV a live roster of who has joined as players vs. audience, so that I know when to start.
 10. As a host, I want to start the game only when at least three players have joined, so that the guessing mechanic is non-trivial.
@@ -95,7 +95,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - Each active game is one `Game.Server` GenServer, registered under a short room code in a Phoenix Registry.
 - State transitions flow through explicit events (`:join`, `:start`, `:submit_song`, `:cast_vote`, `:skip_song`). The GenServer publishes game-state broadcasts via Phoenix.PubSub on a per-room topic.
-- All LiveViews (TV, player, host) subscribe to the room topic; they are pure renderers of state received from the GenServer.
+- All LiveViews (host screen, player) subscribe to the room topic; they are pure renderers of state received from the GenServer.
 - `Phoenix.Presence` tracks connected clients per room. Players absent from Presence for a short threshold are marked AFK and excluded from "waiting on N players" counts, but their existing submissions stay live.
 - When a game ends (final scoreboard shown + short idle timeout), the GenServer shuts down and its state is discarded.
 
@@ -112,7 +112,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - A sub-round corresponds to one style from the theme's `style_sequence`. When the host disables sub-rounds, the sequence collapses into a single `:answering` phase that covers all styles before any `:playing`.
 - Answer timer is global per sub-round (computed from questions assigned). Vote timer runs per round (default 30s, configurable).
 - When the vote timer expires or all non-AFK voters have voted, the round advances. Voters who don't vote earn no points that round.
-- The host can skip songs via a button on the host LiveView. No pause feature in v1.
+- The host can skip songs via a button in the host screen's control bar. No pause feature in v1.
 - After `:finished`, the TV offers a "Start a new game with these players" option, which resets state but preserves the player roster.
 
 ### Question styles (v1)
@@ -153,7 +153,8 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 ### Spotify integration
 
 - **Search:** server-side, using Spotify client credentials (app-level token, not host-linked). Results cached in-memory per search term for a short TTL to reduce API calls. Key is held server-side; never shipped to players.
-- **Playback:** Spotify Web Playback SDK on the host's browser only. Host completes OAuth during game creation; the game refuses to start if the host is not authenticated and Premium-verified.
+- **Playback:** Spotify Web Playback SDK on the host screen's browser only. Host completes OAuth from the lobby (connect prompt or Settings); the game refuses to start if the host is not authenticated and Premium-verified.
+- **Music services are pluggable in the UX.** The host picks from a list of music services; Spotify is the only entry in v1, shown alongside a "more services coming soon" placeholder. Host-facing copy says "music service" rather than assuming Spotify, so adding a provider later is a new list entry rather than a UI redesign. (Search and playback internals remain Spotify-specific in v1.)
 - **Only the host plays audio.** Players may see album art and song title on their phones during rounds but do not play audio. No per-player preview audio in v1.
 - Submitted songs are stored by Spotify track URI.
 
@@ -173,7 +174,10 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 ### Host screen architecture
 
-- The TV URL (`/tv/:code`) is not bound to host identity. Any browser can open it. The host's typical setup is a laptop with two browser tabs (or two browsers): one on `/tv/:code` connected to the TV, one on `/play/:code` on their phone as a player. A separate `/host/:code` view on the laptop holds the host-only controls (start game, skip song, settings).
+- The TV display and host controls are **one screen** at `/host/:code` (`/tv/:code` is kept as an alias). It is not bound to host identity; any browser can open it. The host's typical setup is a laptop showing `/host/:code` on the TV, plus `/play/:code` on their own phone as a player.
+- The screen renders the shared game state big and dark for the room. Host controls live in a slim top bar: music-service status (prompts to connect when none is connected), skip song (during rounds), and a Settings button.
+- Settings open on demand as a panel with two sections: **Music service** (connect / reconnect / switch account) and **Game** (the five host-facing settings plus the estimated runtime; locked once the game starts).
+- In the lobby, if no premium-ready music service is connected, a "Connect your music" prompt opens automatically (dismissible), and the Start button explains what's missing. Playback failures (e.g. a browser without DRM support) are shown in the lobby, before the game starts.
 
 ### Explicitly out of the way
 
