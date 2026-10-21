@@ -60,7 +60,7 @@ defmodule WhoseJamWeb.PlayLive do
       me: nil,
       role: nil,
       my_name: nil,
-      page_title: "Join · WhoseJam",
+      page_title: "Join",
       # answering
       q_index: 0,
       edit_qid: nil,
@@ -376,7 +376,6 @@ defmodule WhoseJamWeb.PlayLive do
     <div data-theme="jam" class="jam-stage min-h-screen overflow-x-hidden">
       <% art = phone_art(assigns) %>
       <div :if={art} class="jam-ambient" style={"background-image: url('#{art}')"}></div>
-      <div :if={!art} class="jam-halftone fixed inset-x-0 top-0 h-[45vh] -z-10"></div>
       <div class="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 pb-10 pt-6">
         <%= case @status do %>
           <% :missing -> %>
@@ -398,21 +397,19 @@ defmodule WhoseJamWeb.PlayLive do
   defp top_bar(assigns) do
     ~H"""
     <div class="mb-6 flex items-center justify-between">
-      <span class="flex items-center gap-1.5">
-        <span class="font-display text-xl font-black tracking-tight">whose</span>
-        <span class="jam-sticker jam-sticker-pink -rotate-3 !px-2 !py-1 text-xs">jam</span>
-      </span>
+      <img src={~p"/images/whose-jam-logo.svg"} alt="Whose Jam" class="h-14 -ml-2" />
       <div class="flex items-center gap-2">
         <span
           :if={@role}
           class={[
-            "jam-sticker !px-2.5 !py-1.5 text-[0.65rem]",
-            @role == :audience && "jam-sticker-lemon"
+            "jam-chip !px-3 !py-1 text-xs",
+            @role == :player && "jam-chip-on",
+            @role == :audience && "!bg-jam-orange !text-jam-ink"
           ]}
         >
           {if @role == :player, do: "Player", else: "Audience"}
         </span>
-        <span class="jam-chip !px-3 !py-1 font-path text-xs tracking-widest">
+        <span class="jam-chip !px-3 !py-1 text-xs tracking-widest">
           {@code}
         </span>
       </div>
@@ -445,7 +442,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     {top_bar(assigns)}
     <div class="flex flex-1 flex-col justify-center">
-      <h1 class="font-display text-3xl font-black leading-tight">Pick a name<br />and jump in</h1>
+      <h1 class="font-display text-3xl  leading-tight">Pick a name<br />and jump in</h1>
       <p class="mt-2 text-white/60">
         Joining game <span class="font-mono font-semibold text-white">{@code}</span>. No account needed.
       </p>
@@ -458,7 +455,7 @@ defmodule WhoseJamWeb.PlayLive do
           autofocus
           maxlength="24"
           placeholder="Your display name"
-          class="w-full rounded-2xl border-2 border-jam-bubblegum/25 bg-jam-night/70 px-5 py-4 text-lg text-white placeholder-white/40 focus:border-jam-mint focus:outline-none"
+          class="w-full rounded-2xl border-2 border-jam-cream/10 bg-jam-ink/60 px-5 py-4 text-lg text-white placeholder-white/40 focus:border-jam-pink focus:outline-none"
         />
         <p :if={@join_error} class="text-sm text-jam-red">{@join_error}</p>
         <button
@@ -538,7 +535,7 @@ defmodule WhoseJamWeb.PlayLive do
               :for={p <- @view.audience}
               class={[
                 "rounded-full px-3 py-1.5 text-sm font-medium",
-                p.id == @player_id && "bg-jam-teal text-white",
+                p.id == @player_id && "bg-jam-purple text-white",
                 p.id != @player_id && "bg-white/10 text-white/70"
               ]}
             >
@@ -608,7 +605,7 @@ defmodule WhoseJamWeb.PlayLive do
           Question {@index + 1} of {@total} · {@answered}/{@total} submitted
         </div>
         <div class="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
-          <.icon name="hero-clock" class="size-4 text-jam-bubblegum" />
+          <.icon name="hero-clock" class="size-4 text-jam-pink" />
           <span
             id="countdown-answer"
             phx-hook="Countdown"
@@ -621,7 +618,7 @@ defmodule WhoseJamWeb.PlayLive do
       </div>
 
       <div class="jam-panel p-6">
-        <div class="text-xs font-semibold uppercase tracking-wide text-jam-bubblegum">
+        <div class="text-xs font-semibold uppercase tracking-wide text-jam-pink">
           Your prompt
         </div>
         <h1 class="mt-1 font-display text-2xl font-bold leading-snug">{@question.prompt}</h1>
@@ -701,7 +698,7 @@ defmodule WhoseJamWeb.PlayLive do
             autocomplete="off"
             phx-debounce="300"
             placeholder="Search Spotify for a song…"
-            class="w-full rounded-2xl border-2 border-jam-bubblegum/25 bg-jam-night/70 px-5 py-4 text-white placeholder-white/40 focus:border-jam-mint focus:outline-none"
+            class="w-full rounded-2xl border-2 border-jam-cream/10 bg-jam-ink/60 px-5 py-4 text-white placeholder-white/40 focus:border-jam-pink focus:outline-none"
           />
         </form>
 
@@ -771,7 +768,7 @@ defmodule WhoseJamWeb.PlayLive do
     <div class="flex flex-1 flex-col">
       <div
         :if={@show_times_up}
-        class="mb-4 flex items-start gap-2 rounded-2xl bg-jam-lemon/15 px-4 py-3 text-sm text-jam-lemon"
+        class="mb-4 flex items-start gap-2 rounded-2xl bg-jam-orange/15 px-4 py-3 text-sm text-jam-orange"
       >
         <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
         <span class="flex-1">Time's up — any unfinished questions won't be in the game.</span>
@@ -812,8 +809,8 @@ defmodule WhoseJamWeb.PlayLive do
         <.icon name="hero-musical-note" class="size-7 text-white/50" />
       </div>
       <div class="min-w-0">
-        <div class="jam-path">round {@round.index + 1} of {@round.total}</div>
-        <div class="truncate font-display text-lg font-black">{@round.song.name}</div>
+        <div class="jam-eyebrow !text-xs">Round {@round.index + 1} of {@round.total}</div>
+        <div class="truncate font-display text-lg ">{@round.song.name}</div>
         <div class="truncate text-sm text-white/60">{@round.song.artist}</div>
       </div>
     </div>
@@ -884,10 +881,9 @@ defmodule WhoseJamWeb.PlayLive do
               phx-click="vote"
               phx-value-choice={choice.id}
               class={[
-                "w-full rounded-2xl border-[3px] px-5 py-4 text-left text-lg font-bold transition active:translate-x-0.5 active:translate-y-0.5",
-                @my_vote == choice.id &&
-                  "border-jam-violet bg-jam-mint text-jam-night shadow-[0.25rem_0.25rem_0] shadow-jam-pink",
-                @my_vote != choice.id && "border-jam-bubblegum/25 bg-jam-night/60 text-white"
+                "w-full rounded-2xl px-5 py-4 text-left text-lg font-bold transition active:scale-[0.99]",
+                @my_vote == choice.id && "bg-jam-pink text-white",
+                @my_vote != choice.id && "bg-jam-cream/8 text-jam-cream"
               ]}
             >
               {if @round.style == :guess_who, do: choice.name, else: choice.prompt}
@@ -904,7 +900,7 @@ defmodule WhoseJamWeb.PlayLive do
   defp vote_timer(assigns) do
     ~H"""
     <div class="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
-      <.icon name="hero-clock" class="size-4 text-jam-bubblegum" />
+      <.icon name="hero-clock" class="size-4 text-jam-pink" />
       <span
         id="countdown-vote"
         phx-hook="Countdown"
@@ -928,11 +924,11 @@ defmodule WhoseJamWeb.PlayLive do
       <div class="jam-panel px-6 py-5">
         <div :if={@round.style == :guess_who}>
           <div class="text-xs uppercase tracking-wide text-white/50">Submitted by</div>
-          <div class="mt-1 font-display text-2xl font-bold text-jam-bubblegum">{@submitter_name}</div>
+          <div class="mt-1 font-display text-2xl font-bold text-jam-pink">{@submitter_name}</div>
         </div>
         <div :if={@round.style != :guess_who}>
           <div class="text-xs uppercase tracking-wide text-white/50">The prompt was</div>
-          <div class="mt-1 text-lg font-semibold text-jam-bubblegum">{@round.correct_prompt}</div>
+          <div class="mt-1 text-lg font-semibold text-jam-pink">{@round.correct_prompt}</div>
           <div :if={@submitter_name} class="mt-1 text-sm text-white/50">
             submitted by {@submitter_name}
           </div>
@@ -968,7 +964,7 @@ defmodule WhoseJamWeb.PlayLive do
         <div class="text-5xl">🏆</div>
         <h1 class="mt-3 font-display text-2xl font-bold">That's a wrap!</h1>
         <p :if={@place != nil} class="mt-1 text-white/70">
-          You finished <span class="font-bold text-jam-bubblegum">{ordinal(@place)}</span>
+          You finished <span class="font-bold text-jam-pink">{ordinal(@place)}</span>
           {if @role == :audience, do: "in the audience", else: "among players"}.
         </p>
       </div>

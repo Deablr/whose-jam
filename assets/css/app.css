@@ -91,34 +91,33 @@
   --noise: 0;
 }
 
-/* whose-jam "night" theme — hyperpop / Vocaloid palette: deep violet ink,
-   hot pink + neon mint primaries, lemon highlights. Used by every game screen
-   via data-theme="jam". */
+/* whose-jam theme — colours come from the logo: purple → pink → orange on
+   ink, with cream type. Used by every game screen via data-theme="jam". */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
   name: "jam";
   default: false;
   prefersdark: false;
   color-scheme: "dark";
-  --color-base-100: #241046;
-  --color-base-200: #1b0b37;
+  --color-base-100: #1e1036;
+  --color-base-200: #170b2c;
   --color-base-300: #120726;
-  --color-base-content: #fbeaff;
+  --color-base-content: #fbf1e1;
   --color-primary: #ff3fa8;
-  --color-primary-content: #1a0630;
-  --color-secondary: #4ff5d2;
-  --color-secondary-content: #0f1f2e;
-  --color-accent: #fff06a;
-  --color-accent-content: #241046;
-  --color-neutral: #3a1a6b;
-  --color-neutral-content: #fbeaff;
-  --color-info: #6cc8ff;
-  --color-info-content: #0b1a2e;
-  --color-success: #4ff5d2;
+  --color-primary-content: #ffffff;
+  --color-secondary: #a64dff;
+  --color-secondary-content: #ffffff;
+  --color-accent: #ff9f1c;
+  --color-accent-content: #120726;
+  --color-neutral: #2c1850;
+  --color-neutral-content: #fbf1e1;
+  --color-info: #a64dff;
+  --color-info-content: #ffffff;
+  --color-success: #4fe3bd;
   --color-success-content: #0f1f2e;
-  --color-warning: #fff06a;
-  --color-warning-content: #241046;
+  --color-warning: #ff9f1c;
+  --color-warning-content: #120726;
   --color-error: #ff4d6d;
-  --color-error-content: #1a0630;
+  --color-error-content: #ffffff;
   --radius-selector: 1rem;
   --radius-field: 0.9rem;
   --radius-box: 1.25rem;
@@ -130,19 +129,16 @@
 }
 
 @theme {
-  --font-display: "Unbounded", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Lilita One", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-path: "Space Mono", ui-monospace, monospace;
 
   --color-jam-ink: #120726;
-  --color-jam-night: #241046;
-  --color-jam-violet: #8a3dff;
+  --color-jam-night: #1e1036;
+  --color-jam-purple: #a64dff;
   --color-jam-pink: #ff3fa8;
-  --color-jam-bubblegum: #ff9ccf;
-  --color-jam-blush: #fde0e6;
-  --color-jam-mint: #4ff5d2;
-  --color-jam-teal: #39c5bb;
-  --color-jam-lemon: #fff06a;
+  --color-jam-orange: #ff9f1c;
+  --color-jam-cream: #fbf1e1;
+  --color-jam-mint: #4fe3bd;
   --color-jam-red: #ff4d6d;
 }
 
@@ -159,146 +155,86 @@
 
 /* This file is for your main application CSS */
 
+@layer components {
 /* ===================================================================
    whose-jam design language
    =================================================================== */
 
-/* Page backdrop: violet night with pink/violet/mint glows and faint
-   scanlines. */
+/* Page backdrop: ink with two soft glows in the logo's end colours. */
 .jam-stage {
   font-family: var(--font-body);
-  color: #fbeaff;
+  color: var(--color-jam-cream);
   background-color: var(--color-jam-ink);
   background-image:
-    radial-gradient(60rem 40rem at 10% -10%, rgb(255 63 168 / 0.35), transparent 60%),
-    radial-gradient(50rem 40rem at 110% 20%, rgb(138 61 255 / 0.45), transparent 60%),
-    radial-gradient(40rem 30rem at 50% 120%, rgb(79 245 210 / 0.18), transparent 60%);
+    radial-gradient(70rem 45rem at -10% -20%, rgb(166 77 255 / 0.28), transparent 60%),
+    radial-gradient(60rem 40rem at 110% 120%, rgb(255 159 28 / 0.14), transparent 60%);
   position: relative;
   isolation: isolate;
 }
 
-.jam-stage::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgb(255 255 255 / 0.025) 0 1px,
-    transparent 1px 3px
-  );
-  mix-blend-mode: overlay;
-}
-
-/* Halftone dot field, used as a decorative layer. */
-.jam-halftone {
-  background-image: radial-gradient(rgb(255 156 207 / 0.22) 1.2px, transparent 1.4px);
-  background-size: 14px 14px;
-  mask-image: linear-gradient(to bottom, #000, transparent 70%);
-}
-
-/* Big display type with a pink/mint chromatic-aberration edge. */
-.jam-glitch {
-  font-family: var(--font-display);
-  text-shadow:
-    -0.04em 0 0 rgb(255 63 168 / 0.85),
-    0.04em 0 0 rgb(79 245 210 / 0.85);
-}
-
-/* Chunky outlined label, like the stacked title boxes on the cover. */
-.jam-sticker {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5em;
-  font-family: var(--font-display);
-  font-weight: 800;
+/* Small uppercase label above a heading. */
+.jam-eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  padding: 0.45em 0.8em;
-  border: 3px solid var(--color-jam-violet);
-  border-radius: 0.6em;
-  background: var(--color-jam-mint);
-  color: var(--color-jam-night);
-  box-shadow: 0.22em 0.22em 0 var(--color-jam-pink);
+  color: rgb(251 241 225 / 0.55);
 }
 
-.jam-sticker-lemon {
-  background: var(--color-jam-lemon);
-}
-
-.jam-sticker-pink {
-  background: var(--color-jam-pink);
-  color: #fff;
-  box-shadow: 0.22em 0.22em 0 var(--color-jam-mint);
-}
-
-.jam-sticker-ghost {
-  background: rgb(36 16 70 / 0.7);
-  color: #fbeaff;
-  border-color: rgb(255 156 207 / 0.6);
-  box-shadow: 0.18em 0.18em 0 rgb(138 61 255 / 0.8);
-}
-
-/* Little Y2K "file path" caption: C://USERS/WHOSE-JAM/... */
-.jam-path {
-  font-family: var(--font-path);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgb(255 156 207 / 0.75);
-}
-
-/* Glassy panel. */
+/* Soft panel. */
 .jam-panel {
-  background: rgb(36 16 70 / 0.55);
-  border: 2px solid rgb(255 156 207 / 0.18);
+  background: rgb(30 16 54 / 0.7);
+  border: 1.5px solid rgb(251 241 225 / 0.08);
   border-radius: 1.5rem;
   backdrop-filter: blur(14px);
 }
 
-/* Chunky primary button with a hard offset shadow that presses in. */
+/* Chunky button with a hard offset shadow that presses in. */
 .jam-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
   font-family: var(--font-display);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.85em 1.6em;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  font-size: 1.15em;
+  padding: 0.7em 1.5em;
   border-radius: 1em;
-  border: 3px solid var(--color-jam-night);
   background: var(--color-jam-pink);
   color: #fff;
-  box-shadow: 0.25em 0.25em 0 var(--color-jam-mint);
+  box-shadow: 0 0.22em 0 #a3226a;
   transition: transform 80ms ease, box-shadow 80ms ease, opacity 120ms ease;
   cursor: pointer;
 }
 
 .jam-btn:active:not(:disabled) {
-  transform: translate(0.2em, 0.2em);
-  box-shadow: 0.05em 0.05em 0 var(--color-jam-mint);
+  transform: translateY(0.18em);
+  box-shadow: 0 0.04em 0 #a3226a;
 }
 
 .jam-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
-  filter: saturate(0.4);
 }
 
-.jam-btn-mint {
-  background: var(--color-jam-mint);
-  color: var(--color-jam-night);
-  box-shadow: 0.25em 0.25em 0 var(--color-jam-pink);
+.jam-btn-orange {
+  background: var(--color-jam-orange);
+  color: var(--color-jam-ink);
+  box-shadow: 0 0.22em 0 #b36a07;
+}
+
+.jam-btn-orange:active:not(:disabled) {
+  box-shadow: 0 0.04em 0 #b36a07;
 }
 
 .jam-btn-ghost {
-  background: rgb(255 255 255 / 0.08);
-  color: #fbeaff;
-  border-color: rgb(255 156 207 / 0.35);
+  background: rgb(251 241 225 / 0.08);
+  color: var(--color-jam-cream);
+  box-shadow: none;
+}
+
+.jam-btn-ghost:active:not(:disabled) {
   box-shadow: none;
 }
 
@@ -310,14 +246,12 @@
   padding: 0.4em 1em;
   border-radius: 999px;
   font-weight: 700;
-  background: rgb(255 255 255 / 0.08);
-  border: 2px solid rgb(255 156 207 / 0.25);
+  background: rgb(251 241 225 / 0.08);
 }
 
 .jam-chip-on {
-  background: var(--color-jam-mint);
-  color: var(--color-jam-night);
-  border-color: var(--color-jam-mint);
+  background: var(--color-jam-cream);
+  color: var(--color-jam-ink);
 }
 
 /* --- Album art, Apple Music style ------------------------------------ */
@@ -330,9 +264,8 @@
   z-index: -1;
   background-size: cover;
   background-position: center;
-  filter: blur(90px) saturate(1.5) brightness(0.75);
+  filter: blur(90px) saturate(1.4) brightness(0.7);
   transform: scale(1.15);
-  transition: background-image 600ms ease;
 }
 
 .jam-ambient::after {
@@ -367,12 +300,12 @@
 .jam-eq > span {
   width: 0.22em;
   border-radius: 2px;
-  background: var(--color-jam-mint);
+  background: var(--color-jam-pink);
   animation: jam-eq 900ms ease-in-out infinite;
 }
 
-.jam-eq > span:nth-child(2) { animation-delay: -300ms; background: var(--color-jam-pink); }
-.jam-eq > span:nth-child(3) { animation-delay: -600ms; background: var(--color-jam-lemon); }
+.jam-eq > span:nth-child(2) { animation-delay: -300ms; background: var(--color-jam-purple); }
+.jam-eq > span:nth-child(3) { animation-delay: -600ms; background: var(--color-jam-orange); }
 .jam-eq > span:nth-child(4) { animation-delay: -150ms; }
 
 @keyframes jam-eq {
@@ -382,4 +315,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .jam-eq > span { animation: none; height: 60%; }
+}
 }

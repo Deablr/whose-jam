@@ -17,7 +17,8 @@ defmodule WhoseJamWeb.HomeLive do
      assign(socket,
        page_title: "A song-guessing party game",
        themes: load_themes(),
-       join_code: ""
+       join_code: "",
+       host_open?: false
      )}
   end
 
@@ -43,6 +44,14 @@ defmodule WhoseJamWeb.HomeLive do
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Couldn't create that game. Please try again.")}
     end
+  end
+
+  def handle_event("open_host", _params, socket) do
+    {:noreply, assign(socket, host_open?: true)}
+  end
+
+  def handle_event("close_host", _params, socket) do
+    {:noreply, assign(socket, host_open?: false)}
   end
 
   def handle_event("join", %{"code" => code}, socket) do
@@ -72,102 +81,120 @@ defmodule WhoseJamWeb.HomeLive do
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
-    <main data-theme="jam" class="jam-stage min-h-screen px-4 py-10 sm:py-16">
-      <div class="jam-halftone fixed inset-x-0 top-0 h-[50vh] -z-10"></div>
-
-      <div class="mx-auto max-w-3xl space-y-14">
-        <header class="text-center space-y-5">
-          <p class="jam-path">C://users/you/party/whose-jam.exe</p>
-          <div class="flex flex-col items-center">
-            <span class="jam-sticker jam-sticker-ghost text-2xl -rotate-3 opacity-60">whose jam</span>
-            <span class="jam-sticker jam-sticker-ghost text-3xl rotate-1 opacity-80 -mt-4 ml-8">
-              whose jam
-            </span>
-            <h1 class="jam-sticker text-5xl sm:text-6xl -rotate-1 -mt-4 ml-16">whose jam?</h1>
-          </div>
-          <p class="text-white/75 text-lg max-w-md mx-auto">
-            A song-guessing party game for your TV and everyone's phones.
+    <main
+      data-theme="jam"
+      class="jam-stage min-h-screen flex items-center px-6 sm:px-12 lg:px-20 py-12 lg:py-20"
+    >
+      <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
+        <header class="flex flex-col items-center lg:items-start gap-6">
+          <img
+            src={~p"/images/whose-jam-logo.svg"}
+            alt="Whose Jam"
+            class="w-72 sm:w-96 lg:w-full lg:max-w-[min(48rem,62vh*1.33)] lg:-ml-[4%]"
+          />
+          <p class="text-xl sm:text-2xl xl:text-3xl text-jam-cream/75 max-w-xl xl:max-w-2xl">
+            The party game where everyone picks a song and the room guesses whose jam it is.
           </p>
         </header>
 
-        <section class="jam-panel p-6 sm:p-8 space-y-4">
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="font-display text-2xl font-black">Join a game</h2>
-            <span class="jam-path hidden sm:inline">got a code from the TV?</span>
-          </div>
-          <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              name="code"
-              value={@join_code}
-              autocomplete="off"
-              autocapitalize="characters"
-              placeholder="CODE"
-              maxlength="4"
-              class="flex-1 rounded-2xl border-2 border-jam-bubblegum/30 bg-jam-night/70 px-5 py-4 text-center font-display text-3xl font-black uppercase tracking-[0.4em] text-jam-lemon placeholder-white/25 focus:border-jam-mint focus:outline-none"
-            />
-            <button type="submit" class="jam-btn text-lg">Join</button>
-          </form>
-        </section>
+        <div class="space-y-6 xl:space-y-8">
+          <section class="jam-panel p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5">
+            <h2 class="font-display text-3xl xl:text-5xl">Join a game</h2>
+            <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                name="code"
+                value={@join_code}
+                autocomplete="off"
+                autocapitalize="characters"
+                placeholder="Room code"
+                maxlength="4"
+                aria-label="Room code"
+                class="flex-1 min-w-0 rounded-2xl border-2 border-jam-cream/10 bg-jam-ink/60 px-5 py-4 text-center lg:text-left font-display text-3xl xl:text-5xl uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:text-xl xl:placeholder:text-3xl placeholder:text-jam-cream/30 focus:border-jam-pink focus:outline-none"
+              />
+              <button type="submit" class="jam-btn xl:text-2xl xl:px-10">Join</button>
+            </form>
+          </section>
 
-        <section class="space-y-6">
-          <div class="text-center space-y-2">
-            <h2 class="jam-sticker jam-sticker-lemon text-xl rotate-1">Host a game</h2>
-            <p class="text-white/65">Pick a vibe. You'll set it up on the next screen.</p>
-          </div>
-
-          <div class="grid gap-6 sm:grid-cols-2">
-            <div :for={theme <- @themes} class="jam-panel p-6 flex flex-col gap-4">
-              <div class="space-y-3">
-                <h3 class="jam-glitch text-2xl font-black leading-tight">{theme.name}</h3>
-                <div class="flex flex-wrap gap-1.5">
-                  <span
-                    :for={style <- Enum.uniq(theme.style_sequence)}
-                    class="jam-chip !py-0.5 !px-2.5 text-xs"
-                  >
-                    {style_label(style)}
-                  </span>
-                  <span
-                    :if={multi_style?(theme.style_sequence)}
-                    class="jam-chip jam-chip-on !py-0.5 !px-2.5 text-xs"
-                  >
-                    sub-rounds
-                  </span>
-                </div>
-              </div>
-
-              <p class="text-sm text-white/70">{theme.description}</p>
-
-              <div :if={theme.examples != []} class="text-sm space-y-1.5">
-                <p class="jam-path">for example:</p>
-                <ul class="space-y-1.5 text-white/60">
-                  <li :for={q <- theme.examples} class="flex gap-2">
-                    <span class="text-jam-pink">▸</span><span>{q.prompt}</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div class="mt-auto pt-2 flex justify-end">
-                <button
-                  phx-click="create"
-                  phx-value-theme={theme.id}
-                  class="jam-btn jam-btn-mint text-sm"
-                >
-                  Host this
-                </button>
-              </div>
+          <section class="jam-panel p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5">
+            <div class="space-y-1">
+              <h2 class="font-display text-3xl xl:text-5xl">Host a game</h2>
+              <p class="text-jam-cream/60 xl:text-xl">Put it on the TV and pick a vibe.</p>
             </div>
-          </div>
-        </section>
+            <button
+              type="button"
+              phx-click="open_host"
+              class="jam-btn jam-btn-orange w-full xl:text-2xl"
+            >
+              Choose a vibe
+            </button>
+          </section>
+        </div>
       </div>
+
+      {host_picker(assigns)}
     </main>
     """
   end
 
-  defp style_label(:guess_who), do: "Guess Who"
-  defp style_label(:guess_question), do: "Guess the Question"
-  defp style_label(:guess_for_player), do: "Guess for Player"
-  defp style_label(other), do: to_string(other)
+  defp host_picker(assigns) do
+    ~H"""
+    <div
+      :if={@host_open?}
+      class="modal modal-open bg-jam-ink/80 backdrop-blur-sm"
+      phx-window-keydown="close_host"
+      phx-key="Escape"
+    >
+      <div class="modal-box max-w-3xl space-y-6 border border-jam-cream/10">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="jam-eyebrow">Host a game</p>
+            <h2 class="font-display text-4xl">Pick a vibe</h2>
+          </div>
+          <button
+            type="button"
+            phx-click="close_host"
+            aria-label="Close"
+            class="jam-chip !px-2.5 cursor-pointer"
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+        </div>
+
+        <ul class="space-y-3">
+          <li
+            :for={theme <- @themes}
+            class="rounded-box border border-jam-cream/10 bg-base-200 p-5 flex flex-col sm:flex-row gap-5 sm:items-center"
+          >
+            <div class="flex-1 min-w-0 space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="font-display text-2xl">{theme.name}</h3>
+                <span
+                  :if={multi_style?(theme.style_sequence)}
+                  class="jam-chip !py-0.5 !px-2.5 text-xs"
+                >
+                  {length(Enum.uniq(theme.style_sequence))} sub-rounds
+                </span>
+              </div>
+              <p class="text-sm text-jam-cream/70">{theme.description}</p>
+              <p :if={theme.examples != []} class="text-sm text-jam-cream/45 italic">
+                e.g. “{hd(theme.examples).prompt}”
+              </p>
+            </div>
+            <button
+              phx-click="create"
+              phx-value-theme={theme.id}
+              class="jam-btn shrink-0 self-start sm:self-center"
+            >
+              Host this
+            </button>
+          </li>
+        </ul>
+      </div>
+      <div class="modal-backdrop" phx-click="close_host"></div>
+    </div>
+    """
+  end
 
   defp multi_style?(styles), do: styles |> Enum.uniq() |> length() > 1
 end
