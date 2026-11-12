@@ -25,6 +25,10 @@ defmodule Mix.Tasks.Test.E2e do
       npm --prefix assets exec -- playwright install chromium
 
   Extra arguments are passed to `mix test`.
+
+  Testcontainers publishes the Postgres port (user and password `test`) and
+  its Ryuk reaper on all interfaces while the suite runs; run it on a trusted
+  network.
   """
   use Mix.Task
 
@@ -88,6 +92,9 @@ defmodule Mix.Tasks.Test.E2e do
       :whose_jam
       |> Application.fetch_env!(WhoseJam.Repo)
       |> Keyword.merge(PostgresContainer.connection_parameters(container))
+      # A whole game takes minutes; the sandbox's default 2-minute ownership
+      # would drop the test's connection mid-game.
+      |> Keyword.put(:ownership_timeout, to_timeout(minute: 10))
 
     Application.put_env(:whose_jam, WhoseJam.Repo, repo_config, persistent: true)
   end

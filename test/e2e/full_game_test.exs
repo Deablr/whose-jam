@@ -33,8 +33,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   @rounds length(@players)
 
   setup do
-    # config/test.exs shortens the reveal to a blink; hold it long enough to
-    # read in the video.
+    # config/test.exs shortens the reveal to a blink. Hold it long enough to
+    # read in the video and for the per-round reveal assertions to see it.
     previous = Application.fetch_env!(:whose_jam, :results_pause_ms)
     Application.put_env(:whose_jam, :results_pause_ms, 4_000)
     on_exit(fn -> Application.put_env(:whose_jam, :results_pause_ms, previous) end)
@@ -47,9 +47,9 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     ]
 
     Stage.record(context, roles, @video, fn devices ->
-      code = host_game(devices.host)
+      {code, join_url} = host_game(devices.host)
 
-      join_everyone(devices, code)
+      join_everyone(devices, code, join_url)
 
       devices.host
       |> assert_has("p", text: "Players #{length(@players)}/8")
@@ -78,18 +78,24 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> click("[role=alert]", "Mock Music connected.")
     |> refute_has("[role=alert]")
     |> click_button("Settings")
+    # The Mock player hook is running in this browser.
+    |> assert_has("p", text: "Player is live on this screen.")
     |> fill_in("Answer timer (s)", with: "120")
     |> fill_in("Questions per player", with: "1")
-    |> fill_in("Listen before voting opens (s)", with: "2")
+    # The longest listening delay: voting then opens only when the TV's player
+    # reports the 5s Mock track ended, so every round proves the hook works.
+    |> fill_in("Listen before voting opens (s)", with: "60")
     |> click_button("Close settings")
 
     "/host/" <> code = current_path(host)
-    code
+    join_url = text_of(host, "p > span.font-bold")
+    assert String.ends_with?(join_url, "/play/#{code}")
+    {code, join_url}
   end
 
-  # Half the room scans the TV's QR code (a link straight to /play/CODE), the
-  # other half types the room code on the home page.
-  defp join_everyone(devices, code) do
+  # Half the room follows the join link the TV shows (what its QR code
+  # encodes), the other half types the room code on the home page.
+  defp join_everyone(devices, code, join_url) do
     @players
     |> Enum.with_index()
     |> Enum.each(fn {{key, name, _device, _search, _song}, index} ->
@@ -97,7 +103,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
 
       session =
         if rem(index, 2) == 0 do
-          visit(session, ~p"/play/#{code}")
+          visit(session, join_url)
         else
           session
           |> visit(~p"/")

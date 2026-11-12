@@ -13,7 +13,7 @@ This file is the agent guide for every tool; `CLAUDE.md` is a symlink to it. Edi
 - `mix credo <files>` — lint (strict mode is on in `.credo.exs`); `mix credo explain <file>:<line>` explains an issue
 - `mix hex.audit` — known security advisories in locked dependencies. Not part of `precommit` (it needs network), so run it after changing dependencies; code review runs it too
 
-Toolchain: Elixir 1.20.2 / OTP 28 via mise (`.tool-versions`). If `mix` prompts to install Hex and hangs, point it at the mise install: `export MIX_HOME=$HOME/.local/share/mise/installs/elixir/1.20.2-otp-28/.mix`.
+Toolchain: Elixir 1.20.2 / OTP 28 via mise (`.tool-versions`). If `mix` prompts to install Hex and hangs, point it at the mise install: `export MIX_HOME=$HOME/.local/share/mise/installs/elixir/1.20.2-otp-28/.mix`. On macOS, if the test-only `fs` dependency (pulled in by Testcontainers) fails to link with "tapi error: unknown architecture", the Command Line Tools linker is older than the SDK; compile it once against an older SDK, e.g. `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk MIX_ENV=test mix deps.compile fs`.
 
 ## Conventions
 

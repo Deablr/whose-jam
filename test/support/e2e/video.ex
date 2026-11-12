@@ -6,9 +6,9 @@ defmodule WhoseJamWeb.E2E.Video do
   game's ink colour), delayed by the moment its device opened so all screens
   stay in sync, and stacked with ffmpeg's `xstack` filter into an H.264 MP4.
 
-  Uses `ffmpeg` from the `PATH` when there is one, otherwise the pinned
-  `linuxserver/ffmpeg` Docker image (Docker is already required for the
-  e2e suite's database).
+  Uses `ffmpeg` from the `PATH` when there is one, otherwise the
+  `linuxserver/ffmpeg` Docker image at a fixed version tag, run without network
+  access (Docker is already required for the e2e suite's database).
   """
 
   @typedoc "One recording: its file, when its device opened, and where it goes on the canvas."
@@ -100,8 +100,12 @@ defmodule WhoseJamWeb.E2E.Video do
 
   defp ffmpeg(root) do
     case System.find_executable("ffmpeg") do
-      nil -> {"docker", ["run", "--rm", "-v", "#{root}:/work", "-w", "/work", @docker_image]}
-      path -> {path, []}
+      nil ->
+        {"docker",
+         ["run", "--rm", "--network", "none", "-v", "#{root}:/work", "-w", "/work", @docker_image]}
+
+      path ->
+        {path, []}
     end
   end
 end

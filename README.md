@@ -332,7 +332,8 @@ manual playtesting, and the Registry is a thin wrapper.
 
 A browser suite plays a whole "Certified Bangers" game: a host on a TV-sized
 screen plus eight players on four phones, two tablets and two laptops. Each
-device is its own browser context with its own viewport, touch and user agent.
+device is its own browser context with its own viewport and pixel ratio; the
+phones and tablets also emulate touch and send a mobile user agent.
 The host creates the game, connects Mock Music and sets the settings; half the
 players join via the join link and half by typing the room code; everyone picks
 a song, eight rounds are voted, and the final scoreboard is checked against a

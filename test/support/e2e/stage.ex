@@ -19,7 +19,7 @@ defmodule WhoseJamWeb.E2E.Stage do
   alias PlaywrightEx.BrowserContext
   alias WhoseJamWeb.E2E.Video
 
-  @typedoc "A device preset name; see `devices/0`."
+  @typedoc "A device preset name: a key of `@devices` in this module."
   @type device :: atom()
 
   @typedoc "`{key, caption, device}` — `key` names the session in the map passed to the body."
@@ -129,10 +129,6 @@ defmodule WhoseJamWeb.E2E.Stage do
   @close_timeout to_timeout(second: 30)
   @caption_px 14
 
-  @doc "The device presets `record/4` accepts, by name."
-  @spec devices() :: %{device() => map()}
-  def devices, do: @devices
-
   @doc """
   Opens a recorded session for each role, runs `fun` with a map of
   `key => session`, then writes the combined video to `video_path`.
@@ -145,6 +141,8 @@ defmodule WhoseJamWeb.E2E.Stage do
     video_path = Path.expand(video_path)
     raw_dir = Path.rootname(video_path)
     File.rm_rf!(raw_dir)
+    # A failed run must never leave the previous run's video looking current.
+    File.rm(video_path)
 
     started_ms = System.monotonic_time(:millisecond)
     stage = Enum.map(assign_slots(roles), &open(&1, raw_dir, started_ms, context))
@@ -152,13 +150,27 @@ defmodule WhoseJamWeb.E2E.Stage do
 
     try do
       fun.(sessions)
-    after
-      stage
-      |> Task.async_stream(&close/1, timeout: :infinity)
-      |> Stream.run()
+    catch
+      kind, reason ->
+        # Keep the test's own failure; a video problem only warns here.
+        stacktrace = __STACKTRACE__
+        finish(stage, video_path, fn error -> IO.warn("no game video: #{error}") end)
+        :erlang.raise(kind, reason, stacktrace)
+    else
+      _ -> finish(stage, video_path, &raise/1)
+    end
+  end
 
+  defp finish(stage, video_path, on_error) do
+    stage
+    |> Task.async_stream(&close/1, timeout: :infinity)
+    |> Stream.run()
+
+    try do
       Video.compose!(Enum.map(stage, &tile/1), @canvas, video_path)
       IO.puts("\nGame video: #{Path.relative_to_cwd(video_path)}")
+    rescue
+      error -> on_error.(Exception.message(error))
     end
 
     :ok
