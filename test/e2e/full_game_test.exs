@@ -245,9 +245,24 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     text
   end
 
+  # A failure in a linked task would kill the test process before
+  # `Stage.record/4` could close the browsers and write the video, so each
+  # worker returns its failure; once all have finished, the first is re-raised
+  # here, in the test process.
   defp in_parallel(items, fun) do
     items
-    |> Task.async_stream(fun, timeout: :infinity, ordered: false)
-    |> Stream.run()
+    |> Task.async_stream(&capture(fun, &1), timeout: :infinity)
+    |> Enum.to_list()
+    |> Enum.each(fn
+      {:ok, :ok} -> :ok
+      {:ok, {kind, reason, stacktrace}} -> :erlang.raise(kind, reason, stacktrace)
+    end)
+  end
+
+  defp capture(fun, item) do
+    fun.(item)
+    :ok
+  catch
+    kind, reason -> {kind, reason, __STACKTRACE__}
   end
 end
