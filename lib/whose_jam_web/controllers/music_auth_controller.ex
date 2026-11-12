@@ -1,6 +1,6 @@
 defmodule WhoseJamWeb.MusicAuthController do
   @moduledoc """
-  Host connect flow for `:oauth_redirect` music providers (Spotify today).
+  Host connect flow for `:oauth_redirect` music providers (Spotify, YouTube).
 
   `authorize/2` sends the host off to the provider with the room code and
   provider id signed into the `state` parameter; `callback/2` recovers them,
@@ -158,7 +158,10 @@ defmodule WhoseJamWeb.MusicAuthController do
   # we can't derive this from PHX_HOST (which is a LAN IP at a real party).
   # The OAuth round-trip only happens in the host's browser on the machine
   # running the server, so a loopback URI always works: default to
-  # http://127.0.0.1:<public port>. Override per provider with
+  # http://127.0.0.1:<public port>. A provider can ask for another loopback
+  # host with `redirect_host/0` — YouTube uses `localhost`, because the host
+  # screen stays on the redirect's host afterwards and YouTube's player won't
+  # play on a page opened by IP address. Override per provider with
   # `config :whose_jam, :<id>_redirect_uri` (runtime.exs sets
   # :spotify_redirect_uri from SPOTIFY_REDIRECT_URI, e.g. an https URI when
   # deployed behind TLS). Must exactly match — including port — a redirect URI
@@ -170,7 +173,7 @@ defmodule WhoseJamWeb.MusicAuthController do
   defp redirect_uri(provider) do
     # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
     Application.get_env(:whose_jam, :"#{provider.id()}_redirect_uri") ||
-      "http://127.0.0.1:#{public_port()}/auth/#{provider.id()}/callback"
+      "http://#{Music.redirect_host(provider)}:#{public_port()}/auth/#{provider.id()}/callback"
   end
 
   defp public_port do

@@ -56,6 +56,15 @@ if spotify_redirect_uri = get_env.("SPOTIFY_REDIRECT_URI") do
   config :whose_jam, :spotify_redirect_uri, spotify_redirect_uri
 end
 
+# Google sign-in redirect URI override for the YouTube provider (any env).
+# When unset, the app defaults to
+# http://localhost:<public port>/auth/youtube/callback (`localhost` because
+# YouTube's player won't play on a page opened by IP address, and the host
+# screen stays on this host). It must be registered on the OAuth client.
+if youtube_redirect_uri = get_env.("YOUTUBE_REDIRECT_URI") do
+  config :whose_jam, :youtube_redirect_uri, youtube_redirect_uri
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

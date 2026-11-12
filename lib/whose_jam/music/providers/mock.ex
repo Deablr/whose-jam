@@ -66,6 +66,9 @@ defmodule WhoseJam.Music.Providers.Mock do
   end
 
   @impl true
+  def search_debounce_ms, do: 300
+
+  @impl true
   def valid_uri?(uri), do: Regex.match?(~r/\Amock:track:[0-9]{3}\z/, uri)
 
   # Mock tracks have no art; nothing is ever valid.

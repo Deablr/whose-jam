@@ -32,6 +32,7 @@ config :whose_jam, results_pause_ms: 10
 # Every provider is enabled so the shared provider contract tests cover them.
 config :whose_jam, :music_providers, [
   WhoseJam.Music.Providers.Spotify,
+  WhoseJam.Music.Providers.YouTube,
   WhoseJam.Music.Providers.Mock
 ]
 

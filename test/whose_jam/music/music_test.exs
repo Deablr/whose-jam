@@ -80,6 +80,34 @@ defmodule WhoseJam.MusicTest do
     end
   end
 
+  describe "redirect_host/1" do
+    test "is 127.0.0.1 unless the provider asks for another loopback host" do
+      # Spotify rejects `localhost`; YouTube's player rejects IP addresses.
+      assert Music.redirect_host(Spotify) == "127.0.0.1"
+      assert Music.redirect_host(WhoseJam.Music.Providers.Mock) == "127.0.0.1"
+      assert Music.redirect_host(WhoseJam.Music.Providers.YouTube) == "localhost"
+    end
+  end
+
+  describe "account questions and warnings" do
+    test "a provider without them has no question, no warning and takes no answer" do
+      for id <- [:spotify, :mock] do
+        assert Music.account_question(id, %{}) == nil
+        assert Music.warning(id, %{}) == nil
+        assert Music.answer_account_question(id, %{}, true) == :error
+      end
+    end
+
+    test "an unknown provider or a missing account has none either" do
+      assert Music.account_question(:nope, %{}) == nil
+      assert Music.account_question(nil, %{}) == nil
+      assert Music.account_question(:youtube, nil) == nil
+      assert Music.warning(:nope, %{}) == nil
+      assert Music.warning(:youtube, nil) == nil
+      assert Music.answer_account_question(:nope, %{}, true) == :error
+    end
+  end
+
   test "Spotify requires its OAuth redirect and refuses a malformed connect" do
     assert Spotify.connect_kind() == :oauth_redirect
     assert Spotify.connect(%{}) == {:error, :invalid_connect}

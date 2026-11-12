@@ -23,6 +23,8 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     def video?, do: false
     def configured?, do: true
     def search(_query, _auth), do: {:ok, []}
+    def search_debounce_ms, do: 300
+    def redirect_host, do: Process.get(:stub_redirect_host, "127.0.0.1")
     def valid_uri?(_uri), do: true
     def valid_art_url?(_url), do: false
     def eligible?(auth), do: auth.eligible?
@@ -99,6 +101,21 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     assert %{id: :oauth_stub, eligible?: true} = Game.get_state(room).music
     # The callback used the same redirect_uri the authorize step sent.
     assert Game.host_state(room).music_auth.uri =~ "/auth/oauth_stub/callback"
+  end
+
+  test "the redirect URI uses the provider's loopback host, at authorize and at callback",
+       %{conn: conn, room: room} do
+    Process.put(:stub_redirect_host, "localhost")
+
+    url = conn |> get("/auth/oauth_stub?code=#{room}") |> redirected_to(302)
+    query = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+    assert %URI{scheme: "http", host: "localhost", path: "/auth/oauth_stub/callback"} =
+             URI.parse(query["redirect_uri"])
+
+    conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{query["state"]}")
+    assert redirected_to(conn) == "/host/#{room}"
+    assert Game.host_state(room).music_auth.uri == query["redirect_uri"]
   end
 
   test "an ineligible account is stored but flashed as an error", %{conn: conn, room: room} do

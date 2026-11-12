@@ -17,6 +17,13 @@ defmodule WhoseJamWeb.HostLive do
   `/auth/:provider`; `:none` providers connect on click. When no eligible
   service is connected the lobby prompts the host to connect one.
 
+  A provider may also have a yes/no question about the connected account that
+  the server can't answer itself (`WhoseJam.Music.account_question/2` — does
+  this account have YouTube Premium?). The lobby asks it as soon as the
+  account is connected, and Settings lets the host change the answer. A
+  connection that works but is degraded (`WhoseJam.Music.warning/2`) shows a
+  warning in the lobby and in Settings; it never blocks the game.
+
   ## Playback approach
 
   Playback is **attribute-driven**, not command-driven. The `MusicPlayer` hook
@@ -38,8 +45,8 @@ defmodule WhoseJamWeb.HostLive do
   countdown if voting is already open). Any failure pushes `"playback_error"`
   and we show a visible banner — if the TV never reports the end, the server's
   voting-safety timer starts the countdown, so a dead player never wedges the
-  game. Providers with `video?/0` get the player shown on screen instead of
-  hidden.
+  game. Providers with `video?/0` get the player shown on screen, where the
+  album art would be, while a song plays.
   """
   use WhoseJamWeb, :live_view
 
@@ -65,6 +72,7 @@ defmodule WhoseJamWeb.HostLive do
         qr_svg: qr_svg(join_url),
         settings_open?: false,
         music_prompt_dismissed?: false,
+        music_question_dismissed?: false,
         playback_ready?: false,
         playback_error: nil,
         refresh_timer: nil
@@ -102,6 +110,27 @@ defmodule WhoseJamWeb.HostLive do
 
   def handle_event("dismiss_music_prompt", _params, socket) do
     {:noreply, assign(socket, music_prompt_dismissed?: true)}
+  end
+
+  def handle_event("dismiss_music_question", _params, socket) do
+    {:noreply, assign(socket, music_question_dismissed?: true)}
+  end
+
+  # The host's answer to the connected provider's account question. It is
+  # stored in the auth, so it reaches this screen back through the broadcast.
+  def handle_event("answer_music_question", %{"answer" => answer}, socket)
+      when answer in ["yes", "no"] do
+    with %{music: %{id: provider_id}, music_auth: auth} <- socket.assigns.view,
+         {:ok, answered} <- Music.answer_account_question(provider_id, auth, answer == "yes"),
+         :ok <- Game.set_music(socket.assigns.code, provider_id, answered) do
+      {:noreply, socket}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Couldn't save that answer. Please try again.")}
+    end
+  end
+
+  def handle_event("answer_music_question", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Couldn't save that answer. Please try again.")}
   end
 
   def handle_event("set_config", params, socket) do
@@ -313,6 +342,27 @@ defmodule WhoseJamWeb.HostLive do
 
   defp play_round(_view), do: ""
 
+  # The size a video player takes on screen. The playing layout reserves this
+  # much room (in place of the album art) and the player is fixed over it.
+  defp video_frame_class, do: "aspect-video w-[28rem] xl:w-[36rem]"
+
+  # Audio providers never show their player. A video provider's player is
+  # fixed over the room the playing layout reserves for it: that layout pads
+  # 7rem above and 4rem below and centres its row from `lg` up, so the row's
+  # middle is 1.5rem below the screen's; below `lg` the row starts at the top.
+  defp player_class(false, _playing?), do: "hidden"
+
+  defp player_class(true, false),
+    do: ["pointer-events-none fixed left-0 top-0 -z-10 opacity-0", video_frame_class()]
+
+  defp player_class(true, true) do
+    [
+      "fixed z-20 left-12 top-28 overflow-hidden rounded-[2rem] bg-black shadow-2xl",
+      "lg:left-20 lg:top-[calc(50%+1.5rem)] lg:-translate-y-1/2",
+      video_frame_class()
+    ]
+  end
+
   # Lobby: only real player failures (missing connection is handled by the
   # connect prompt). In game: anything that stops audio.
   defp playback_banner(assigns) do
@@ -332,12 +382,18 @@ defmodule WhoseJamWeb.HostLive do
   # Every provider the host can connect, with its status in this room.
   defp music_services(view, code) do
     for provider <- Music.providers() do
+      status = service_status(provider, view)
+      # Only the connected service has an account to ask or warn about.
+      auth = if status == :connected, do: view.music_auth
+
       %{
         id: provider.id(),
         name: provider.name(),
         requirement: provider.requirement(),
         ineligible_message: provider.ineligible_message(),
-        status: service_status(provider, view),
+        status: status,
+        question: Music.account_question(provider.id(), auth),
+        warning: Music.warning(provider.id(), auth),
         connect_href:
           if(provider.connect_kind() == :oauth_redirect,
             do: ~p"/auth/#{provider.id()}?code=#{code}"
@@ -389,20 +445,26 @@ defmodule WhoseJamWeb.HostLive do
         art_url: current_art(assigns.view),
         show_music_prompt?:
           assigns.view.phase == :lobby and is_nil(active_service) and
-            not assigns.music_prompt_dismissed? and not assigns.settings_open?
+            not assigns.music_prompt_dismissed? and not assigns.settings_open?,
+        show_music_question?:
+          assigns.view.phase == :lobby and unanswered_question?(active_service) and
+            not assigns.music_question_dismissed? and not assigns.settings_open?
       )
 
     ~H"""
     <Layouts.flash_group flash={@flash} />
 
     <div data-theme="jam" class="jam-stage min-h-screen overflow-hidden">
-      <%!-- Apple Music–style ambience: the current song's artwork tints the room. --%>
-      <div :if={@art_url} class="jam-ambient" aria-hidden="true">
-        <img src={@art_url} alt="" />
-      </div>
+      <%!-- Keyed by provider, so switching service remounts the player. A video
+           provider's player sits where the album art would be while a song
+           plays; the rest of the time it stays rendered but invisible, because
+           an embedded player inside `display: none` may never start.
 
-      <%!-- Keyed by provider, so switching service remounts the player. Video
-           providers must stay visible while a song plays. --%>
+           It must stay the FIRST child here. If a conditional sibling is
+           inserted ahead of it (the ambient artwork appears exactly when a
+           song starts), the DOM patch re-inserts this element, and a
+           re-inserted iframe reloads: the embedded player comes back empty and
+           deaf to the play command. --%>
       <div
         :if={@music_status == :ok}
         id={"music-player-#{@music_provider}"}
@@ -411,19 +473,21 @@ defmodule WhoseJamWeb.HostLive do
         data-config={@music_config}
         data-uri={play_uri(@view)}
         data-round={play_round(@view)}
-        class={
-          if @music_video? and @view.phase == :playing,
-            do: "fixed bottom-6 left-6 z-20 aspect-video w-[30rem] overflow-hidden rounded-2xl",
-            else: "hidden"
-        }
+        class={player_class(@music_video?, play_uri(@view) != "")}
       >
         <div
           :if={@music_video?}
           id={"music-video-#{@music_provider}"}
           phx-update="ignore"
           data-music-video
+          class="size-full"
         >
         </div>
+      </div>
+
+      <%!-- Apple Music–style ambience: the current song's artwork tints the room. --%>
+      <div :if={@art_url} class="jam-ambient" aria-hidden="true">
+        <img src={@art_url} alt="" />
       </div>
 
       {top_bar(assigns)}
@@ -447,6 +511,7 @@ defmodule WhoseJamWeb.HostLive do
       <% end %>
 
       {music_prompt(assigns)}
+      {music_question(assigns)}
       {settings_panel(assigns)}
     </div>
     """
@@ -479,6 +544,11 @@ defmodule WhoseJamWeb.HostLive do
               if(@playback_ready?, do: "bg-jam-mint", else: "bg-jam-cream/40")
             ]} />
             {@active_service.name}
+            <.icon
+              :if={@active_service.warning}
+              name="hero-exclamation-triangle"
+              class="size-4 text-jam-orange"
+            />
           <% else %>
             <.icon name="hero-musical-note" class="size-4" /> Connect music
           <% end %>
@@ -534,38 +604,114 @@ defmodule WhoseJamWeb.HostLive do
     """
   end
 
+  # ---- account question ---------------------------------------------------
+
+  # Asked once, right after the account is connected. Dismissing it leaves the
+  # question unanswered: the provider's warning then assumes the worse case,
+  # and Settings still offers the answer.
+  defp music_question(assigns) do
+    ~H"""
+    <.modal
+      :if={@show_music_question?}
+      id="music-question-modal"
+      on_close="dismiss_music_question"
+      class="max-w-lg"
+      body_class="space-y-5"
+    >
+      <div class="space-y-2">
+        <p class="jam-eyebrow">{@active_service.name} connected</p>
+        <h2 class="font-display text-3xl">{@active_service.question.prompt}</h2>
+        <p class="text-base-content/70">{@active_service.question.detail}</p>
+      </div>
+      <div class="modal-action mt-0">
+        <button
+          type="button"
+          id="music-question-no"
+          phx-click="answer_music_question"
+          phx-value-answer="no"
+          class="jam-btn jam-btn-ghost text-sm"
+        >
+          No, or not sure
+        </button>
+        <button
+          type="button"
+          id="music-question-yes"
+          phx-click="answer_music_question"
+          phx-value-answer="yes"
+          class="jam-btn text-sm"
+        >
+          Yes
+        </button>
+      </div>
+    </.modal>
+    """
+  end
+
+  defp unanswered_question?(%{question: %{answer: nil}}), do: true
+  defp unanswered_question?(_service), do: false
+
   defp music_service_list(assigns) do
     ~H"""
     <ul class="space-y-3">
       <li
         :for={service <- @services}
-        class="flex items-center gap-4 rounded-box border border-jam-cream/10 bg-base-200 p-4"
+        class="space-y-3 rounded-box border border-jam-cream/10 bg-base-200 p-4"
       >
-        <div class="grid place-items-center size-11 rounded-full bg-jam-pink text-white shrink-0">
-          <.icon name="hero-musical-note" class="size-5" />
+        <div class="flex items-center gap-4">
+          <div class="grid place-items-center size-11 rounded-full bg-jam-pink text-white shrink-0">
+            <.icon name="hero-musical-note" class="size-5" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="font-display text-lg">{service.name}</p>
+            <p class={["text-sm", service_status_class(service.status)]}>
+              {service_status_text(service)}
+            </p>
+          </div>
+          <a
+            :if={service.connect_href && service.status != :unconfigured}
+            href={service.connect_href}
+            class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
+          >
+            {service_action(service.status)}
+          </a>
+          <button
+            :if={is_nil(service.connect_href) && service.status != :unconfigured}
+            type="button"
+            phx-click="connect_music"
+            phx-value-provider={service.id}
+            class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
+          >
+            {service_action(service.status)}
+          </button>
         </div>
-        <div class="flex-1 min-w-0">
-          <p class="font-display text-lg">{service.name}</p>
-          <p class={["text-sm", service_status_class(service.status)]}>
-            {service_status_text(service)}
-          </p>
+
+        <div
+          :if={service.question}
+          id={"music-question-#{service.id}"}
+          class="flex flex-wrap items-center justify-between gap-3 border-t border-jam-cream/10 pt-3"
+        >
+          <p class="text-sm text-base-content/80">{service.question.prompt}</p>
+          <div class="flex gap-2">
+            <button
+              :for={{label, value, answer} <- [{"Yes", "yes", true}, {"No", "no", false}]}
+              type="button"
+              phx-click="answer_music_question"
+              phx-value-answer={value}
+              aria-pressed={to_string(service.question.answer == answer)}
+              class={[
+                "jam-chip text-sm cursor-pointer transition-colors",
+                service.question.answer == answer && "jam-chip-on"
+              ]}
+            >
+              {label}
+            </button>
+          </div>
         </div>
-        <a
-          :if={service.connect_href && service.status != :unconfigured}
-          href={service.connect_href}
-          class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
-        >
-          {service_action(service.status)}
-        </a>
-        <button
-          :if={is_nil(service.connect_href) && service.status != :unconfigured}
-          type="button"
-          phx-click="connect_music"
-          phx-value-provider={service.id}
-          class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
-        >
-          {service_action(service.status)}
-        </button>
+
+        <p :if={service.warning} class="flex items-start gap-2 text-sm text-warning">
+          <.icon name="hero-exclamation-triangle" class="size-4 shrink-0 mt-0.5" />
+          <span>{service.warning}</span>
+        </p>
       </li>
       <li class="flex items-center gap-4 rounded-box border border-dashed border-jam-cream/15 p-4 text-base-content/50">
         <div class="grid place-items-center size-11 rounded-full bg-base-300 shrink-0">
@@ -801,6 +947,24 @@ defmodule WhoseJamWeb.HostLive do
             <p class="text-lg text-jam-cream/80 font-bold">Everyone in? Let's go.</p>
         <% end %>
       </div>
+
+      <div
+        :if={@active_service && @active_service.warning}
+        id="music-warning"
+        class="-mt-6 flex max-w-3xl items-start gap-3 rounded-2xl border border-jam-orange/40 bg-jam-orange/10 px-5 py-4 text-jam-cream/90"
+      >
+        <.icon name="hero-exclamation-triangle" class="size-6 shrink-0 text-jam-orange" />
+        <p class="text-lg">
+          {@active_service.warning}
+          <button
+            type="button"
+            phx-click="open_settings"
+            class="ml-1 font-bold text-jam-orange underline underline-offset-4 cursor-pointer"
+          >
+            Change
+          </button>
+        </p>
+      </div>
     </div>
     """
   end
@@ -865,12 +1029,20 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <div class="min-h-screen flex flex-col lg:flex-row lg:items-center gap-10 xl:gap-16 px-12 lg:px-20 pt-28 pb-16">
       <div class="shrink-0">
-        <%= if @art_url do %>
-          <img src={@art_url} alt="Album art" class="jam-art size-80 lg:size-[28rem] xl:size-[34rem]" />
-        <% else %>
-          <div class="size-80 lg:size-[28rem] grid place-items-center rounded-[2rem] bg-jam-cream/5">
-            <span class="text-9xl">🎵</span>
-          </div>
+        <%= cond do %>
+          <% @music_video? -> %>
+            <%!-- Holds the space the fixed video player (see render/1) sits over. --%>
+            <div class={video_frame_class()} aria-hidden="true"></div>
+          <% @art_url -> %>
+            <img
+              src={@art_url}
+              alt="Album art"
+              class="jam-art size-80 lg:size-[28rem] xl:size-[34rem]"
+            />
+          <% true -> %>
+            <div class="size-80 lg:size-[28rem] grid place-items-center rounded-[2rem] bg-jam-cream/5">
+              <span class="text-9xl">🎵</span>
+            </div>
         <% end %>
       </div>
 

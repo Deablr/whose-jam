@@ -79,5 +79,6 @@ config :swoosh, :api_client, false
 # Music providers offered to the host. Mock is a fake catalog for local play.
 config :whose_jam, :music_providers, [
   WhoseJam.Music.Providers.Spotify,
+  WhoseJam.Music.Providers.YouTube,
   WhoseJam.Music.Providers.Mock
 ]

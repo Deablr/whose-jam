@@ -48,6 +48,14 @@ services:
       # Defaults to http://127.0.0.1:<APP_PORT>/auth/spotify/callback (Spotify
       # rejects `localhost`); override only for an https deployment.
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      # Optional: the YouTube music service (a Data API key for search, an
+      # OAuth client for the host's Google sign-in).
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID:-}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET:-}
+      # Defaults to http://localhost:<APP_PORT>/auth/youtube/callback; override
+      # only for an https deployment.
+      YOUTUBE_REDIRECT_URI: ${YOUTUBE_REDIRECT_URI:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/"]
       interval: 10s

@@ -220,6 +220,15 @@ defmodule WhoseJamWeb.PlayLive do
           search_error: "Song search isn't set up on this server right now."
         )
 
+      {:error, :quota_exceeded} ->
+        assign(socket,
+          search_query: query,
+          search_results: [],
+          search_error:
+            "The music service's search limit for today is used up, " <>
+              "so searching won't work until it resets."
+        )
+
       {:error, _other} ->
         assign(socket,
           search_query: query,
@@ -673,6 +682,11 @@ defmodule WhoseJamWeb.PlayLive do
   defp search_placeholder(%{music: %{name: name}}), do: "Search #{name} for a song…"
   defp search_placeholder(_view), do: "Search for a song…"
 
+  # How long to wait after the last keystroke before searching: the room's
+  # music service says (services with scarce search quota ask for longer).
+  defp search_debounce(%{music: %{search_debounce_ms: ms}}) when is_integer(ms), do: ms
+  defp search_debounce(_view), do: 300
+
   # The search-or-submitted body for the current question.
   defp answer_body(assigns) do
     editing? = not assigns.question.submitted? or assigns.edit_qid == assigns.question.question_id
@@ -712,7 +726,7 @@ defmodule WhoseJamWeb.PlayLive do
             name="q"
             value={@search_query}
             autocomplete="off"
-            phx-debounce="300"
+            phx-debounce={search_debounce(@view)}
             placeholder={search_placeholder(@view)}
             class="w-full rounded-2xl border-2 border-jam-cream/10 bg-jam-ink/60 px-5 py-4 text-white placeholder-white/40 focus:border-jam-pink focus:outline-none"
           />

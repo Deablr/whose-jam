@@ -22,9 +22,10 @@
 // detected); this file owns the reconciliation logic every provider shares.
 
 import spotify from "./spotify"
+import youtube from "./youtube"
 import mock from "./mock"
 
-const PROVIDERS = {spotify, mock}
+const PROVIDERS = {spotify, youtube, mock}
 
 function parseConfig(el) {
   try { return JSON.parse(el.dataset.config || "{}") } catch (_e) { return {} }
