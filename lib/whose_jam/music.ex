@@ -158,8 +158,8 @@ defmodule WhoseJam.Music do
   def warning(_provider_id, _auth), do: nil
 
   @doc """
-  The loopback host for `mod`'s default OAuth redirect URI: the provider's
-  `redirect_host/0`, or `"127.0.0.1"` when it has no preference.
+  The loopback host for `mod`'s default OAuth redirect URI over plain http:
+  the provider's `redirect_host/0`, or `"127.0.0.1"` when it has no preference.
   """
   @spec redirect_host(module()) :: String.t()
   def redirect_host(mod), do: optional(mod, :redirect_host, [], "127.0.0.1")

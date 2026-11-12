@@ -119,11 +119,12 @@ defmodule WhoseJam.Music.Provider do
               {:ok, String.t()} | {:error, term()}
 
   @doc """
-  The loopback host in the default OAuth redirect URI
-  (`http://<host>:<port>/auth/<id>/callback`), which is also where the host
-  screen ends up after connecting. Optional; defaults to `"127.0.0.1"`, the
-  only loopback Spotify accepts. YouTube returns `"localhost"`: its player
-  refuses to play on a page opened by IP address.
+  The loopback host in the default OAuth redirect URI when the app is served
+  over plain http (`http://<host>:<port>/auth/<id>/callback`), which is also
+  where the host screen ends up after connecting. Over https the default is
+  the app's own public URL and this is not used. Optional; defaults to
+  `"127.0.0.1"`, the only loopback Spotify accepts. YouTube returns
+  `"localhost"`: its player refuses to play on a page opened by IP address.
   """
   @callback redirect_host() :: String.t()
 

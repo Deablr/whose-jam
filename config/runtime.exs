@@ -49,15 +49,17 @@ if config_env() == :dev do
     ]
 end
 
-# Spotify OAuth redirect URI override (any env). When unset, the app defaults
-# to http://127.0.0.1:<public port>/auth/spotify/callback — Spotify permits
+# Spotify OAuth redirect URI override (any env). When unset, the app uses its
+# own public URL if that is https (PHX_SCHEME=https), and otherwise
+# http://127.0.0.1:<public port>/auth/spotify/callback — Spotify permits
 # loopback IPs over plain http but rejects `localhost` and non-HTTPS hosts.
 if spotify_redirect_uri = get_env.("SPOTIFY_REDIRECT_URI") do
   config :whose_jam, :spotify_redirect_uri, spotify_redirect_uri
 end
 
 # Google sign-in redirect URI override for the YouTube provider (any env).
-# When unset, the app defaults to
+# When unset, the app uses its own public URL if that is https
+# (PHX_SCHEME=https), and otherwise
 # http://localhost:<public port>/auth/youtube/callback (`localhost` because
 # YouTube's player won't play on a page opened by IP address, and the host
 # screen stays on this host). It must be registered on the OAuth client.

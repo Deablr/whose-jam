@@ -109,21 +109,25 @@ pass an explicit compose file skip the local override). In Dokploy:
    PHX_SCHEME=https
    SPOTIFY_CLIENT_ID=...
    SPOTIFY_CLIENT_SECRET=...
-   SPOTIFY_REDIRECT_URI=https://your.domain.com/auth/spotify/callback
    POSTGRES_PASSWORD=<something strong>
    # Only if you offer YouTube (see "YouTube setup"):
    YOUTUBE_API_KEY=...
    YOUTUBE_CLIENT_ID=...
    YOUTUBE_CLIENT_SECRET=...
-   YOUTUBE_REDIRECT_URI=https://your.domain.com/auth/youtube/callback
    ```
 
-   `SPOTIFY_REDIRECT_URI` and `YOUTUBE_REDIRECT_URI` must be set explicitly
-   here (and registered in the Spotify dashboard and on the Google OAuth
-   client): the loopback defaults only make sense when the server runs on the
-   host's own laptop. With HTTPS, both accept the real domain. Open the host
-   screen at that domain, not at the server's IP address — YouTube won't play
-   on a page opened by IP.
+   With `PHX_SCHEME=https` the OAuth redirects are built from the app's own
+   address, so there is nothing more to set. Register these two URLs with the
+   providers (Spotify dashboard, Google OAuth client):
+
+   ```
+   https://your.domain.com/auth/spotify/callback
+   https://your.domain.com/auth/youtube/callback
+   ```
+
+   `SPOTIFY_REDIRECT_URI` / `YOUTUBE_REDIRECT_URI` still override them if you
+   need a different address. Open the host screen at the domain, not at the
+   server's IP address — YouTube won't play on a page opened by IP.
 
 ---
 
@@ -155,12 +159,12 @@ nothing and no game can play audio.
    ```
 
    Spotify **rejects `localhost`** and any non-HTTPS URI that isn't a loopback
-   IP (`127.0.0.1` / `[::1]`), so the app always sends a `127.0.0.1` redirect —
-   even at a LAN party where phones join via your LAN IP. That works because
-   the OAuth round-trip happens in the host's browser on the same machine that
-   runs the server; don't register a LAN-IP redirect URI, Spotify won't accept
-   it. Deploying behind TLS instead? Register your https URI and set
-   `SPOTIFY_REDIRECT_URI=https://your.domain/auth/spotify/callback`.
+   IP (`127.0.0.1` / `[::1]`), so over plain http the app sends a `127.0.0.1`
+   redirect — even at a LAN party where phones join via your LAN IP. That works
+   because the OAuth round-trip happens in the host's browser on the same
+   machine that runs the server; don't register a LAN-IP redirect URI, Spotify
+   won't accept it. Deploying behind TLS instead? With `PHX_SCHEME=https` the
+   redirect is `https://<PHX_HOST>/auth/spotify/callback`; register that.
 3. Copy the app's Client ID and Client Secret into `.env`:
 
    ```sh
@@ -219,8 +223,8 @@ be set for YouTube to be offered.
    http://localhost:4000/auth/youtube/callback
    ```
 
-   Behind TLS, register your https URI instead and set
-   `YOUTUBE_REDIRECT_URI=https://your.domain/auth/youtube/callback`.
+   Behind TLS (`PHX_SCHEME=https`) the redirect is
+   `https://<PHX_HOST>/auth/youtube/callback`; register that instead.
 5. Copy the values into `.env`:
 
    ```sh
@@ -243,7 +247,8 @@ way, and the answer can be changed in Settings.
   LAN IP, and plays in one opened by name. On the computer running the game
   that name is `localhost`; from another computer it has to be the hostname in
   `PHX_HOST` (a release refuses the live connection from any other address).
-  The Google sign-in returns to `localhost` for that reason, and the host
+  Over plain http the Google sign-in returns to `localhost` for that reason
+  (over https, to the app's own domain), and the host
   screen tells you if it is on an IP address. Phones are unaffected — they can
   still join through a LAN IP.
 - **Ads and the browser session.** The player runs with the host browser's own
@@ -314,11 +319,11 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `SECRET_KEY_BASE` | **Yes** | — | Signs/encrypts cookies and session tokens. Generate with `openssl rand -base64 48`. Boot fails (prod/release) if missing. |
 | `DATABASE_URL` | **Yes** (prod/Docker) | — | Ecto connection URL, `ecto://USER:PASS@HOST/DB`. Compose sets it to the bundled `db` container automatically. |
 | `PHX_HOST` | Recommended | `localhost` | Hostname used in generated URLs (QR join links). Set to your LAN IP for a party. Not used for the Spotify redirect. |
-| `SPOTIFY_REDIRECT_URI` | No | `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Override only for https deployments. |
+| `SPOTIFY_REDIRECT_URI` | No | With `PHX_SCHEME=https`: `https://<PHX_HOST>/auth/spotify/callback`. Otherwise `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Set it only if neither default is the address you registered. |
 | `APP_PORT` | No | `4000` | **Local compose only** (`docker-compose.override.yml`). Host port the app is published on, and the port used in generated URLs. Not used by proxy deployments. |
 | `PORT` | No | `4000` | The port the server actually listens on inside the app/container. Used by `mix phx.server` for local dev. |
 | `URL_PORT` | No | `443` when `PHX_SCHEME=https`, else value of `PORT` | Port embedded in generated URLs. Only needed for a non-standard public port. The local override sets it to `APP_PORT`. |
-| `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy (Dokploy). |
+| `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy (Dokploy); the OAuth redirects are then built from `PHX_HOST` instead of a loopback address. |
 | `POOL_SIZE` | No | `10` | Ecto DB connection pool size (prod). |
 | `POSTGRES_PASSWORD` | No | `postgres` | **Compose only.** Password for the bundled Postgres container; also folded into the default `DATABASE_URL`. |
 | `SPOTIFY_CLIENT_ID` | For Spotify | — | Spotify app Client ID. Without it, search/playback are disabled. |
@@ -326,7 +331,7 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `YOUTUBE_API_KEY` | For YouTube | — | Google API key with the YouTube Data API v3 enabled. Song search, server-side only. |
 | `YOUTUBE_CLIENT_ID` | For YouTube | — | Google OAuth "Web application" client ID, for the host's Google sign-in. |
 | `YOUTUBE_CLIENT_SECRET` | For YouTube | — | Its client secret. |
-| `YOUTUBE_REDIRECT_URI` | No | `http://localhost:<url port>/auth/youtube/callback` | OAuth redirect sent to Google; must exactly match a URI registered on the OAuth client. Override only for https deployments, and use a hostname, not an IP address: the host screen stays on this host after sign-in, and YouTube won't play on an IP-address page. |
+| `YOUTUBE_REDIRECT_URI` | No | With `PHX_SCHEME=https`: `https://<PHX_HOST>/auth/youtube/callback`. Otherwise `http://localhost:<url port>/auth/youtube/callback` | OAuth redirect sent to Google; must exactly match a URI registered on the OAuth client. Set it only if neither default is the address you registered, and use a hostname, not an IP address: the host screen stays on this host after sign-in, and YouTube won't play on an IP-address page. |
 
 Host-facing **game** settings (answer timer, listening delay before voting,
 vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
@@ -522,14 +527,16 @@ computer running the game, otherwise the hostname in `PHX_HOST`. The game
 carries on where it was.
 
 **Google says "redirect_uri_mismatch".**
-Register exactly `http://localhost:<APP_PORT>/auth/youtube/callback` (port
-included) on the OAuth client, or set `YOUTUBE_REDIRECT_URI` to the URI you did
-register.
+Register exactly the redirect the app sends on the OAuth client:
+`http://localhost:<APP_PORT>/auth/youtube/callback` (port included) over plain
+http, or `https://<PHX_HOST>/auth/youtube/callback` with `PHX_SCHEME=https`.
+Or set `YOUTUBE_REDIRECT_URI` to the URI you did register.
 
 **Phones can't reach the QR link.**
 `PHX_HOST` must be your laptop's **LAN IP**, not `localhost`, and the phones must
-be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. The Spotify
-redirect URI is unaffected — it stays on `127.0.0.1`. (A dev server also binds
+be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. Over plain
+http the OAuth redirects are unaffected — they stay on `127.0.0.1` (Spotify)
+and `localhost` (YouTube). (A dev server also binds
 loopback-only by default — see Local development.)
 
 **Playback banner on the host screen shows `EMEError: No supported keysystem`.**
@@ -544,8 +551,8 @@ everything else work regardless; only playback needs DRM.
 **Spotify says "invalid redirect URI" (or the dashboard rejects the URI).**
 Spotify doesn't accept `localhost` or plain-http non-loopback hosts. Register
 exactly `http://127.0.0.1:<APP_PORT>/auth/spotify/callback` (port included) and
-start the OAuth flow from the machine running the server. Behind TLS, register
-your https URI and set `SPOTIFY_REDIRECT_URI` to the same value.
+start the OAuth flow from the machine running the server. Behind TLS
+(`PHX_SCHEME=https`), register `https://<PHX_HOST>/auth/spotify/callback`.
 
 **DB connection refused / authentication failed.**
 Docker: let the `db` service finish starting (the app waits on its healthcheck);

@@ -24,8 +24,9 @@ defmodule WhoseJam.Music.Providers.YouTube do
   YouTube refuses to play ("This video is unavailable") in a page opened by IP
   address — `127.0.0.1`, `[::1]` or a LAN IP — and plays in one opened by
   name (`localhost`, `laptop.local`, a domain). So `redirect_host/0` is
-  `localhost`, which is where the sign-in leaves the host screen, and the
-  browser player reports `ip_address_origin` rather than trying.
+  `localhost`, which is where the sign-in leaves the host screen when the app
+  is served over plain http (over https it returns to the app's own domain),
+  and the browser player reports `ip_address_origin` rather than trying.
 
   Credentials come from `YOUTUBE_API_KEY`, `YOUTUBE_CLIENT_ID` and
   `YOUTUBE_CLIENT_SECRET`, read at runtime.

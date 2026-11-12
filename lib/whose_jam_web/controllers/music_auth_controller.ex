@@ -154,19 +154,14 @@ defmodule WhoseJamWeb.MusicAuthController do
       {"Couldn't complete the #{provider.name()} connection. Please try again.",
        ~p"/host/#{room}"}
 
-  # Spotify rejects `localhost` and any non-HTTPS non-loopback redirect URI, so
-  # we can't derive this from PHX_HOST (which is a LAN IP at a real party).
-  # The OAuth round-trip only happens in the host's browser on the machine
-  # running the server, so a loopback URI always works: default to
-  # http://127.0.0.1:<public port>. A provider can ask for another loopback
-  # host with `redirect_host/0` — YouTube uses `localhost`, because the host
-  # screen stays on the redirect's host afterwards and YouTube's player won't
-  # play on a page opened by IP address. Override per provider with
-  # `config :whose_jam, :<id>_redirect_uri` (runtime.exs sets
-  # :spotify_redirect_uri from SPOTIFY_REDIRECT_URI and :youtube_redirect_uri
-  # from YOUTUBE_REDIRECT_URI, e.g. an https URI when deployed behind TLS).
-  # Must exactly match — including port — a redirect URI registered with the
-  # provider.
+  # The redirect URI sent to the provider. It must exactly match — including
+  # port — one registered with the provider. In order:
+  #
+  #   1. `config :whose_jam, :<id>_redirect_uri`, when set (runtime.exs fills
+  #      it from SPOTIFY_REDIRECT_URI / YOUTUBE_REDIRECT_URI).
+  #   2. Served over https: the app's own public URL (PHX_SCHEME, PHX_HOST and
+  #      URL_PORT), which is what a provider accepts for a deployed domain.
+  #   3. Otherwise a loopback URI, see `loopback_redirect_uri/1`.
   #
   # The interpolated atom is safe: `provider` is always one of the configured
   # provider modules (resolved via Music.fetch_provider/1), never raw input.
@@ -174,7 +169,28 @@ defmodule WhoseJamWeb.MusicAuthController do
   defp redirect_uri(provider) do
     # credo:disable-for-next-line Credo.Check.Warning.UnsafeToAtom
     Application.get_env(:whose_jam, :"#{provider.id()}_redirect_uri") ||
-      "http://#{Music.redirect_host(provider)}:#{public_port()}/auth/#{provider.id()}/callback"
+      default_redirect_uri(provider)
+  end
+
+  defp default_redirect_uri(provider) do
+    public_url = WhoseJamWeb.Endpoint.url()
+
+    case URI.parse(public_url) do
+      %URI{scheme: "https"} -> public_url <> "/auth/#{provider.id()}/callback"
+      _plain_http -> loopback_redirect_uri(provider)
+    end
+  end
+
+  # Over plain http the public URL is no use: at a party PHX_HOST is the
+  # laptop's LAN IP, Spotify rejects any non-https redirect that isn't a
+  # loopback IP, and Google rejects any that isn't `localhost`. The OAuth
+  # round-trip only happens in the host's browser on the machine running the
+  # server, so a loopback URI always works: http://127.0.0.1:<public port>, or
+  # the loopback host the provider asks for with `redirect_host/0` — YouTube
+  # uses `localhost`, because the host screen stays on the redirect's host
+  # afterwards and YouTube's player won't play on a page opened by IP address.
+  defp loopback_redirect_uri(provider) do
+    "http://#{Music.redirect_host(provider)}:#{public_port()}/auth/#{provider.id()}/callback"
   end
 
   defp public_port do

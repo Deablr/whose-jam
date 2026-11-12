@@ -140,14 +140,60 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
       URI.parse(query["redirect_uri"])
     end
 
+    # Serve the app's public URL as `url` for the rest of the test.
+    defp serve_at(url) do
+      previous = Application.fetch_env!(:whose_jam, WhoseJamWeb.Endpoint)
+      configure_endpoint(Keyword.put(previous, :url, url))
+      on_exit(fn -> configure_endpoint(previous) end)
+    end
+
+    defp configure_endpoint(config) do
+      Application.put_env(:whose_jam, WhoseJamWeb.Endpoint, config)
+      WhoseJamWeb.Endpoint.config_change([{WhoseJamWeb.Endpoint, config}], [])
+    end
+
     # Spotify rejects `localhost`; YouTube's player rejects IP addresses, and the
     # host screen stays on the redirect's host.
-    test "is on 127.0.0.1 for Spotify and on localhost for YouTube", %{conn: conn, room: room} do
+    test "over http, is on 127.0.0.1 for Spotify and on localhost for YouTube",
+         %{conn: conn, room: room} do
       assert %URI{scheme: "http", host: "127.0.0.1", path: "/auth/spotify/callback"} =
                default_redirect_uri(conn, "spotify", room)
 
       assert %URI{scheme: "http", host: "localhost", path: "/auth/youtube/callback"} =
                default_redirect_uri(conn, "youtube", room)
+    end
+
+    # At a party PHX_HOST is the laptop's LAN IP, which no provider accepts.
+    test "over http, never uses the public host", %{conn: conn, room: room} do
+      serve_at(scheme: "http", host: "192.168.1.23", port: 4000)
+
+      assert %URI{host: "127.0.0.1", port: 4000} = default_redirect_uri(conn, "spotify", room)
+      assert %URI{host: "localhost", port: 4000} = default_redirect_uri(conn, "youtube", room)
+    end
+
+    test "over https, is the app's own public URL", %{conn: conn, room: room} do
+      serve_at(scheme: "https", host: "jam.example.com", port: 443)
+
+      assert default_redirect_uri(conn, "spotify", room) ==
+               URI.parse("https://jam.example.com/auth/spotify/callback")
+
+      assert default_redirect_uri(conn, "youtube", room) ==
+               URI.parse("https://jam.example.com/auth/youtube/callback")
+    end
+
+    test "over https on a non-standard port, keeps the port", %{conn: conn, room: room} do
+      serve_at(scheme: "https", host: "jam.example.com", port: 8443)
+
+      assert default_redirect_uri(conn, "youtube", room) ==
+               URI.parse("https://jam.example.com:8443/auth/youtube/callback")
+    end
+
+    test "an explicit redirect URI wins over both defaults", %{conn: conn, room: room} do
+      serve_at(scheme: "https", host: "jam.example.com", port: 443)
+      Application.put_env(:whose_jam, :youtube_redirect_uri, "https://other.example/cb")
+      on_exit(fn -> Application.delete_env(:whose_jam, :youtube_redirect_uri) end)
+
+      assert default_redirect_uri(conn, "youtube", room) == URI.parse("https://other.example/cb")
     end
   end
 
