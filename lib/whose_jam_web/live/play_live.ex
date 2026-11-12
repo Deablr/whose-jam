@@ -195,8 +195,8 @@ defmodule WhoseJamWeb.PlayLive do
   # =========================================================================
 
   @impl true
-  def handle_info({:game_state, _view}, socket) do
-    {:noreply, refresh_view(socket)}
+  def handle_info({:game_state, view}, socket) do
+    {:noreply, refresh_view(socket, view)}
   end
 
   # The game's last word: its server is gone, so keep the last view we had
@@ -340,16 +340,17 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # Re-fetch the player-scoped view and recompute derived UI state.
-  defp refresh_view(socket) do
+  # `broadcast` is the public view a `{:game_state, _}` carried, if any.
+  defp refresh_view(socket, broadcast \\ nil) do
     code = socket.assigns.code
     player_id = socket.assigns.player_id
 
     case Game.player_view(code, player_id) do
       nil ->
-        # Keep the last view: a broadcast still queued when the game ended
-        # gets here, and the `{:game_ended, _}` behind it shows a finished
-        # game's scores from that view.
-        assign(socket, status: :missing, me: nil)
+        # The game is gone. A broadcast still queued when it ended gets here,
+        # and the `{:game_ended, _}` behind it shows a finished game's scores:
+        # keep the newest view there is, that broadcast's or the last one.
+        assign(socket, status: :missing, me: nil, view: broadcast || socket.assigns.view)
 
       %{me: nil} ->
         # Token points at a player the server no longer knows (e.g. a brand-new

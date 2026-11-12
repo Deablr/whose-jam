@@ -80,11 +80,11 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
   end
 
   # A stand-in host screen for `room`, with the game's host-screen grace cut to
-  # 50ms, and this test subscribed to the room. Stop it with
-  # `stop_supervised!(Agent)`.
+  # 100ms, and this test subscribed to the room. Close it with
+  # `close_host_screen/1`.
   defp open_host_screen(room) do
     previous = Application.fetch_env(:whose_jam, :host_grace_ms)
-    Application.put_env(:whose_jam, :host_grace_ms, 50)
+    Application.put_env(:whose_jam, :host_grace_ms, 100)
 
     on_exit(fn ->
       case previous do
@@ -96,6 +96,14 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     host = start_supervised!({Agent, fn -> nil end})
     :ok = Game.attach_host(room, host)
     Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
+  end
+
+  # In a browser the host screen goes first: LiveView drops a page's socket
+  # on a click that leaves it, before the browser requests /auth/:provider.
+  defp close_host_screen(room) do
+    stop_supervised!(Agent)
+    [{game, _}] = Registry.lookup(WhoseJam.Game.Registry, room)
+    _ = :sys.get_state(game)
   end
 
   # Runs /auth/oauth_stub and returns the signed `state` the provider would get back.
@@ -263,8 +271,8 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
        %{conn: conn, room: room} do
     open_host_screen(room)
 
+    close_host_screen(room)
     state = authorize(conn, room)
-    stop_supervised!(Agent)
     refute_receive {:game_ended, _}, 300
 
     conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
@@ -276,8 +284,8 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
   test "a cancelled sign-in is over too", %{conn: conn, room: room} do
     open_host_screen(room)
 
+    close_host_screen(room)
     state = authorize(conn, room)
-    stop_supervised!(Agent)
     refute_receive {:game_ended, _}, 300
 
     conn = get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{state}")

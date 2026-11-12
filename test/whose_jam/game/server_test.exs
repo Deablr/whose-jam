@@ -866,16 +866,25 @@ defmodule WhoseJam.Game.ServerTest do
       assert_receive {:game_ended, :host_left}, 1000
     end
 
-    test "a host screen away signing in to a music service gets the longer grace" do
-      put_test_env(:host_grace_ms, 50)
+    # What a host screen's link to a music service's sign-in page does: the
+    # screen goes first (LiveView drops a page's socket on a click that leaves
+    # it), then the OAuth controller tells the game the host is signing in.
+    defp leave_to_sign_in(code, screen) do
+      stop_supervised!(screen)
+      # Let the game handle the departure first, as it does in a browser.
+      _ = :sys.get_state(which_pid(code))
+      Game.host_signing_in(code)
+    end
+
+    test "a host screen that left to sign in to a music service gets the longer grace" do
+      put_test_env(:host_grace_ms, 100)
       put_test_env(:sign_in_grace_ms, 600)
       theme = guess_who_theme()
       {code, _ids} = lobby_with_players(theme, 3)
       :ok = Game.attach_host(code, host_screen(:host))
       watch(code)
 
-      :ok = Game.host_signing_in(code)
-      stop_supervised!(:host)
+      assert leave_to_sign_in(code, :host) == :ok
 
       # Well past the usual grace...
       refute_receive {:game_ended, _}, 300
@@ -883,26 +892,27 @@ defmodule WhoseJam.Game.ServerTest do
       assert_receive {:game_ended, :host_left}, 1000
     end
 
-    test "a sign-in notice with no host screen open is ignored" do
-      put_test_env(:host_grace_ms, 50)
+    test "a sign-in notice once the host screens are long gone is ignored" do
+      put_test_env(:host_grace_ms, 100)
       put_test_env(:sign_in_grace_ms, 5_000)
       theme = guess_who_theme()
       {code, _ids} = lobby_with_players(theme, 3)
       :ok = Game.attach_host(code, host_screen(:host))
       watch(code)
 
-      # Anyone with the room code can ask; once the host has gone, it can't
-      # be the host leaving to sign in.
-      stop_supervised!(:host)
-      # Let the game handle the host screen going down first.
-      _ = :sys.get_state(which_pid(code))
+      assert leave_to_sign_in(code, :host) == :ok
+      # Past the usual grace, the game waits on that sign-in alone. Anyone with
+      # the room code can still ask, but it can't be a host leaving now.
+      refute_receive {:game_ended, _}, 250
       assert Game.host_signing_in(code) == {:error, :no_host_screen}
 
+      # So once the host's sign-in is back, nothing else holds the game.
+      :ok = Game.host_back_from_sign_in(code)
       assert_receive {:game_ended, :host_left}, 1000
     end
 
     test "another host screen opening during a sign-in leaves the sign-in its grace" do
-      put_test_env(:host_grace_ms, 50)
+      put_test_env(:host_grace_ms, 100)
       put_test_env(:sign_in_grace_ms, 5_000)
       theme = guess_who_theme()
       {code, _ids} = lobby_with_players(theme, 3)
@@ -911,8 +921,7 @@ defmodule WhoseJam.Game.ServerTest do
       watch(code)
 
       # The laptop leaves to sign in; meanwhile the TV refreshes, then closes.
-      :ok = Game.host_signing_in(code)
-      stop_supervised!(:laptop)
+      assert leave_to_sign_in(code, :laptop) == :ok
       stop_supervised!(:tv)
       :ok = Game.attach_host(code, host_screen(:tv_refreshed))
       stop_supervised!(:tv_refreshed)
@@ -920,18 +929,58 @@ defmodule WhoseJam.Game.ServerTest do
       refute_receive {:game_ended, _}, 300
     end
 
+    test "one sign-in coming back leaves another still under way its grace" do
+      put_test_env(:host_grace_ms, 100)
+      put_test_env(:sign_in_grace_ms, 5_000)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:laptop))
+      :ok = Game.attach_host(code, host_screen(:tv))
+      watch(code)
+
+      # Both host screens leave to sign in; the laptop's comes back first but
+      # its screen never reopens.
+      assert leave_to_sign_in(code, :laptop) == :ok
+      assert leave_to_sign_in(code, :tv) == :ok
+      :ok = Game.host_back_from_sign_in(code)
+      refute_receive {:game_ended, _}, 300
+
+      # Once the TV's is back too, the usual grace applies.
+      :ok = Game.host_back_from_sign_in(code)
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "a sign-in that never came back stops counting once its window closes" do
+      put_test_env(:host_grace_ms, 100)
+      put_test_env(:sign_in_grace_ms, 50)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:host))
+      watch(code)
+
+      # Started (say, from another tab) and abandoned; its window closes.
+      :ok = Game.host_signing_in(code)
+      refute_receive {:game_ended, _}, 150
+
+      # A later sign-in comes back, but its host screen never does.
+      put_test_env(:sign_in_grace_ms, 5_000)
+      assert leave_to_sign_in(code, :host) == :ok
+      :ok = Game.host_back_from_sign_in(code)
+
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
     test "once the sign-in is over, the usual grace applies again" do
-      put_test_env(:host_grace_ms, 50)
+      put_test_env(:host_grace_ms, 100)
       put_test_env(:sign_in_grace_ms, 5_000)
       theme = guess_who_theme()
       {code, _ids} = lobby_with_players(theme, 3)
       :ok = Game.attach_host(code, host_screen(:host))
       watch(code)
 
-      :ok = Game.host_signing_in(code)
-      stop_supervised!(:host)
+      assert leave_to_sign_in(code, :host) == :ok
       # Long enough for the countdown to defer to the sign-in's window.
-      refute_receive {:game_ended, _}, 200
+      refute_receive {:game_ended, _}, 250
 
       # The sign-in comes back, but its host screen never does.
       :ok = Game.host_back_from_sign_in(code)
@@ -943,6 +992,9 @@ defmodule WhoseJam.Game.ServerTest do
       theme = guess_who_theme()
       {code, _ids} = lobby_with_players(theme, 3)
       watch(code)
+
+      # Nor can a sign-in notice come from a host screen that never opened.
+      assert Game.host_signing_in(code) == {:error, :no_host_screen}
 
       refute_receive {:game_ended, _}, 200
       assert Game.get_state(code).phase == :lobby

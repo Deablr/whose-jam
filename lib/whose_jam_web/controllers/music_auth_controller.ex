@@ -34,9 +34,10 @@ defmodule WhoseJamWeb.MusicAuthController do
 
       case provider.authorize_url(state, redirect_uri(provider)) do
         {:ok, url} ->
-          # The host screen is about to leave for the provider's page; that
-          # must not count as the host closing it. Best effort: if the game
-          # has just gone, the callback says so.
+          # The host screen has just left for the provider's page (LiveView
+          # drops it on the click, a moment before this request); that must
+          # not count as the host closing it. Best effort: if the game has
+          # just gone, the callback says so.
           _ = Game.host_signing_in(room_code)
           redirect(conn, external: url)
 

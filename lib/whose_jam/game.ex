@@ -186,15 +186,20 @@ defmodule WhoseJam.Game do
   most, the game waits that long for a host screen to come back instead of 30
   seconds, so connecting a music service never ends the game.
 
-  Only honoured while a host screen is open, as it is when the host leaves to
-  sign in: `{:error, :no_host_screen}` otherwise.
+  Honoured while a host screen is open, or within the 30-second grace after
+  the last one closed. That covers a host screen leaving to sign in: LiveView
+  drops a page the moment its link is clicked, so the screen goes a moment
+  before this notice. Any other time the notice can't be a host's:
+  `{:error, :no_host_screen}`.
   """
   @spec host_signing_in(String.t()) :: :ok | {:error, term()}
   def host_signing_in(code), do: command(code, :host_signing_in)
 
   @doc """
-  The host's music-service sign-in for `code` is over, whatever its outcome
-  (the OAuth callback came back). The usual 30-second grace applies again.
+  A music-service sign-in for `code` is over, whatever its outcome (the OAuth
+  callback came back). Once every sign-in under way is back, the usual
+  30-second grace applies again. Sign-ins are counted, not told apart, and
+  one that never comes back stops counting when its 15 minutes are up.
   """
   @spec host_back_from_sign_in(String.t()) :: :ok | {:error, term()}
   def host_back_from_sign_in(code), do: command(code, :host_back_from_sign_in)
