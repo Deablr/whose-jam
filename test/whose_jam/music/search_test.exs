@@ -20,6 +20,7 @@ defmodule WhoseJam.Music.SearchTest do
     def connect_kind, do: :none
     def video?, do: false
     def configured?, do: Process.get(:stub_configured, true)
+    def search_debounce_ms, do: 300
     def valid_uri?(_uri), do: true
     def valid_art_url?(_url), do: false
     def connect(_params), do: {:ok, %{}}
@@ -47,6 +48,7 @@ defmodule WhoseJam.Music.SearchTest do
     def connect_kind, do: :none
     def video?, do: false
     def configured?, do: true
+    def search_debounce_ms, do: 300
     def valid_uri?(_uri), do: true
     def valid_art_url?(_url), do: false
     def connect(_params), do: {:ok, %{}}
@@ -66,6 +68,16 @@ defmodule WhoseJam.Music.SearchTest do
 
     # Results are cached in a shared table: every test searches its own terms.
     %{term: "term#{System.unique_integer([:positive])}"}
+  end
+
+  test "with no configured list (production), Spotify and YouTube are offered" do
+    # setup's on_exit puts the list back.
+    Application.delete_env(:whose_jam, :music_providers)
+
+    assert Music.providers() == [
+             WhoseJam.Music.Providers.Spotify,
+             WhoseJam.Music.Providers.YouTube
+           ]
   end
 
   test "searches with the normalized query and shares the result across spellings", %{term: term} do

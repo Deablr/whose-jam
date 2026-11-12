@@ -56,6 +56,26 @@ defmodule WhoseJam.Music.ProviderContractTest do
         assert call(@provider, :connect_kind) in [:oauth_redirect, :none]
         assert is_boolean(call(@provider, :video?))
         assert is_boolean(call(@provider, :configured?))
+
+        assert is_integer(call(@provider, :search_debounce_ms)) and
+                 call(@provider, :search_debounce_ms) > 0
+      end
+
+      test "its account question and warning, when it has them, are well-formed" do
+        for auth <- [@sample.auth, %{}] do
+          case Music.account_question(@provider.id(), auth) do
+            nil ->
+              :ok
+
+            question ->
+              assert is_binary(question.prompt) and question.prompt != ""
+              assert is_binary(question.detail)
+              assert question.answer in [true, false, nil]
+          end
+
+          warning = Music.warning(@provider.id(), auth)
+          assert is_nil(warning) or is_binary(warning)
+        end
       end
 
       test "is found by id, as an atom or the string a URL carries" do

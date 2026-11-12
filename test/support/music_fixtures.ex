@@ -19,6 +19,17 @@ defmodule WhoseJam.MusicFixtures do
       ineligible_auth: %{access_token: "tok", premium?: false},
       hostile_art: "https://i.scdn.co/image/abc');color:red"
     },
+    youtube: %{
+      song: %{
+        uri: "youtube:video:dQw4w9WgXcQ",
+        name: "Song",
+        artist: "Artist",
+        album_art_url: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+      },
+      auth: %{signed_in?: true, premium?: true},
+      ineligible_auth: %{},
+      hostile_art: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');color:red"
+    },
     mock: %{
       song: %{uri: "mock:track:001", name: "Neon Overdrive", artist: "X", album_art_url: nil},
       auth: %{},

@@ -1145,8 +1145,9 @@ defmodule WhoseJam.Game.Server do
     end
   end
 
-  # The part of the music service every client may see: which service it is and
-  # whether the host's account can play. Never the auth itself.
+  # The part of the music service every client may see: which service it is,
+  # whether the host's account can play, and how patiently the player screens
+  # should search it. Never the auth itself.
   defp music_view(nil), do: nil
 
   defp music_view(%{provider: provider} = music) do
@@ -1156,7 +1157,8 @@ defmodule WhoseJam.Game.Server do
           id: mod.id(),
           name: mod.name(),
           video?: mod.video?(),
-          eligible?: music_eligible?(music)
+          eligible?: music_eligible?(music),
+          search_debounce_ms: mod.search_debounce_ms()
         }
 
       :error ->

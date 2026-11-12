@@ -34,8 +34,8 @@ services:
       SECRET_KEY_BASE: "${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env — generate one with openssl rand -base64 48}"
       # Hostname phones will use to reach this app (QR join links): a LAN IP
       # for a local party, or the public domain behind Dokploy/Traefik. The
-      # Spotify OAuth redirect is independent of this (loopback by default;
-      # set SPOTIFY_REDIRECT_URI when serving over https).
+      # OAuth redirects use it only with PHX_SCHEME=https; over plain http
+      # they go to a loopback address.
       PHX_HOST: ${PHX_HOST:-localhost}
       # Behind a TLS proxy set PHX_SCHEME=https and URL_PORT=443. Locally the
       # override file sets URL_PORT to the published port; blank means "same
@@ -45,9 +45,19 @@ services:
       # Optional until you want real Spotify search/playback.
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
-      # Defaults to http://127.0.0.1:<APP_PORT>/auth/spotify/callback (Spotify
-      # rejects `localhost`); override only for an https deployment.
+      # Defaults to https://<PHX_HOST>/auth/spotify/callback with
+      # PHX_SCHEME=https, else http://127.0.0.1:<APP_PORT>/auth/spotify/callback
+      # (Spotify rejects `localhost`). Set only to use another address.
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      # Optional: the YouTube music service (a Data API key for search, an
+      # OAuth client for the host's Google sign-in).
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID:-}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET:-}
+      # Defaults to https://<PHX_HOST>/auth/youtube/callback with
+      # PHX_SCHEME=https, else http://localhost:<APP_PORT>/auth/youtube/callback.
+      # Set only to use another address.
+      YOUTUBE_REDIRECT_URI: ${YOUTUBE_REDIRECT_URI:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:4000/"]
       interval: 10s

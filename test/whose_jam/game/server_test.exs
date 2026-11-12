@@ -922,7 +922,8 @@ defmodule WhoseJam.Game.ServerTest do
                    id: @id,
                    name: provider.name(),
                    video?: provider.video?(),
-                   eligible?: true
+                   eligible?: true,
+                   search_debounce_ms: provider.search_debounce_ms()
                  }
 
         :ok = Game.start_game(code)
@@ -959,6 +960,23 @@ defmodule WhoseJam.Game.ServerTest do
 
         assert Game.submit_song(code, p1, q.question_id, foreign) == {:error, :invalid_song}
       end
+    end
+
+    test "a degraded account (YouTube without Premium) is warned about but still starts" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id, @fast_overrides)
+      for i <- 1..3, do: Game.join(code, "P#{i}")
+
+      :ok = Game.set_music(code, :youtube, %{signed_in?: true, premium?: nil})
+
+      {:ok, answered} =
+        Music.answer_account_question(:youtube, Game.host_state(code).music_auth, false)
+
+      :ok = Game.set_music(code, :youtube, answered)
+
+      assert Game.get_state(code).music.eligible?
+      assert Music.warning(:youtube, Game.host_state(code).music_auth) =~ "ads"
+      assert Game.start_game(code) == :ok
     end
 
     test "an unknown or disabled provider can't be connected" do
@@ -1037,9 +1055,16 @@ defmodule WhoseJam.Game.ServerTest do
       {:ok, code} = Game.create_game(theme.id)
       :ok = Game.set_music(code, :spotify, @premium)
 
-      # The shared view says which service and whether it can play — no auth...
+      # The shared view says which service, whether it can play and how to
+      # search it — no auth...
       assert Game.get_state(code).music ==
-               %{id: :spotify, name: "Spotify", video?: false, eligible?: true}
+               %{
+                 id: :spotify,
+                 name: "Spotify",
+                 video?: false,
+                 eligible?: true,
+                 search_debounce_ms: 300
+               }
 
       refute Map.has_key?(Game.get_state(code), :music_auth)
       # ...but the host gets the auth.

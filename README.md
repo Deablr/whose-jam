@@ -5,8 +5,9 @@ A Jackbox-style song-guessing party game for a room full of friends.
 One laptop drives the TV; everyone else plays on their phones. The host picks a
 themed pool of prompts like *"The song you'd blast to feel like the main
 character walking out of a building"*, and each player answers by searching
-Spotify and submitting a track. The TV then plays the songs one at a time
-through the host's Spotify Premium account, and after every song the whole room
+the room's music service and submitting a track. The TV then plays the songs
+one at a time through the host's account (Spotify Premium, or YouTube), and
+after every song the whole room
 votes on **who submitted it**. You score for guessing right, and for fooling
 other players into voting for your pick. A scoreboard builds between rounds; a
 winner is crowned at the end. Default settings aim for a ~20-minute game.
@@ -26,8 +27,8 @@ code:
 | **Player** | `/play/:code` | Each phone. Search + submit songs, then vote. |
 
 **The host's setup** is one laptop showing `/host/:code` on the TV. If no music
-service is connected, the lobby prompts the host to connect one (Spotify today;
-the picker is built to list more services later). The host also joins
+service is connected, the lobby prompts the host to connect one (Spotify or
+YouTube; the picker is built to list more services later). The host also joins
 `/play/:code` on their own phone to play along. The host URL is not tied to any
 identity — any browser can open it.
 
@@ -36,8 +37,10 @@ identity — any browser can open it.
 1. Open the app, create a game, and pick a theme. Two pools ship with v1:
    *Certified Bangers* (one style: guess-who-submitted-it) and *Emotional
    Damage* (two sub-rounds: guess-who, then guess-which-prompt).
-2. Connect a **Spotify Premium** account via OAuth. The game will not start
-   without it.
+2. Connect a music service. **Spotify** needs a Premium account (verified
+   after OAuth; the game will not start without it). **YouTube** needs a Google
+   sign-in, then asks whether the account has YouTube Premium — without it the
+   game still starts, with a warning that ads may play.
 3. Friends scan the QR code on the TV (or type the room code), pick a display
    name, and land in the lobby.
 4. Start once at least **3 players** have joined (the host can lower this to
@@ -106,21 +109,34 @@ pass an explicit compose file skip the local override). In Dokploy:
    PHX_SCHEME=https
    SPOTIFY_CLIENT_ID=...
    SPOTIFY_CLIENT_SECRET=...
-   SPOTIFY_REDIRECT_URI=https://your.domain.com/auth/spotify/callback
    POSTGRES_PASSWORD=<something strong>
+   # Only if you offer YouTube (see "YouTube setup"):
+   YOUTUBE_API_KEY=...
+   YOUTUBE_CLIENT_ID=...
+   YOUTUBE_CLIENT_SECRET=...
    ```
 
-   `SPOTIFY_REDIRECT_URI` must be set explicitly here (and registered in the
-   Spotify dashboard): the loopback default only makes sense when the server
-   runs on the host's own laptop. With HTTPS, Spotify accepts the real domain.
+   With `PHX_SCHEME=https` the OAuth redirects are built from the app's own
+   address, so there is nothing more to set. Register these two URLs with the
+   providers (Spotify dashboard, Google OAuth client):
+
+   ```
+   https://your.domain.com/auth/spotify/callback
+   https://your.domain.com/auth/youtube/callback
+   ```
+
+   `SPOTIFY_REDIRECT_URI` / `YOUTUBE_REDIRECT_URI` still override them if you
+   need a different address. Open the host screen at the domain, not at the
+   server's IP address — YouTube won't play on a page opened by IP.
 
 ---
 
 ## Music providers
 
 Everything music-service-specific sits behind the `WhoseJam.Music.Provider`
-behaviour (see `AGENTS.md` for the contract and how to add one). Spotify is the
-only provider that ships. In **dev and test** a fake **Mock Music** provider is
+behaviour (see `AGENTS.md` for the contract and how to add one). **Spotify**
+and **YouTube** ship; a provider whose credentials are missing is listed as
+"Not configured on this server". In **dev and test** a fake **Mock Music** provider is
 also enabled (`config :whose_jam, :music_providers`): a handful of made-up
 tracks, no credentials and no audio — each song just "ends" after a few
 seconds — so you can play a whole game locally without a Spotify account.
@@ -143,12 +159,12 @@ nothing and no game can play audio.
    ```
 
    Spotify **rejects `localhost`** and any non-HTTPS URI that isn't a loopback
-   IP (`127.0.0.1` / `[::1]`), so the app always sends a `127.0.0.1` redirect —
-   even at a LAN party where phones join via your LAN IP. That works because
-   the OAuth round-trip happens in the host's browser on the same machine that
-   runs the server; don't register a LAN-IP redirect URI, Spotify won't accept
-   it. Deploying behind TLS instead? Register your https URI and set
-   `SPOTIFY_REDIRECT_URI=https://your.domain/auth/spotify/callback`.
+   IP (`127.0.0.1` / `[::1]`), so over plain http the app sends a `127.0.0.1`
+   redirect — even at a LAN party where phones join via your LAN IP. That works
+   because the OAuth round-trip happens in the host's browser on the same
+   machine that runs the server; don't register a LAN-IP redirect URI, Spotify
+   won't accept it. Deploying behind TLS instead? With `PHX_SCHEME=https` the
+   redirect is `https://<PHX_HOST>/auth/spotify/callback`; register that.
 3. Copy the app's Client ID and Client Secret into `.env`:
 
    ```sh
@@ -177,9 +193,79 @@ The Android SDK, iOS SDK, and Ads API are **not** used.
   Web Playback SDK. The host completes OAuth during game creation, and the game
   **refuses to start** unless that account is verified as **Premium**.
 
-There is **no free/preview fallback in v1** — a host without Premium cannot
-host. Players only see title/artist/art on their phones; audio comes out of the
-TV only.
+There is **no free/preview fallback for Spotify** — a host without Spotify
+Premium cannot host with it (YouTube is the alternative). Players only see
+title/artist/art on their phones; audio comes out of the TV only.
+
+## YouTube setup
+
+YouTube plays music videos on the host screen through the IFrame player. The
+host signs in with Google; **YouTube Premium is recommended, not required**.
+All three values below come from one Google Cloud project, and all three must
+be set for YouTube to be offered.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a
+   project and enable **YouTube Data API v3**.
+2. Create an **API key** (Credentials → Create credentials → API key). Under
+   *API restrictions*, restrict it to the YouTube Data API v3. Under
+   *Application restrictions*, choose **None** (or **IP addresses**, with the
+   server's address) — **not** "Websites": the key is used by the server, which
+   sends no referrer, so a website-restricted key is refused. It never reaches
+   a browser.
+3. Configure the **OAuth consent screen**. The app asks only for the `openid`
+   scope, which needs no Google verification. It keeps no tokens and never
+   learns the host's name or email.
+4. Create an **OAuth client ID** of type **Web application** and add this
+   authorized redirect URI (match your `APP_PORT`). Note it is `localhost`,
+   not `127.0.0.1` as for Spotify:
+
+   ```
+   http://localhost:4000/auth/youtube/callback
+   ```
+
+   Behind TLS (`PHX_SCHEME=https`) the redirect is
+   `https://<PHX_HOST>/auth/youtube/callback`; register that instead.
+5. Copy the values into `.env`:
+
+   ```sh
+   YOUTUBE_API_KEY=your_api_key
+   YOUTUBE_CLIENT_ID=your_client_id.apps.googleusercontent.com
+   YOUTUBE_CLIENT_SECRET=your_client_secret
+   ```
+
+**What the host sees.** Choosing YouTube sends the host to Google to sign in.
+Back in the lobby the game asks whether that account has YouTube Premium —
+Google has **no API that reports Premium**, so the app cannot check it. A "yes"
+clears the way; "no" (or closing the question) shows a warning in the lobby and
+in Settings that ads may play before or during songs. The game starts either
+way, and the answer can be changed in Settings.
+
+**Things to know:**
+
+- **Open the host screen by name, not by IP address.** YouTube refuses to play
+  ("This video is unavailable") in a page opened at `127.0.0.1`, `[::1]` or a
+  LAN IP, and plays in one opened by name. On the computer running the game
+  that name is `localhost`; from another computer it has to be the hostname in
+  `PHX_HOST` (a release refuses the live connection from any other address).
+  Over plain http the Google sign-in returns to `localhost` for that reason
+  (over https, to the app's own domain), and the host
+  screen tells you if it is on an IP address. Phones are unaffected — they can
+  still join through a LAN IP.
+- **Ads and the browser session.** The player runs with the host browser's own
+  YouTube session, which is why the sign-in happens in the browser that plays
+  the songs. Even with Premium, ads can appear if that browser blocks
+  third-party cookies, since the embedded player then can't see the session.
+- **Search quota.** Google allows a project roughly **100 searches a day** by
+  default. Results are cached for a few minutes and YouTube rooms wait 600 ms
+  after the last keystroke before searching (Spotify rooms wait 300 ms; the
+  server enforces the same spacing per connection), but a
+  big game can still use the allowance up; players then see "search limit for
+  today is used up". Request more quota in the Cloud console if you need it.
+- **The video is on screen.** YouTube's terms require a visible player, so the
+  host screen shows the video where the album art would be.
+- **Unplayable videos.** Search only returns embeddable music videos, but a
+  video can still be removed or region-blocked. The host screen says so; skip
+  the song.
 
 ---
 
@@ -233,15 +319,19 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `SECRET_KEY_BASE` | **Yes** | — | Signs/encrypts cookies and session tokens. Generate with `openssl rand -base64 48`. Boot fails (prod/release) if missing. |
 | `DATABASE_URL` | **Yes** (prod/Docker) | — | Ecto connection URL, `ecto://USER:PASS@HOST/DB`. Compose sets it to the bundled `db` container automatically. |
 | `PHX_HOST` | Recommended | `localhost` | Hostname used in generated URLs (QR join links). Set to your LAN IP for a party. Not used for the Spotify redirect. |
-| `SPOTIFY_REDIRECT_URI` | No | `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Override only for https deployments. |
+| `SPOTIFY_REDIRECT_URI` | No | With `PHX_SCHEME=https`: `https://<PHX_HOST>/auth/spotify/callback`. Otherwise `http://127.0.0.1:<url port>/auth/spotify/callback` | OAuth redirect sent to Spotify; must exactly match a URI registered in your Spotify app. Set it only if neither default is the address you registered. |
 | `APP_PORT` | No | `4000` | **Local compose only** (`docker-compose.override.yml`). Host port the app is published on, and the port used in generated URLs. Not used by proxy deployments. |
 | `PORT` | No | `4000` | The port the server actually listens on inside the app/container. Used by `mix phx.server` for local dev. |
 | `URL_PORT` | No | `443` when `PHX_SCHEME=https`, else value of `PORT` | Port embedded in generated URLs. Only needed for a non-standard public port. The local override sets it to `APP_PORT`. |
-| `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy (Dokploy). |
+| `PHX_SCHEME` | No | `http` | URL scheme for generated links. Set `https` behind a TLS proxy (Dokploy); the OAuth redirects are then built from `PHX_HOST` instead of a loopback address. |
 | `POOL_SIZE` | No | `10` | Ecto DB connection pool size (prod). |
 | `POSTGRES_PASSWORD` | No | `postgres` | **Compose only.** Password for the bundled Postgres container; also folded into the default `DATABASE_URL`. |
 | `SPOTIFY_CLIENT_ID` | For Spotify | — | Spotify app Client ID. Without it, search/playback are disabled. |
 | `SPOTIFY_CLIENT_SECRET` | For Spotify | — | Spotify app Client Secret. |
+| `YOUTUBE_API_KEY` | For YouTube | — | Google API key with the YouTube Data API v3 enabled. Song search, server-side only. |
+| `YOUTUBE_CLIENT_ID` | For YouTube | — | Google OAuth "Web application" client ID, for the host's Google sign-in. |
+| `YOUTUBE_CLIENT_SECRET` | For YouTube | — | Its client secret. |
+| `YOUTUBE_REDIRECT_URI` | No | With `PHX_SCHEME=https`: `https://<PHX_HOST>/auth/youtube/callback`. Otherwise `http://localhost:<url port>/auth/youtube/callback` | OAuth redirect sent to Google; must exactly match a URI registered on the OAuth client. Set it only if neither default is the address you registered, and use a hostname, not an IP address: the host screen stays on this host after sign-in, and YouTube won't play on an IP-address page. |
 
 Host-facing **game** settings (answer timer, listening delay before voting,
 vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
@@ -321,12 +411,14 @@ where it pays off — the **deep pure modules** and the **GenServer's public API
 - Music providers — one shared contract test run against every enabled
   provider, the facade's search caching, and the OAuth controller (signed-state
   guard rails, plus the authorize-to-callback flow via a stub redirect provider).
+  YouTube adds tests for its Premium question and ads warning, and for the pure
+  mapping of a Data API search response to tracks.
 
 `Game.Server` is exercised **through its public event API**, not by peeking at
-internal state. There are no `Phoenix.LiveViewTest` tests, no live Spotify
-tests and no Registry tests (per PRD): LiveViews are exercised end to end
-through a real browser (below), Spotify's response mapping is validated by
-manual playtesting, and the Registry is a thin wrapper.
+internal state. There are no `Phoenix.LiveViewTest` tests, no live provider API
+tests (Spotify, Google/YouTube) and no Registry tests (per PRD): LiveViews are
+exercised end to end through a real browser (below), the providers' HTTP calls
+are validated by manual playtesting, and the Registry is a thin wrapper.
 
 ### End-to-end (browser) suite
 
@@ -406,13 +498,45 @@ your app at developer.spotify.com.
 
 **"Account isn't Premium" and the game won't start.**
 This is a hard v1 requirement — the TV plays full tracks via the Web Playback
-SDK, which needs Premium. There is no preview/free fallback. Connect a Premium
-account.
+SDK, which needs Premium. There is no preview/free fallback for Spotify. Connect
+a Premium account, or pick YouTube in the music-service list instead (it needs
+only a Google sign-in).
+
+**YouTube plays ads even though the account has Premium.**
+The embedded player uses the host browser's own YouTube session. Check that the
+browser showing the host screen is signed in to youtube.com with the Premium
+account, and that it isn't blocking third-party cookies for youtube.com.
+
+**YouTube search says the limit for today is used up.**
+The Google Cloud project has spent its daily `search.list` allowance (about 100
+searches by default; it resets at midnight Pacific time). Request a higher quota
+in the Cloud console, or host with Spotify.
+
+**YouTube search says "Couldn't reach the music service".**
+Google refused the search; the server log has the reason on a
+`YouTube search failed:` line. *"Requests from referer &lt;empty&gt; are
+blocked"* means the API key is restricted to websites — set its application
+restriction to None or IP addresses (see YouTube setup). A message about the
+API not being enabled means YouTube Data API v3 is off for that project.
+
+**The host screen says "YouTube won't play on a page opened by IP address".**
+The host screen was opened by IP address (`127.0.0.1`, a LAN IP), which
+YouTube's player refuses (it would show "This video is unavailable" for every
+song). Open it by name instead, keeping the port and path: `localhost` on the
+computer running the game, otherwise the hostname in `PHX_HOST`. The game
+carries on where it was.
+
+**Google says "redirect_uri_mismatch".**
+Register exactly the redirect the app sends on the OAuth client:
+`http://localhost:<APP_PORT>/auth/youtube/callback` (port included) over plain
+http, or `https://<PHX_HOST>/auth/youtube/callback` with `PHX_SCHEME=https`.
+Or set `YOUTUBE_REDIRECT_URI` to the URI you did register.
 
 **Phones can't reach the QR link.**
 `PHX_HOST` must be your laptop's **LAN IP**, not `localhost`, and the phones must
-be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. The Spotify
-redirect URI is unaffected — it stays on `127.0.0.1`. (A dev server also binds
+be on the **same Wi-Fi**. Update `PHX_HOST` in `.env` and restart. Over plain
+http the OAuth redirects are unaffected — they stay on `127.0.0.1` (Spotify)
+and `localhost` (YouTube). (A dev server also binds
 loopback-only by default — see Local development.)
 
 **Playback banner on the host screen shows `EMEError: No supported keysystem`.**
@@ -427,8 +551,8 @@ everything else work regardless; only playback needs DRM.
 **Spotify says "invalid redirect URI" (or the dashboard rejects the URI).**
 Spotify doesn't accept `localhost` or plain-http non-loopback hosts. Register
 exactly `http://127.0.0.1:<APP_PORT>/auth/spotify/callback` (port included) and
-start the OAuth flow from the machine running the server. Behind TLS, register
-your https URI and set `SPOTIFY_REDIRECT_URI` to the same value.
+start the OAuth flow from the machine running the server. Behind TLS
+(`PHX_SCHEME=https`), register `https://<PHX_HOST>/auth/spotify/callback`.
 
 **DB connection refused / authentication failed.**
 Docker: let the `db` service finish starting (the app waits on its healthcheck);
@@ -466,8 +590,9 @@ whose-jam/
 │   │   └── codes.ex       # room-code generation
 │   ├── content.ex         # seeded themes/questions (Ecto)
 │   ├── music.ex           # provider-neutral facade: search + cache, song validation, token upkeep
-│   ├── music/             # Provider behaviour, cache, providers/{spotify,mock}.ex
-│   └── spotify/           # Spotify HTTP client + OAuth helpers (used by the Spotify provider)
+│   ├── music/             # Provider behaviour, cache, providers/{spotify,youtube,mock}.ex
+│   ├── spotify/           # Spotify HTTP client + OAuth helpers (used by the Spotify provider)
+│   └── youtube/           # YouTube Data API search + Google sign-in (used by the YouTube provider)
 └── lib/whose_jam_web/
     ├── router.ex          # /, /play/:code, /host/:code (+ /tv alias), /auth/:provider*
     ├── live/              # home, play, host LiveViews

@@ -53,6 +53,9 @@ defmodule WhoseJam.Music.Providers.Spotify do
   end
 
   @impl true
+  def search_debounce_ms, do: 300
+
+  @impl true
   def valid_uri?(uri), do: Regex.match?(@uri_regex, uri)
 
   @impl true

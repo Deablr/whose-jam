@@ -11,11 +11,11 @@ defmodule WhoseJam.Music do
   ## Enabled providers
 
   `config :whose_jam, :music_providers, [module, ...]` — defaults to Spotify
-  only. Dev and test also enable the fake `Mock` provider.
+  and YouTube. Dev and test also enable the fake `Mock` provider.
   """
 
   alias WhoseJam.Music.{Cache, Track}
-  alias WhoseJam.Music.Providers.Spotify
+  alias WhoseJam.Music.Providers.{Spotify, YouTube}
 
   # Refresh a host token this long before it expires; never poll faster than
   # the floor.
@@ -24,7 +24,7 @@ defmodule WhoseJam.Music do
 
   @doc "The enabled provider modules, in display order."
   @spec providers() :: [module()]
-  def providers, do: Application.get_env(:whose_jam, :music_providers, [Spotify])
+  def providers, do: Application.get_env(:whose_jam, :music_providers, [Spotify, YouTube])
 
   @doc """
   Look up an enabled provider by id (atom, or the string form a URL / event
@@ -48,7 +48,8 @@ defmodule WhoseJam.Music do
   and results are cached under it, so repeated identical searches don't hit the
   provider and a provider's quirks can't poison the shared entry. Errors are
   never cached. Returns `{:error, :unknown_provider}` or
-  `{:error, :not_configured}` before searching.
+  `{:error, :not_configured}` before searching, and passes on the provider's
+  own errors (`{:error, :quota_exceeded}` when its search allowance is used up).
   """
   @spec search(atom(), String.t(), map()) :: {:ok, [Track.t()]} | {:error, term()}
   def search(provider_id, query, auth) when is_binary(query) do
@@ -110,6 +111,60 @@ defmodule WhoseJam.Music do
   end
 
   @doc """
+  The yes/no question `provider_id` has for the host about the connected
+  account (`%{prompt, detail, answer}`), or `nil` when it has none.
+  """
+  @spec account_question(atom() | nil, map() | nil) ::
+          WhoseJam.Music.Provider.account_question() | nil
+  def account_question(provider_id, auth) when is_map(auth) do
+    with_provider(provider_id, &optional(&1, :account_question, [auth], nil))
+  end
+
+  def account_question(_provider_id, _auth), do: nil
+
+  @doc """
+  Record the host's `answer` to `account_question/2`, returning the updated
+  auth to store with `WhoseJam.Game.set_music/3`. `:error` when the provider
+  is unknown or has no question for this account (a YouTube account that
+  isn't signed in is asked nothing).
+  """
+  @spec answer_account_question(atom() | nil, map() | nil, boolean()) :: {:ok, map()} | :error
+  def answer_account_question(provider_id, auth, answer)
+      when is_map(auth) and is_boolean(answer) do
+    # Only a question that is actually being asked of this account can be answered.
+    with %{} <- account_question(provider_id, auth),
+         %{} = answered <-
+           with_provider(
+             provider_id,
+             &optional(&1, :answer_account_question, [auth, answer], nil)
+           ) do
+      {:ok, answered}
+    else
+      _none -> :error
+    end
+  end
+
+  def answer_account_question(_provider_id, _auth, _answer), do: :error
+
+  @doc """
+  Host-facing warning for a connection that works but is degraded (YouTube
+  without Premium plays ads), or `nil`.
+  """
+  @spec warning(atom() | nil, map() | nil) :: String.t() | nil
+  def warning(provider_id, auth) when is_map(auth) do
+    with_provider(provider_id, &optional(&1, :warning, [auth], nil))
+  end
+
+  def warning(_provider_id, _auth), do: nil
+
+  @doc """
+  The loopback host for `mod`'s default OAuth redirect URI over plain http:
+  the provider's `redirect_host/0`, or `"127.0.0.1"` when it has no preference.
+  """
+  @spec redirect_host(module()) :: String.t()
+  def redirect_host(mod), do: optional(mod, :redirect_host, [], "127.0.0.1")
+
+  @doc """
   Refresh `auth` when it is within the refresh lead of expiring.
 
   Returns `{auth, changed?}`: the (possibly new) auth, and whether it changed
@@ -136,6 +191,13 @@ defmodule WhoseJam.Music do
   def refresh_delay_ms(_auth), do: nil
 
   defp due_threshold, do: DateTime.add(DateTime.utc_now(), @refresh_lead_s, :second)
+
+  defp with_provider(provider_id, fun) do
+    case fetch_provider(provider_id) do
+      {:ok, mod} -> fun.(mod)
+      :error -> nil
+    end
+  end
 
   # Call an optional callback, or return `default` when the provider omits it.
   defp optional(mod, fun, args, default) do
