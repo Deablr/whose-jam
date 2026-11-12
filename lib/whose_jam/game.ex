@@ -182,12 +182,22 @@ defmodule WhoseJam.Game do
 
   @doc """
   The host screen of `code` is leaving for a music service's sign-in page
-  (the OAuth redirect). While it is away, the game waits up to 15 minutes for
-  a host screen to come back instead of 30 seconds, so connecting a music
-  service never ends the game.
+  (the OAuth redirect). Until `host_back_from_sign_in/1`, or 15 minutes at
+  most, the game waits that long for a host screen to come back instead of 30
+  seconds, so connecting a music service never ends the game.
+
+  Only honoured while a host screen is open, as it is when the host leaves to
+  sign in: `{:error, :no_host_screen}` otherwise.
   """
   @spec host_signing_in(String.t()) :: :ok | {:error, term()}
   def host_signing_in(code), do: command(code, :host_signing_in)
+
+  @doc """
+  The host's music-service sign-in for `code` is over, whatever its outcome
+  (the OAuth callback came back). The usual 30-second grace applies again.
+  """
+  @spec host_back_from_sign_in(String.t()) :: :ok | {:error, term()}
+  def host_back_from_sign_in(code), do: command(code, :host_back_from_sign_in)
 
   @doc """
   Inform the server which participant ids are currently connected (LiveViews

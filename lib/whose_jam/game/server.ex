@@ -39,10 +39,11 @@ defmodule WhoseJam.Game.Server do
   Each open host screen attaches itself (`WhoseJam.Game.attach_host/2`) and
   the server monitors it. When the last one closes and none comes back within
   a short grace (30s; a refresh or a dropped connection comes back sooner),
-  the game ends. A host screen that left to sign in to a music service
-  (`WhoseJam.Game.host_signing_in/1`) gets 15 minutes instead. Until a host
-  screen has attached, nothing is watched (the idle timeout covers a game
-  nobody opened).
+  the game ends. While a host screen is away signing in to a music service
+  (from `WhoseJam.Game.host_signing_in/1` until
+  `WhoseJam.Game.host_back_from_sign_in/1`, at most 15 minutes) the game waits
+  for it that long instead. Until a host screen has attached, nothing is
+  watched (the idle timeout covers a game nobody opened).
 
   However the game ends — the host ends it (`WhoseJam.Game.end_game/1`), its
   last host screen goes, or it sits idle — the server broadcasts
@@ -137,7 +138,7 @@ defmodule WhoseJam.Game.Server do
             host_screens: %{},
             # {token, timer} while no host screen is open
             host_gone: nil,
-            # when a host screen that left to sign in must be back by (ms)
+            # while a host screen is away signing in: when it must be back by (ms)
             host_away_until_ms: nil
 
   # =========================================================================
@@ -161,7 +162,7 @@ defmodule WhoseJam.Game.Server do
       last_activity_ms: now_ms()
     }
 
-    schedule(:ttl_check, @abandoned_ttl_ms)
+    schedule(:ttl_check, abandoned_ttl_ms())
     {:ok, state}
   end
 
@@ -354,19 +355,35 @@ defmodule WhoseJam.Game.Server do
   # =========================================================================
 
   # A host screen is back (or opened): the game no longer counts down to its
-  # end, and any sign-in it was away for is over.
+  # end. A sign-in still under way elsewhere keeps its window: this may be a
+  # second host screen, not the one that left to sign in.
   def handle_call({:attach_host, pid}, _from, state) when is_pid(pid) do
     screens =
       if pid in Map.values(state.host_screens),
         do: state.host_screens,
         else: Map.put(state.host_screens, Process.monitor(pid), pid)
 
-    state = %{cancel_host_gone(state) | host_screens: screens, host_away_until_ms: nil}
-    {:reply, :ok, state}
+    {:reply, :ok, %{cancel_host_gone(state) | host_screens: screens}}
+  end
+
+  # The notice comes from a host screen still open: the OAuth controller sends
+  # it before redirecting, and the page only closes once the redirect is
+  # followed. With none open it can't be a host's, and anyone with the room
+  # code could otherwise keep a hostless game waiting indefinitely.
+  def handle_call(:host_signing_in, _from, state) when map_size(state.host_screens) > 0 do
+    {:reply, :ok, %{state | host_away_until_ms: now_ms() + sign_in_grace_ms()}}
   end
 
   def handle_call(:host_signing_in, _from, state) do
-    {:reply, :ok, %{state | host_away_until_ms: now_ms() + sign_in_grace_ms()}}
+    {:reply, {:error, :no_host_screen}, state}
+  end
+
+  # The sign-in is over, whatever came of it. Its host screen is on its way
+  # back, so if none is open the usual grace applies again from now.
+  def handle_call(:host_back_from_sign_in, _from, state) do
+    state = %{state | host_away_until_ms: nil}
+    state = if state.host_gone, do: schedule_host_gone(state, host_grace_ms()), else: state
+    {:reply, :ok, state}
   end
 
   def handle_call({:presence_diff, connected_ids}, _from, state) do
@@ -456,8 +473,8 @@ defmodule WhoseJam.Game.Server do
       else: {:noreply, state}
   end
 
-  # No host screen came back in time. One away signing in may still be on its
-  # way (whichever of its departure and the sign-in notice came first).
+  # No host screen came back in time, unless one is away signing in: then it
+  # has until its sign-in window closes.
   def handle_info({:host_gone, token}, %{host_gone: {token, _timer}} = state) do
     case away_ms_left(state) do
       ms when ms > 0 -> {:noreply, schedule_host_gone(state, ms)}
@@ -468,10 +485,10 @@ defmodule WhoseJam.Game.Server do
   def handle_info(:ttl_check, state) do
     idle_ms = now_ms() - state.last_activity_ms
 
-    if state.phase == :lobby and idle_ms >= @abandoned_ttl_ms do
+    if state.phase == :lobby and idle_ms >= abandoned_ttl_ms() do
       {:stop, :normal, announce_end(state, :idle)}
     else
-      schedule(:ttl_check, @abandoned_ttl_ms)
+      schedule(:ttl_check, abandoned_ttl_ms())
       {:noreply, state}
     end
   end
@@ -1260,6 +1277,8 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp all_voted_countdown_ms, do: env_ms(:all_voted_countdown_ms, @all_voted_countdown_s * 1000)
+
+  defp abandoned_ttl_ms, do: env_ms(:abandoned_ttl_ms, @abandoned_ttl_ms)
 
   defp host_grace_ms, do: env_ms(:host_grace_ms, @host_grace_ms)
 

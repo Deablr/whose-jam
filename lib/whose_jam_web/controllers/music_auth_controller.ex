@@ -6,8 +6,9 @@ defmodule WhoseJamWeb.MusicAuthController do
   provider id signed into the `state` parameter, first telling the game its
   host screen is away signing in (`WhoseJam.Game.host_signing_in/1`), so
   leaving for the provider's page doesn't end the game; `callback/2` recovers them,
-  hands the provider's `connect/1` the auth code, and stores the result on the
-  game via `WhoseJam.Game.set_music/3`. Every failure branch redirects back to
+  hands the provider's `connect/1` the auth code, stores the result on the
+  game via `WhoseJam.Game.set_music/3`, and ends the sign-in
+  (`WhoseJam.Game.host_back_from_sign_in/1`). Every failure branch redirects back to
   the host screen (or `/`) with a clear flash — never a crash page.
 
   Providers whose `connect_kind/0` is `:none` never touch this controller;
@@ -62,6 +63,7 @@ defmodule WhoseJamWeb.MusicAuthController do
     case recover_state(conn, params["provider"], state) do
       {:ok, room_code, provider} ->
         conn
+        |> back_from_sign_in(room_code)
         |> put_flash(:error, "#{provider.name()} connection was cancelled.")
         |> redirect(to: ~p"/host/#{room_code}")
 
@@ -76,7 +78,9 @@ defmodule WhoseJamWeb.MusicAuthController do
       when is_binary(auth_code) and is_binary(state) do
     case recover_state(conn, params["provider"], state) do
       {:ok, room_code, provider} ->
-        finish_callback(conn, provider, room_code, auth_code)
+        conn
+        |> finish_callback(provider, room_code, auth_code)
+        |> back_from_sign_in(room_code)
 
       :error ->
         conn
@@ -106,6 +110,14 @@ defmodule WhoseJamWeb.MusicAuthController do
     else
       {:error, reason} -> failure(conn, reason, provider, room_code)
     end
+  end
+
+  # However the sign-in went, it is over and the host screen is on its way
+  # back: the game's usual host-screen grace applies again (best effort, as
+  # in `authorize/2`).
+  defp back_from_sign_in(conn, room_code) do
+    _ = Game.host_back_from_sign_in(room_code)
+    conn
   end
 
   defp put_connected_flash(conn, provider, true) do

@@ -346,7 +346,10 @@ defmodule WhoseJamWeb.PlayLive do
 
     case Game.player_view(code, player_id) do
       nil ->
-        assign(socket, status: :missing, view: nil, me: nil)
+        # Keep the last view: a broadcast still queued when the game ended
+        # gets here, and the `{:game_ended, _}` behind it shows a finished
+        # game's scores from that view.
+        assign(socket, status: :missing, me: nil)
 
       %{me: nil} ->
         # Token points at a player the server no longer knows (e.g. a brand-new
@@ -482,8 +485,9 @@ defmodule WhoseJamWeb.PlayLive do
 
   @impl true
   def render(assigns) do
-    # A game that ended mid-song no longer tints the phone with that song.
-    art_url = if assigns.status == :ended, do: nil, else: current_art(assigns.view)
+    # Only a game in play tints the phone with its song: not one that has
+    # ended mid-song, or gone.
+    art_url = if assigns.status == :joined, do: current_art(assigns.view)
     assigns = assign(assigns, art_url: art_url)
 
     ~H"""

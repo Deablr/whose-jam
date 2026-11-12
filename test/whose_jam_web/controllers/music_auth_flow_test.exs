@@ -79,6 +79,25 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     %{room: code}
   end
 
+  # A stand-in host screen for `room`, with the game's host-screen grace cut to
+  # 50ms, and this test subscribed to the room. Stop it with
+  # `stop_supervised!(Agent)`.
+  defp open_host_screen(room) do
+    previous = Application.fetch_env(:whose_jam, :host_grace_ms)
+    Application.put_env(:whose_jam, :host_grace_ms, 50)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, ms} -> Application.put_env(:whose_jam, :host_grace_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :host_grace_ms)
+      end
+    end)
+
+    host = start_supervised!({Agent, fn -> nil end})
+    :ok = Game.attach_host(room, host)
+    Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
+  end
+
   # Runs /auth/oauth_stub and returns the signed `state` the provider would get back.
   defp authorize(conn, room) do
     conn = get(conn, "/auth/oauth_stub?code=#{room}")
@@ -238,20 +257,11 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
 
   # Signing in takes the host screen away to the provider's page, which would
   # otherwise end the game once the (here shortened) host-screen grace ran out.
-  test "leaving to sign in doesn't end the game", %{conn: conn, room: room} do
-    previous = Application.fetch_env(:whose_jam, :host_grace_ms)
-    Application.put_env(:whose_jam, :host_grace_ms, 50)
-
-    on_exit(fn ->
-      case previous do
-        {:ok, ms} -> Application.put_env(:whose_jam, :host_grace_ms, ms)
-        :error -> Application.delete_env(:whose_jam, :host_grace_ms)
-      end
-    end)
-
-    host = start_supervised!({Agent, fn -> nil end})
-    :ok = Game.attach_host(room, host)
-    Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
+  # The callback ends the sign-in, so a host screen that then never comes back
+  # still ends the game.
+  test "leaving to sign in doesn't end the game; the callback ends the sign-in",
+       %{conn: conn, room: room} do
+    open_host_screen(room)
 
     state = authorize(conn, room)
     stop_supervised!(Agent)
@@ -259,6 +269,19 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
 
     conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
     assert redirected_to(conn) == "/host/#{room}"
-    assert %{id: :oauth_stub, eligible?: true} = Game.get_state(room).music
+    assert_receive {:game_state, %{music: %{id: :oauth_stub, eligible?: true}}}
+    assert_receive {:game_ended, :host_left}, 1000
+  end
+
+  test "a cancelled sign-in is over too", %{conn: conn, room: room} do
+    open_host_screen(room)
+
+    state = authorize(conn, room)
+    stop_supervised!(Agent)
+    refute_receive {:game_ended, _}, 300
+
+    conn = get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{state}")
+    assert redirected_to(conn) == "/host/#{room}"
+    assert_receive {:game_ended, :host_left}, 1000
   end
 end
