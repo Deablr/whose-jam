@@ -866,12 +866,19 @@ defmodule WhoseJam.Game.ServerTest do
       assert_receive {:game_ended, :host_left}, 1000
     end
 
-    # What a host screen's link to a music service's sign-in page does: the
-    # screen goes first (LiveView drops a page's socket on a click that leaves
-    # it), then the OAuth controller tells the game the host is signing in.
+    # What a host screen's Connect link does: the OAuth controller tells the
+    # game the host is signing in, then the screen goes once the provider's
+    # page loads (a plain link keeps its page connected until then).
     defp leave_to_sign_in(code, screen) do
+      result = Game.host_signing_in(code)
       stop_supervised!(screen)
-      # Let the game handle the departure first, as it does in a browser.
+      result
+    end
+
+    # The other order, for a host screen whose connection dropped just before
+    # the click: the game sees the departure first, then the notice.
+    defp drop_then_sign_in(code, screen) do
+      stop_supervised!(screen)
       _ = :sys.get_state(which_pid(code))
       Game.host_signing_in(code)
     end
@@ -884,11 +891,25 @@ defmodule WhoseJam.Game.ServerTest do
       :ok = Game.attach_host(code, host_screen(:host))
       watch(code)
 
-      assert leave_to_sign_in(code, :host) == :ok
+      assert {:ok, _sign_in} = leave_to_sign_in(code, :host)
 
       # Well past the usual grace...
       refute_receive {:game_ended, _}, 300
       # ...but a sign-in that never comes back still ends the game.
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "a host screen that dropped just before its sign-in notice gets the longer grace too" do
+      put_test_env(:host_grace_ms, 100)
+      put_test_env(:sign_in_grace_ms, 600)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:host))
+      watch(code)
+
+      assert {:ok, _sign_in} = drop_then_sign_in(code, :host)
+
+      refute_receive {:game_ended, _}, 300
       assert_receive {:game_ended, :host_left}, 1000
     end
 
@@ -900,14 +921,14 @@ defmodule WhoseJam.Game.ServerTest do
       :ok = Game.attach_host(code, host_screen(:host))
       watch(code)
 
-      assert leave_to_sign_in(code, :host) == :ok
+      assert {:ok, sign_in} = leave_to_sign_in(code, :host)
       # Past the usual grace, the game waits on that sign-in alone. Anyone with
       # the room code can still ask, but it can't be a host leaving now.
       refute_receive {:game_ended, _}, 250
       assert Game.host_signing_in(code) == {:error, :no_host_screen}
 
       # So once the host's sign-in is back, nothing else holds the game.
-      :ok = Game.host_back_from_sign_in(code)
+      :ok = Game.host_back_from_sign_in(code, sign_in)
       assert_receive {:game_ended, :host_left}, 1000
     end
 
@@ -921,7 +942,7 @@ defmodule WhoseJam.Game.ServerTest do
       watch(code)
 
       # The laptop leaves to sign in; meanwhile the TV refreshes, then closes.
-      assert leave_to_sign_in(code, :laptop) == :ok
+      assert {:ok, _sign_in} = leave_to_sign_in(code, :laptop)
       stop_supervised!(:tv)
       :ok = Game.attach_host(code, host_screen(:tv_refreshed))
       stop_supervised!(:tv_refreshed)
@@ -940,14 +961,65 @@ defmodule WhoseJam.Game.ServerTest do
 
       # Both host screens leave to sign in; the laptop's comes back first but
       # its screen never reopens.
-      assert leave_to_sign_in(code, :laptop) == :ok
-      assert leave_to_sign_in(code, :tv) == :ok
-      :ok = Game.host_back_from_sign_in(code)
+      assert {:ok, laptop} = leave_to_sign_in(code, :laptop)
+      assert {:ok, tv} = leave_to_sign_in(code, :tv)
+      :ok = Game.host_back_from_sign_in(code, laptop)
       refute_receive {:game_ended, _}, 300
 
       # Once the TV's is back too, the usual grace applies.
-      :ok = Game.host_back_from_sign_in(code)
+      :ok = Game.host_back_from_sign_in(code, tv)
       assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "only a sign-in the game let in can end it, and only once" do
+      put_test_env(:host_grace_ms, 100)
+      put_test_env(:sign_in_grace_ms, 5_000)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:laptop))
+      :ok = Game.attach_host(code, host_screen(:tv))
+      watch(code)
+
+      assert {:ok, laptop} = leave_to_sign_in(code, :laptop)
+      assert {:ok, tv} = leave_to_sign_in(code, :tv)
+      :ok = Game.host_back_from_sign_in(code, laptop)
+
+      # A replayed callback, or one for a sign-in the game never let in (a
+      # refused notice gives none), leaves the TV's sign-in under way.
+      assert Game.host_back_from_sign_in(code, laptop) == {:error, :unknown_sign_in}
+      assert Game.host_back_from_sign_in(code, "forged") == {:error, :unknown_sign_in}
+      refute_receive {:game_ended, _}, 300
+
+      :ok = Game.host_back_from_sign_in(code, tv)
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "at most four sign-ins are under way at once" do
+      put_test_env(:sign_in_grace_ms, 5_000)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:host))
+
+      sign_ins = for _ <- 1..4, do: elem(Game.host_signing_in(code), 1)
+      assert sign_ins |> Enum.uniq() |> length() == 4
+      assert Game.host_signing_in(code) == {:error, :too_many_sign_ins}
+
+      # One coming back makes room again; nothing under way is pushed out.
+      :ok = Game.host_back_from_sign_in(code, hd(sign_ins))
+      assert {:ok, _sign_in} = Game.host_signing_in(code)
+    end
+
+    test "a sign-in whose window has closed frees its place" do
+      put_test_env(:sign_in_grace_ms, 50)
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+      :ok = Game.attach_host(code, host_screen(:host))
+      watch(code)
+
+      for _ <- 1..4, do: assert({:ok, _sign_in} = Game.host_signing_in(code))
+      refute_receive {:game_ended, _}, 100
+
+      assert {:ok, _sign_in} = Game.host_signing_in(code)
     end
 
     test "a sign-in that never came back stops counting once its window closes" do
@@ -959,13 +1031,13 @@ defmodule WhoseJam.Game.ServerTest do
       watch(code)
 
       # Started (say, from another tab) and abandoned; its window closes.
-      :ok = Game.host_signing_in(code)
+      assert {:ok, _abandoned} = Game.host_signing_in(code)
       refute_receive {:game_ended, _}, 150
 
       # A later sign-in comes back, but its host screen never does.
       put_test_env(:sign_in_grace_ms, 5_000)
-      assert leave_to_sign_in(code, :host) == :ok
-      :ok = Game.host_back_from_sign_in(code)
+      assert {:ok, sign_in} = leave_to_sign_in(code, :host)
+      :ok = Game.host_back_from_sign_in(code, sign_in)
 
       assert_receive {:game_ended, :host_left}, 1000
     end
@@ -978,12 +1050,12 @@ defmodule WhoseJam.Game.ServerTest do
       :ok = Game.attach_host(code, host_screen(:host))
       watch(code)
 
-      assert leave_to_sign_in(code, :host) == :ok
+      assert {:ok, sign_in} = leave_to_sign_in(code, :host)
       # Long enough for the countdown to defer to the sign-in's window.
       refute_receive {:game_ended, _}, 250
 
       # The sign-in comes back, but its host screen never does.
-      :ok = Game.host_back_from_sign_in(code)
+      :ok = Game.host_back_from_sign_in(code, sign_in)
       assert_receive {:game_ended, :host_left}, 1000
     end
 

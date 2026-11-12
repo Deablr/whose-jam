@@ -40,9 +40,9 @@ defmodule WhoseJam.Game.Server do
   the server monitors it. When the last one closes and none comes back within
   a short grace (30s; a refresh or a dropped connection comes back sooner),
   the game ends. While host screens are away signing in to a music service
-  (from `WhoseJam.Game.host_signing_in/1` until each is back with
-  `WhoseJam.Game.host_back_from_sign_in/1`, at most 15 minutes after the
-  latest left) the game waits for them that long instead. Until a host screen
+  (each from `WhoseJam.Game.host_signing_in/1` until its OAuth callback calls
+  `WhoseJam.Game.host_back_from_sign_in/2`, for 15 minutes at most) the game
+  waits for them that long instead. Until a host screen
   has attached, nothing is watched (the idle timeout covers a game nobody
   opened).
 
@@ -89,6 +89,9 @@ defmodule WhoseJam.Game.Server do
   # lifetime in `WhoseJamWeb.MusicAuthController`).
   @host_grace_ms 30 * 1000
   @sign_in_grace_ms 15 * 60 * 1000
+  # More sign-ins at once than any room has host screens: a cap on what anyone
+  # with the room code can make the game keep track of.
+  @max_sign_ins 4
 
   @guess_question_decoys 3
 
@@ -139,9 +142,9 @@ defmodule WhoseJam.Game.Server do
             #   screens        monitor ref => pid of each open one
             #   gone           {token, timer} while none is open
             #   left_at_ms     when the last one closed
-            #   sign_ins       how many are away signing in to a music service
-            #   away_until_ms  when the window for those sign-ins closes
-            host: %{screens: %{}, gone: nil, left_at_ms: nil, sign_ins: 0, away_until_ms: nil}
+            #   sign_ins       sign-in id => when its window closes (ms), for
+            #                  each host screen away signing in
+            host: %{screens: %{}, gone: nil, left_at_ms: nil, sign_ins: %{}}
 
   # =========================================================================
   # Boot
@@ -369,28 +372,39 @@ defmodule WhoseJam.Game.Server do
     {:reply, :ok, %{state | host: %{state.host | screens: screens}}}
   end
 
-  # Sign-ins under way are counted, not told apart: the window lasts until the
-  # last of them is back, or until 15 minutes after the latest one left. Once
-  # the window has closed, sign-ins that never came back stop counting.
+  # Each sign-in let in gets an id, which only its own OAuth callback can end
+  # (see `host_back_from_sign_in`). One that never comes back drops out when
+  # its window closes. Past @max_sign_ins at once, new ones are refused rather
+  # than pushing out one under way.
   def handle_call(:host_signing_in, _from, state) do
-    if host_may_sign_in?(state) do
-      sign_ins = if away_ms_left(state) > 0, do: state.host.sign_ins, else: 0
-      host = %{state.host | sign_ins: sign_ins + 1, away_until_ms: now_ms() + sign_in_grace_ms()}
-      {:reply, :ok, %{state | host: host}}
-    else
-      {:reply, {:error, :no_host_screen}, state}
+    sign_ins = open_sign_ins(state)
+
+    cond do
+      not host_may_sign_in?(state) ->
+        {:reply, {:error, :no_host_screen}, state}
+
+      map_size(sign_ins) >= @max_sign_ins ->
+        {:reply, {:error, :too_many_sign_ins}, state}
+
+      true ->
+        id = generate_id()
+        sign_ins = Map.put(sign_ins, id, now_ms() + sign_in_grace_ms())
+        {:reply, {:ok, id}, %{state | host: %{state.host | sign_ins: sign_ins}}}
     end
   end
 
   # A sign-in is over, whatever came of it. Its host screen is on its way
   # back, so if none is open the usual grace applies again from now (still
-  # deferring to any other sign-in under way).
-  def handle_call(:host_back_from_sign_in, _from, state) do
-    sign_ins = max(state.host.sign_ins - 1, 0)
-    away_until_ms = if sign_ins > 0, do: state.host.away_until_ms
-    state = %{state | host: %{state.host | sign_ins: sign_ins, away_until_ms: away_until_ms}}
-    state = if state.host.gone, do: schedule_host_gone(state, host_grace_ms()), else: state
-    {:reply, :ok, state}
+  # deferring to any other sign-in under way). Only an id that was let in
+  # and is still under way counts, and only once.
+  def handle_call({:host_back_from_sign_in, id}, _from, state) do
+    if Map.has_key?(state.host.sign_ins, id) do
+      state = %{state | host: %{state.host | sign_ins: Map.delete(state.host.sign_ins, id)}}
+      state = if state.host.gone, do: schedule_host_gone(state, host_grace_ms()), else: state
+      {:reply, :ok, state}
+    else
+      {:reply, {:error, :unknown_sign_in}, state}
+    end
   end
 
   def handle_call({:presence_diff, connected_ids}, _from, state) do
@@ -1351,18 +1365,27 @@ defmodule WhoseJam.Game.Server do
 
   defp cancel_host_gone(state), do: state
 
-  defp away_ms_left(%{host: %{away_until_ms: until}}) when is_integer(until),
-    do: until - now_ms()
+  # How long the latest-closing sign-in window has left (<= 0 when none is open).
+  defp away_ms_left(state) do
+    case state.host.sign_ins |> Map.values() |> Enum.max(fn -> nil end) do
+      nil -> 0
+      until -> until - now_ms()
+    end
+  end
 
-  defp away_ms_left(_state), do: 0
+  # The sign-ins whose window hasn't closed yet.
+  defp open_sign_ins(state) do
+    now = now_ms()
+    Map.filter(state.host.sign_ins, fn {_id, until} -> until > now end)
+  end
 
-  # Whether a sign-in notice can be a host screen's: while one is open, or just
-  # after the last one closed. A host screen's link to the provider drops its
-  # LiveView the moment it is clicked (LiveView unloads a page on a click that
-  # leaves it), so the game sees the departure a moment before the OAuth
-  # controller's notice. Later, with no host screen around, the notice can't be
-  # a host's, and anyone with the room code could otherwise keep a hostless
-  # game waiting.
+  # Whether a sign-in notice can be a host screen's: while one is open (the
+  # usual case: Connect is a plain link, so the page stays connected until the
+  # provider's page loads, after the OAuth controller's notice), or within the
+  # grace after the last one closed, for a screen that dropped first (a lost
+  # connection just before the click, say). Later, with no host screen around,
+  # the notice can't be a host's, and anyone with the room code could
+  # otherwise keep a hostless game waiting.
   defp host_may_sign_in?(%{host: %{screens: screens}}) when map_size(screens) > 0, do: true
 
   defp host_may_sign_in?(%{host: %{left_at_ms: left_at}}) when is_integer(left_at),

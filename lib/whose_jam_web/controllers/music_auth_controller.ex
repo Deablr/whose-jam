@@ -8,7 +8,8 @@ defmodule WhoseJamWeb.MusicAuthController do
   leaving for the provider's page doesn't end the game; `callback/2` recovers them,
   hands the provider's `connect/1` the auth code, stores the result on the
   game via `WhoseJam.Game.set_music/3`, and ends the sign-in
-  (`WhoseJam.Game.host_back_from_sign_in/1`). Every failure branch redirects back to
+  (`WhoseJam.Game.host_back_from_sign_in/2`, with the sign-in id the state
+  carries). Every failure branch redirects back to
   the host screen (or `/`) with a clear flash — never a crash page.
 
   Providers whose `connect_kind/0` is `:none` never touch this controller;
@@ -30,19 +31,28 @@ defmodule WhoseJamWeb.MusicAuthController do
     with {:ok, provider} <- redirect_provider(provider_id),
          :ok <- ensure_game(room_code),
          :ok <- ensure_configured(provider) do
-      state = Phoenix.Token.sign(conn, @state_salt, %{room: room_code, provider: provider_id})
+      # The host screen is leaving for the provider's page (it stays connected
+      # until that page loads); that must not count as the host closing it.
+      # The sign-in's id rides in the signed state, so only its own callback
+      # can end it. Best effort: a refused notice (or a game that has just
+      # gone) leaves the sign-in without an id.
+      sign_in = sign_in_id(Game.host_signing_in(room_code))
+
+      state =
+        Phoenix.Token.sign(conn, @state_salt, %{
+          room: room_code,
+          provider: provider_id,
+          sign_in: sign_in
+        })
 
       case provider.authorize_url(state, redirect_uri(provider)) do
         {:ok, url} ->
-          # The host screen has just left for the provider's page (LiveView
-          # drops it on the click, a moment before this request); that must
-          # not count as the host closing it. Best effort: if the game has
-          # just gone, the callback says so.
-          _ = Game.host_signing_in(room_code)
           redirect(conn, external: url)
 
         {:error, _} ->
-          failure(conn, :not_configured, provider, room_code)
+          conn
+          |> back_from_sign_in(room_code, sign_in)
+          |> failure(:not_configured, provider, room_code)
       end
     else
       {:error, reason, provider} -> failure(conn, reason, provider, room_code)
@@ -62,9 +72,9 @@ defmodule WhoseJamWeb.MusicAuthController do
   # Host denied the authorization prompt.
   def callback(conn, %{"error" => _error, "state" => state} = params) when is_binary(state) do
     case recover_state(conn, params["provider"], state) do
-      {:ok, room_code, provider} ->
+      {:ok, room_code, provider, sign_in} ->
         conn
-        |> back_from_sign_in(room_code)
+        |> back_from_sign_in(room_code, sign_in)
         |> put_flash(:error, "#{provider.name()} connection was cancelled.")
         |> redirect(to: ~p"/host/#{room_code}")
 
@@ -78,10 +88,10 @@ defmodule WhoseJamWeb.MusicAuthController do
   def callback(conn, %{"code" => auth_code, "state" => state} = params)
       when is_binary(auth_code) and is_binary(state) do
     case recover_state(conn, params["provider"], state) do
-      {:ok, room_code, provider} ->
+      {:ok, room_code, provider, sign_in} ->
         conn
         |> finish_callback(provider, room_code, auth_code)
-        |> back_from_sign_in(room_code)
+        |> back_from_sign_in(room_code, sign_in)
 
       :error ->
         conn
@@ -113,13 +123,18 @@ defmodule WhoseJamWeb.MusicAuthController do
     end
   end
 
+  defp sign_in_id({:ok, sign_in}), do: sign_in
+  defp sign_in_id(_refused), do: nil
+
   # However the sign-in went, it is over and the host screen is on its way
-  # back: the game's usual host-screen grace applies again (best effort, as
-  # in `authorize/2`).
-  defp back_from_sign_in(conn, room_code) do
-    _ = Game.host_back_from_sign_in(room_code)
+  # back: the game's usual host-screen grace applies again. Only a sign-in the
+  # game let in has an id to end (best effort, as in `authorize/2`).
+  defp back_from_sign_in(conn, room_code, sign_in) when is_binary(sign_in) do
+    _ = Game.host_back_from_sign_in(room_code, sign_in)
     conn
   end
+
+  defp back_from_sign_in(conn, _room_code, _no_sign_in), do: conn
 
   defp put_connected_flash(conn, provider, true) do
     put_flash(conn, :info, "#{provider.name()} connected — you're ready to host playback.")
@@ -221,12 +236,13 @@ defmodule WhoseJamWeb.MusicAuthController do
   end
 
   # The state must verify, and its provider must be the one in the callback path.
+  # The sign-in id is nil when the game refused the notice.
   defp recover_state(conn, path_provider, state) do
-    with {:ok, %{room: room_code, provider: provider_id}} <-
+    with {:ok, %{room: room_code, provider: provider_id} = signed} <-
            Phoenix.Token.verify(conn, @state_salt, state, max_age: @state_max_age),
          true <- provider_id == path_provider,
          {:ok, provider} <- Music.fetch_provider(provider_id) do
-      {:ok, room_code, provider}
+      {:ok, room_code, provider, Map.get(signed, :sign_in)}
     else
       _ -> :error
     end

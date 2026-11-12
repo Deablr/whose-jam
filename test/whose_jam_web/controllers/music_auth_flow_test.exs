@@ -98,8 +98,10 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
   end
 
-  # In a browser the host screen goes first: LiveView drops a page's socket
-  # on a click that leaves it, before the browser requests /auth/:provider.
+  # Closes the stand-in host screen and waits for the game to see it. In a
+  # browser the screen stays connected until the provider's page loads, so it
+  # goes after /auth/:provider; closing it before is the fallback order, for a
+  # screen whose connection dropped just before the click.
   defp close_host_screen(room) do
     stop_supervised!(Agent)
     [{game, _}] = Registry.lookup(WhoseJam.Game.Registry, room)
@@ -271,8 +273,9 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
        %{conn: conn, room: room} do
     open_host_screen(room)
 
-    close_host_screen(room)
+    # As in a browser: /auth while the host screen is still connected.
     state = authorize(conn, room)
+    close_host_screen(room)
     refute_receive {:game_ended, _}, 300
 
     conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
@@ -284,12 +287,33 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
   test "a cancelled sign-in is over too", %{conn: conn, room: room} do
     open_host_screen(room)
 
+    # The fallback order: the host screen dropped just before /auth.
     close_host_screen(room)
     state = authorize(conn, room)
     refute_receive {:game_ended, _}, 300
 
     conn = get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{state}")
     assert redirected_to(conn) == "/host/#{room}"
+    assert_receive {:game_ended, :host_left}, 1000
+  end
+
+  # Anyone with the room code can get a signed state from /auth, but a notice
+  # the game refused gives no sign-in for its callback to end.
+  test "a callback for a sign-in the game refused can't end the host's",
+       %{conn: conn, room: room} do
+    open_host_screen(room)
+
+    host_state = authorize(conn, room)
+    close_host_screen(room)
+    # Past the usual grace, the game waits on the host's sign-in alone.
+    refute_receive {:game_ended, _}, 250
+
+    guest_state = authorize(build_conn(), room)
+    get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{guest_state}")
+    refute_receive {:game_ended, _}, 300
+
+    # The host's own callback does end it.
+    get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{host_state}")
     assert_receive {:game_ended, :host_left}, 1000
   end
 end

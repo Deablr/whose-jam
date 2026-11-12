@@ -182,27 +182,32 @@ defmodule WhoseJam.Game do
 
   @doc """
   The host screen of `code` is leaving for a music service's sign-in page
-  (the OAuth redirect). Until `host_back_from_sign_in/1`, or 15 minutes at
-  most, the game waits that long for a host screen to come back instead of 30
-  seconds, so connecting a music service never ends the game.
+  (the OAuth redirect). Until that sign-in comes back
+  (`host_back_from_sign_in/2`), or 15 minutes at most, the game waits that
+  long for a host screen to come back instead of 30 seconds, so connecting a
+  music service never ends the game.
 
-  Honoured while a host screen is open, or within the 30-second grace after
-  the last one closed. That covers a host screen leaving to sign in: LiveView
-  drops a page the moment its link is clicked, so the screen goes a moment
-  before this notice. Any other time the notice can't be a host's:
-  `{:error, :no_host_screen}`.
+  Returns `{:ok, sign_in_id}`, the id the OAuth callback hands back.
+  Honoured while a host screen is open, as it normally still is (Connect is a
+  plain link, so the page stays connected until the provider's page loads), or
+  within the 30-second grace after the last one closed, for a screen that
+  dropped just before. Any other time the notice can't be a host's:
+  `{:error, :no_host_screen}`. At most four sign-ins are under way at once
+  (`{:error, :too_many_sign_ins}`).
   """
-  @spec host_signing_in(String.t()) :: :ok | {:error, term()}
+  @spec host_signing_in(String.t()) :: {:ok, String.t()} | {:error, term()}
   def host_signing_in(code), do: command(code, :host_signing_in)
 
   @doc """
-  A music-service sign-in for `code` is over, whatever its outcome (the OAuth
-  callback came back). Once every sign-in under way is back, the usual
-  30-second grace applies again. Sign-ins are counted, not told apart, and
-  one that never comes back stops counting when its 15 minutes are up.
+  The sign-in `sign_in_id` (from `host_signing_in/1`) is over, whatever its
+  outcome: the OAuth callback came back. Once no sign-in is under way, the
+  usual 30-second grace applies again. Only an id that was let in and is
+  still under way counts, and only once: `{:error, :unknown_sign_in}`
+  otherwise.
   """
-  @spec host_back_from_sign_in(String.t()) :: :ok | {:error, term()}
-  def host_back_from_sign_in(code), do: command(code, :host_back_from_sign_in)
+  @spec host_back_from_sign_in(String.t(), String.t()) :: :ok | {:error, term()}
+  def host_back_from_sign_in(code, sign_in_id),
+    do: command(code, {:host_back_from_sign_in, sign_in_id})
 
   @doc """
   Inform the server which participant ids are currently connected (LiveViews
