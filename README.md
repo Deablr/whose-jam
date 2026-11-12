@@ -323,10 +323,47 @@ where it pays off — the **deep pure modules** and the **GenServer's public API
   guard rails, plus the authorize-to-callback flow via a stub redirect provider).
 
 `Game.Server` is exercised **through its public event API**, not by peeking at
-internal state. Deliberately **manual** (per PRD): LiveViews, the Spotify client,
-and the Registry — LiveView tests are brittle, Spotify tests need unstable
-external mocks, and the Registry is a thin wrapper. These are validated by
-playtesting in v1.
+internal state. There are no `Phoenix.LiveViewTest` tests, no live Spotify
+tests and no Registry tests (per PRD): LiveViews are exercised end to end
+through a real browser (below), Spotify's response mapping is validated by
+manual playtesting, and the Registry is a thin wrapper.
+
+### End-to-end (browser) suite
+
+A browser suite plays a whole "Certified Bangers" game: a host on a TV-sized
+screen plus eight players on four phones, two tablets and two laptops. Each
+device is its own browser context with its own viewport, touch and user agent.
+The host creates the game, connects Mock Music and sets the settings; half the
+players join via the join link and half by typing the room code; everyone picks
+a song, eight rounds are voted, and the final scoreboard is checked against a
+tally the test computes independently from the scoring rules. Nothing is mocked
+except the music service (the dev/test-only `Mock` provider): the database,
+server, websockets, PubSub and Presence are real.
+
+One-time setup (Docker must be running):
+
+```sh
+npm --prefix assets ci
+npm --prefix assets exec -- playwright install chromium
+```
+
+Then:
+
+```sh
+mix test.e2e
+```
+
+It starts a throwaway `postgres:16` container (Testcontainers), runs the
+migrations and seeds, builds the assets, serves the app on `E2E_PORT` (default
+4012) and runs `mix test --only e2e`; extra arguments pass through to
+`mix test`. It takes about two minutes. The combined 1920x1080 video of every
+screen lands in `tmp/e2e/full_game.mp4` (raw per-device recordings in
+`tmp/e2e/full_game/<player>/`), and is written even when the test fails. The
+video needs `ffmpeg` on your PATH; without it the pinned
+`linuxserver/ffmpeg:version-7.1-cli` Docker image is used.
+
+The e2e tests are tagged `:e2e` and excluded from `mix test` and
+`mix precommit`, so those still pass without Docker or `node_modules`.
 
 ### Checks before you push
 

@@ -86,6 +86,7 @@ Run all of these and record pass/fail with the relevant output:
 | Docs | `MIX_ENV=test mix docs --warnings-as-errors` | any warning (usually a doc referencing a deleted or renamed function) |
 | Dependency advisories | `mix hex.audit` | a **new** advisory introduced by the diff (pre-existing ones are listed in the summary, not blamed) |
 | Tests | `mix test` | any failure |
+| E2E (only if LiveViews, JS hooks, `Game.Server`, `test/e2e` or `test/support/e2e` changed; needs Docker) | `mix test.e2e` | any failure; attach/mention the video path (`tmp/e2e/full_game.mp4`) when the review is posted |
 | Assets build | `mix assets.build` | Tailwind/esbuild errors |
 | Release build (only if `Dockerfile`, `rel/`, `config/runtime.exs`, or `mix.exs` changed) | `docker build -t whose-jam-review .` | build fails |
 

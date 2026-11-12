@@ -1,4 +1,6 @@
-ExUnit.start()
+# Browser end-to-end tests (test/e2e, tagged :e2e) need Docker and Playwright;
+# they run only through `mix test.e2e`, which provides both.
+ExUnit.start(exclude: [:e2e])
 Ecto.Adapters.SQL.Sandbox.mode(WhoseJam.Repo, :manual)
 
 # The project's Credo checks (credo/checks/) are tested with Credo.Test.Case,
