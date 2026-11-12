@@ -201,7 +201,8 @@ be set for YouTube to be offered.
    sends no referrer, so a website-restricted key is refused. It never reaches
    a browser.
 3. Configure the **OAuth consent screen**. The app asks only for the `openid`
-   and `email` scopes, which need no Google verification.
+   scope, which needs no Google verification. It keeps no tokens and never
+   learns the host's name or email.
 4. Create an **OAuth client ID** of type **Web application** and add this
    authorized redirect URI (match your `APP_PORT`). Note it is `localhost`,
    not `127.0.0.1` as for Spotify:
@@ -221,7 +222,7 @@ be set for YouTube to be offered.
    ```
 
 **What the host sees.** Choosing YouTube sends the host to Google to sign in.
-Back in the lobby the game asks *"Does this account have YouTube Premium?"* —
+Back in the lobby the game asks whether that account has YouTube Premium —
 Google has **no API that reports Premium**, so the app cannot check it. A "yes"
 clears the way; "no" (or closing the question) shows a warning in the lobby and
 in Settings that ads may play before or during songs. The game starts either
@@ -241,7 +242,8 @@ way, and the answer can be changed in Settings.
   third-party cookies, since the embedded player then can't see the session.
 - **Search quota.** Google allows a project roughly **100 searches a day** by
   default. Results are cached for a few minutes and YouTube rooms wait 600 ms
-  after the last keystroke before searching (Spotify rooms wait 300 ms), but a
+  after the last keystroke before searching (Spotify rooms wait 300 ms; the
+  server enforces the same spacing per player), but a
   big game can still use the allowance up; players then see "search limit for
   today is used up". Request more quota in the Cloud console if you need it.
 - **The video is on screen.** YouTube's terms require a visible player, so the
@@ -314,7 +316,7 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `YOUTUBE_API_KEY` | For YouTube | — | Google API key with the YouTube Data API v3 enabled. Song search, server-side only. |
 | `YOUTUBE_CLIENT_ID` | For YouTube | — | Google OAuth "Web application" client ID, for the host's Google sign-in. |
 | `YOUTUBE_CLIENT_SECRET` | For YouTube | — | Its client secret. |
-| `YOUTUBE_REDIRECT_URI` | No | `http://localhost:<url port>/auth/youtube/callback` | OAuth redirect sent to Google; must exactly match a URI registered on the OAuth client. Override only for https deployments. |
+| `YOUTUBE_REDIRECT_URI` | No | `http://localhost:<url port>/auth/youtube/callback` | OAuth redirect sent to Google; must exactly match a URI registered on the OAuth client. Override only for https deployments, and use a hostname, not an IP address: the host screen stays on this host after sign-in, and YouTube won't play on an IP-address page. |
 
 Host-facing **game** settings (answer timer, listening delay before voting,
 vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
@@ -444,8 +446,9 @@ your app at developer.spotify.com.
 
 **"Account isn't Premium" and the game won't start.**
 This is a hard v1 requirement — the TV plays full tracks via the Web Playback
-SDK, which needs Premium. There is no preview/free fallback. Connect a Premium
-account.
+SDK, which needs Premium. There is no preview/free fallback for Spotify. Connect
+a Premium account, or pick YouTube in the music-service list instead (it needs
+only a Google sign-in).
 
 **YouTube plays ads even though the account has Premium.**
 The embedded player uses the host browser's own YouTube session. Check that the

@@ -26,7 +26,7 @@ defmodule WhoseJam.MusicFixtures do
         artist: "Artist",
         album_art_url: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
       },
-      auth: %{signed_in?: true, email: "host@example.com", premium?: true},
+      auth: %{signed_in?: true, premium?: true},
       ineligible_auth: %{},
       hostile_art: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');color:red"
     },

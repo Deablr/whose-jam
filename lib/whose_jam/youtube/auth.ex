@@ -6,11 +6,11 @@ defmodule WhoseJam.YouTube.Auth do
   ## What it proves, and what it can't
 
   It proves the host signed in to a Google account in the browser that will
-  play the songs, and tells us which account. It asks only for the `openid`
-  and `email` scopes — the smallest set that identifies the account — and
-  keeps no tokens: nothing after the sign-in calls Google on the host's
-  behalf (song search uses the server's API key, see
-  `WhoseJam.YouTube.Client`).
+  play the songs. It asks only for the `openid` scope and keeps nothing: no
+  tokens, and no name or email (the host screen is shown to the whole room,
+  and anyone with the room code can open it). Nothing after the sign-in calls
+  Google on the host's behalf — song search uses the server's API key, see
+  `WhoseJam.YouTube.Client`.
 
   It cannot prove the account has **YouTube Premium**. No Google API or OAuth
   scope reports that, so the provider asks the host instead (see
@@ -20,7 +20,8 @@ defmodule WhoseJam.YouTube.Auth do
 
     1. Redirect the host to `authorize_url/2`.
     2. Google redirects back to `redirect_uri` with `code` and `state`.
-    3. `sign_in/2` exchanges the code and looks up the account's email.
+    3. `sign_in/2` exchanges the code. A successful exchange is the proof: Google
+       only issues a code to a signed-in account that approved the request.
 
   Credentials are read from the environment at runtime; every function returns
   `{:error, :not_configured}` when they are absent.
@@ -30,9 +31,8 @@ defmodule WhoseJam.YouTube.Auth do
 
   @authorize_url "https://accounts.google.com/o/oauth2/v2/auth"
   @token_url "https://oauth2.googleapis.com/token"
-  @userinfo_url "https://openidconnect.googleapis.com/v1/userinfo"
 
-  @scopes "openid email"
+  @scopes "openid"
 
   @doc """
   Builds the Google authorization URL to redirect the host to.
@@ -59,20 +59,18 @@ defmodule WhoseJam.YouTube.Auth do
   end
 
   @doc """
-  Exchanges an authorization `code` and returns the signed-in account.
+  Exchanges an authorization `code`, which proves the host signed in.
 
   ## Returns
 
-    * `{:ok, %{email: String.t() | nil}}` — the account's email, when Google
-      shares one.
+    * `:ok` — Google accepted the code.
     * `{:error, :not_configured}` — credentials absent.
-    * `{:error, term()}` — the exchange or the account lookup failed.
+    * `{:error, term()}` — the exchange failed.
   """
-  @spec sign_in(String.t(), String.t()) :: {:ok, %{email: String.t() | nil}} | {:error, term()}
+  @spec sign_in(String.t(), String.t()) :: :ok | {:error, term()}
   def sign_in(code, redirect_uri) when is_binary(code) and is_binary(redirect_uri) do
-    with {:ok, client} <- Credentials.fetch_oauth_client(),
-         {:ok, access_token} <- exchange_code(client, code, redirect_uri) do
-      fetch_account(access_token)
+    with {:ok, client} <- Credentials.fetch_oauth_client() do
+      exchange_code(client, code, redirect_uri)
     end
   end
 
@@ -90,7 +88,7 @@ defmodule WhoseJam.YouTube.Auth do
     )
     |> case do
       {:ok, %Req.Response{status: 200, body: %{"access_token" => token}}} when is_binary(token) ->
-        {:ok, token}
+        :ok
 
       {:ok, %Req.Response{status: 200, body: body}} ->
         {:error, {:unexpected_token_body, body}}
@@ -102,22 +100,4 @@ defmodule WhoseJam.YouTube.Auth do
         {:error, reason}
     end
   end
-
-  defp fetch_account(access_token) do
-    @userinfo_url
-    |> Req.get(auth: {:bearer, access_token}, receive_timeout: Credentials.receive_timeout())
-    |> case do
-      {:ok, %Req.Response{status: 200, body: body}} when is_map(body) ->
-        {:ok, %{email: email_of(body)}}
-
-      {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {:http_error, status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp email_of(%{"email" => email}) when is_binary(email) and email != "", do: email
-  defp email_of(_body), do: nil
 end

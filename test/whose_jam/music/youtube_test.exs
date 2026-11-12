@@ -12,7 +12,7 @@ defmodule WhoseJam.Music.YouTubeTest do
   alias WhoseJam.Music
   alias WhoseJam.Music.Providers.{Spotify, YouTube}
 
-  @signed_in %{signed_in?: true, email: "host@example.com", premium?: nil}
+  @signed_in %{signed_in?: true, premium?: nil}
   @env_vars ~w(YOUTUBE_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET)
 
   describe "connecting" do
@@ -30,22 +30,16 @@ defmodule WhoseJam.Music.YouTubeTest do
       assert YouTube.eligible?(@signed_in)
       refute YouTube.eligible?(%{})
       refute YouTube.eligible?(%{signed_in?: "true"})
-      refute YouTube.eligible?(%{email: "host@example.com", premium?: true})
+      refute YouTube.eligible?(%{premium?: true})
     end
   end
 
   describe "the Premium question" do
-    test "is asked of a signed-in account, naming it, and starts unanswered" do
+    test "is asked of a signed-in account and starts unanswered" do
       question = YouTube.account_question(@signed_in)
 
-      assert question.prompt =~ "host@example.com"
       assert question.prompt =~ "YouTube Premium"
       assert question.answer == nil
-    end
-
-    test "still reads sensibly when Google shared no email" do
-      question = YouTube.account_question(%{@signed_in | email: nil})
-      assert question.prompt =~ "this Google account"
     end
 
     test "is not asked before sign-in" do
@@ -59,9 +53,8 @@ defmodule WhoseJam.Music.YouTubeTest do
       no = YouTube.answer_account_question(yes, false)
       assert YouTube.account_question(no).answer == false
 
-      # Answering never signs the host out or loses the account.
+      # Answering never signs the host out.
       assert YouTube.eligible?(no)
-      assert no.email == "host@example.com"
     end
 
     test "treats a non-boolean stored answer as unanswered" do
@@ -92,6 +85,12 @@ defmodule WhoseJam.Music.YouTubeTest do
       assert Music.warning(:youtube, answered) == nil
     end
 
+    test "an account that isn't signed in is asked nothing, so it can't answer" do
+      assert Music.account_question(:youtube, %{}) == nil
+      assert Music.answer_account_question(:youtube, %{}, true) == :error
+      assert Music.answer_account_question(:youtube, %{premium?: nil}, false) == :error
+    end
+
     test "only a yes or a no is an answer" do
       assert Music.answer_account_question(:youtube, @signed_in, "yes") == :error
       assert Music.answer_account_question(:youtube, @signed_in, nil) == :error
@@ -119,6 +118,7 @@ defmodule WhoseJam.Music.YouTubeTest do
       refute YouTube.valid_art_url?("https://i.ytimg.com.evil.test/vi/dQw4w9WgXcQ/hqdefault.jpg")
       refute YouTube.valid_art_url?("https://i.ytimg.com/vi/dQw4w9WgXcQ/../x.jpg")
       refute YouTube.valid_art_url?("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?x=1")
+      refute YouTube.valid_art_url?("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg\n")
     end
 
     test "searches are debounced longer than Spotify's, to spare the daily quota" do
@@ -196,7 +196,7 @@ defmodule WhoseJam.Music.YouTubeTest do
                "client_id" => "client-123",
                "response_type" => "code",
                "redirect_uri" => "http://127.0.0.1:4000/cb",
-               "scope" => "openid email",
+               "scope" => "openid",
                "state" => "signed-state",
                "prompt" => "select_account"
              }

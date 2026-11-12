@@ -125,13 +125,21 @@ defmodule WhoseJam.Music do
   @doc """
   Record the host's `answer` to `account_question/2`, returning the updated
   auth to store with `WhoseJam.Game.set_music/3`. `:error` when the provider
-  is unknown or asks no question.
+  is unknown or has no question for this account (a YouTube account that
+  isn't signed in is asked nothing).
   """
   @spec answer_account_question(atom() | nil, map() | nil, boolean()) :: {:ok, map()} | :error
   def answer_account_question(provider_id, auth, answer)
       when is_map(auth) and is_boolean(answer) do
-    case with_provider(provider_id, &optional(&1, :answer_account_question, [auth, answer], nil)) do
-      updated when is_map(updated) -> {:ok, updated}
+    # Only a question that is actually being asked of this account can be answered.
+    with %{} <- account_question(provider_id, auth),
+         %{} = answered <-
+           with_provider(
+             provider_id,
+             &optional(&1, :answer_account_question, [auth, answer], nil)
+           ) do
+      {:ok, answered}
+    else
       _none -> :error
     end
   end

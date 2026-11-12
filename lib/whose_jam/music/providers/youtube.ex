@@ -32,8 +32,9 @@ defmodule WhoseJam.Music.Providers.YouTube do
 
   ## The host `auth` map
 
-  `%{signed_in?: true, email: String.t() | nil, premium?: boolean() | nil}` —
-  `premium?` is `nil` until the host answers the question. No tokens are kept.
+  `%{signed_in?: true, premium?: boolean() | nil}` — `premium?` is `nil` until
+  the host answers the question. No tokens and no account identity are kept:
+  the host screen is shown to the whole room.
   """
 
   @behaviour WhoseJam.Music.Provider
@@ -90,8 +91,8 @@ defmodule WhoseJam.Music.Providers.YouTube do
   @impl true
   def connect(%{"code" => code, "redirect_uri" => redirect_uri})
       when is_binary(code) and is_binary(redirect_uri) do
-    with {:ok, %{email: email}} <- Auth.sign_in(code, redirect_uri) do
-      {:ok, %{signed_in?: true, email: email, premium?: nil}}
+    with :ok <- Auth.sign_in(code, redirect_uri) do
+      {:ok, %{signed_in?: true, premium?: nil}}
     end
   end
 
@@ -107,7 +108,7 @@ defmodule WhoseJam.Music.Providers.YouTube do
   def account_question(auth) do
     if eligible?(auth) do
       %{
-        prompt: "Does #{account_name(auth)} have YouTube Premium?",
+        prompt: "Does the Google account you signed in with have YouTube Premium?",
         detail:
           "YouTube can't tell us, so we have to ask. With Premium, songs play without ads " <>
             "on this screen — as long as this browser is signed in to YouTube with that account.",
@@ -134,8 +135,9 @@ defmodule WhoseJam.Music.Providers.YouTube do
 
   def playback_error_message(%{"reason" => "ip_address_origin"}),
     do:
-      "YouTube won't play on a page opened by IP address. In this browser's address bar, " <>
-        "replace the IP address (such as 127.0.0.1) with localhost, keeping the port and path."
+      "YouTube won't play on a page opened by IP address (such as 127.0.0.1). Open this " <>
+        "screen by name instead, keeping the port and path: localhost if the game runs on " <>
+        "this computer, otherwise a hostname that points at the computer running it."
 
   def playback_error_message(%{"reason" => "autoplay_blocked"}),
     do: "The browser blocked the video from starting. Click the video on this screen to play it."
@@ -149,13 +151,6 @@ defmodule WhoseJam.Music.Providers.YouTube do
     case Map.get(auth, :premium?) do
       answer when is_boolean(answer) -> answer
       _other -> nil
-    end
-  end
-
-  defp account_name(auth) do
-    case Map.get(auth, :email) do
-      email when is_binary(email) and email != "" -> email
-      _other -> "this Google account"
     end
   end
 end

@@ -33,7 +33,10 @@ defmodule WhoseJam.YouTube.Client do
   # The Data API's "Music" video category.
   @music_category "10"
 
-  @quota_reasons ~w(quotaExceeded dailyLimitExceeded rateLimitExceeded userRateLimitExceeded)
+  # The allowance for the day is gone. Short-term throttles (`rateLimitExceeded`,
+  # `userRateLimitExceeded`) are not in this list: they clear in seconds, so
+  # players should be told to try again, not that search is over for today.
+  @quota_reasons ~w(quotaExceeded dailyLimitExceeded)
 
   @video_id_regex ~r/\A[A-Za-z0-9_-]{11}\z/
 
@@ -46,7 +49,8 @@ defmodule WhoseJam.YouTube.Client do
 
     * `{:ok, [track()]}` — up to #{@search_limit} tracks.
     * `{:error, :not_configured}` — no API key.
-    * `{:error, :quota_exceeded}` — the project's search allowance is used up.
+    * `{:error, :quota_exceeded}` — the project's search allowance for the day
+      is used up.
     * `{:error, term()}` on transport or other non-2xx responses.
   """
   @spec search_videos(String.t()) :: {:ok, [track()]} | {:error, term()}
@@ -64,6 +68,9 @@ defmodule WhoseJam.YouTube.Client do
           q: query,
           key: key
         ],
+        # Req would retry a 429/5xx or a dropped connection up to three times.
+        # Each retry spends quota again and keeps the player's screen waiting.
+        retry: false,
         receive_timeout: Credentials.receive_timeout()
       )
       |> handle_response()
@@ -91,10 +98,12 @@ defmodule WhoseJam.YouTube.Client do
   defp error_message(_body), do: "no explanation in the response"
 
   @doc """
-  Whether a Data API error `body` says the project's allowance is used up.
+  Whether a Data API error `body` says the project's allowance for the day is
+  used up.
 
-  Google reports it as a 403 (occasionally a 429) whose
-  `error.errors[].reason` is one of a few quota reasons.
+  Google reports it as a 403 whose `error.errors[].reason` is `quotaExceeded`
+  or `dailyLimitExceeded`. A short-term throttle (`rateLimitExceeded`) is not
+  the daily allowance and is left as an ordinary, retryable failure.
   """
   @spec quota_exceeded?(term()) :: boolean()
   def quota_exceeded?(%{"error" => %{"errors" => errors}}) when is_list(errors) do

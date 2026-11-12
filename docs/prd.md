@@ -10,7 +10,7 @@ A web-based, Jackbox-style party game where:
 - 3–8 players join from their phones by scanning the QR code and entering a display name. Additional joiners become audience members who can vote but do not submit songs.
 - The host picks a themed question pool (e.g., "Emotional Damage," "The Club"). Each theme is a curated pool of prompts like "Song that changed your life" or "Grooves to flirt to."
 - Every player is assigned a small set of questions drawn from the pool. They don't see each other's questions, and the same question may be assigned to multiple players.
-- Each player searches the room's music service (Spotify in v1) on their phone and submits a song for each assigned question.
+- Each player searches the room's music service (Spotify or YouTube) on their phone and submits a song for each assigned question.
 - Once answers are in, the host's TV plays submitted songs one at a time through the music provider's web player (Spotify's Web Playback SDK, which requires host Premium, or YouTube's IFrame player). While each song plays, all connected clients (players + audience) vote to guess which player submitted it.
 - Players score +1 per correct guess and +1 per non-audience vote they fooled onto their own song. Audience members score +1 per correct guess but are not submitters and do not win the main board.
 - At the end, a final scoreboard appears on the TV.
@@ -89,7 +89,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - **Phoenix + LiveView** for the entire web layer. Chosen because the per-game-room model maps cleanly onto OTP processes, PubSub handles the TV-and-phones fan-out for free, and Phoenix Presence solves liveness tracking.
 - **Ecto + Postgres** for seed data (themes, questions, pools) only. Runtime game state lives in memory in a GenServer per game.
 - **Phoenix.Token** for device→player binding; the token is stored in a cookie and is sufficient to identify a returning device.
-- **No authentication system in v1.** No Better Auth, no user accounts. Hosts don't register. Players don't register. The only auth involved is the host connecting a music service (Spotify's OAuth flow in v1).
+- **No authentication system in v1.** No Better Auth, no user accounts. Hosts don't register. Players don't register. The only auth involved is the host connecting a music service (Spotify's OAuth flow, or a Google sign-in for YouTube).
 
 ### Runtime architecture
 
@@ -166,8 +166,8 @@ Enabled providers come from `config :whose_jam, :music_providers`. Spotify and Y
 
 **YouTube**
 
-- **Search:** server-side, YouTube Data API v3 with an API key; embeddable music videos only. Google allows a Cloud project roughly 100 searches a day, so YouTube rooms search 600 ms after the last keystroke (Spotify: 300 ms), results are cached like Spotify's, and a used-up quota is reported to players as such.
-- **Sign-in:** the host signs in with Google (OAuth, `openid email` scopes only; no tokens are kept). Choosing YouTube without being signed in sends the host to Google's sign-in. A signed-in account is all the game needs to start.
+- **Search:** server-side, YouTube Data API v3 with an API key; embeddable music videos only. Google allows a Cloud project roughly 100 searches a day, so YouTube rooms search 600 ms after the last keystroke (Spotify: 300 ms; the server enforces the same spacing per player, and only joined players can search, while songs are being picked), results are cached like Spotify's, and a used-up quota is reported to players as such.
+- **Sign-in:** the host signs in with Google (OAuth, `openid` scope only; no tokens and no account identity are kept, since the host screen is shown to the whole room). Choosing YouTube without being signed in sends the host to Google's sign-in. A signed-in account is all the game needs to start.
 - **Premium:** Google has no API or scope that reports YouTube Premium, so it cannot be verified. After sign-in the lobby asks the host whether the account has it. Unless the answer is yes, the lobby and Settings show a warning that ads may play before or during songs; the game still starts. The answer can be changed in Settings.
 - **Playback:** the IFrame player on the host screen, visible where the album art would be while a song plays (YouTube's terms require a visible, unobscured player). It runs with the host browser's own YouTube session, so ads can still appear for a Premium account if the browser blocks third-party cookies. YouTube refuses to play in a page opened by IP address (`127.0.0.1`, a LAN IP), so the Google sign-in returns the host to `localhost` and the host screen says so if it is opened by IP.
 
@@ -219,7 +219,7 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 - Tests target *external behavior* of a module, not its internal structure. A test should still pass after a full internal refactor as long as the module's contract is preserved.
 - Deep, pure modules are prioritized for unit tests because they offer the highest test-value-per-line-of-test.
 - The GenServer is tested through its public event API, not by peeking at internal state. Tests send events and observe the resulting public state (via the same query functions LiveViews will use).
-- LiveViews, the live provider APIs (Spotify), and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller is tested without any provider API (signed-state guard rails, and the authorize-to-callback flow via a stub redirect provider), and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
+- LiveViews, the live provider APIs (Spotify, Google/YouTube), and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller is tested without any provider API (signed-state guard rails, and the authorize-to-callback flow via a stub redirect provider), and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
 
 ### Modules with tests
 
@@ -241,11 +241,11 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 - **Mid-game changes.** No late joiners becoming players, no audience promotion, no pause.
 - **Vote changing.** Votes are locked once submitted (a host toggle for this is conceptually supported but not prioritized for v1).
 - **Avatars, images, and custom player art.** Display name only.
-- **Video playback in v1.** Spotify (the only shipped provider) is audio-only: no music videos, and a simple visualizer or album-art display is the intended TV visual during rounds. The provider abstraction does carry a `video?` capability (the host screen then shows the player), but no shipped provider uses it — see "Music providers".
+- **Video for audio-only providers.** Spotify is audio-only: no music videos, and album art is the TV visual during rounds. Video appears only where the provider's own player is a video player — YouTube, through the `video?` capability (the host screen then shows the player in place of the album art); see "Music providers".
 - **Full implementation of `:guess_for_player` style.** Enum reserved; no runtime logic.
 - **Rich question-style engine.** Dispatch is via pattern matching on an enum. No DSL, no rules engine.
 - **Automatic playback fallback.** A host without Spotify Premium cannot host with Spotify; there are no 30-second previews and no automatic switch to another service. They can pick YouTube instead in the lobby. A previews-only provider was considered and explicitly rejected.
-- **Tests for LiveViews, Spotify client, and the Registry.** Manual playtesting only in v1.
+- **Tests for LiveViews, the providers' HTTP calls (Spotify, Google/YouTube), and the Registry.** Manual playtesting only in v1.
 - **Multi-node deployment, Redis, external queues.** Single-node BEAM is the deployment model.
 - **Mobile apps.** Mobile web only.
 

@@ -13,8 +13,10 @@
 const API_SRC = "https://www.youtube.com/iframe_api"
 const URI_PREFIX = "youtube:video:"
 
-// IFrame API `onError` codes -> the reasons the provider module words
-// (`playback_error_message/1`). 101 and 150 are the same error.
+// IFrame API `onError` codes -> reasons for the provider module's
+// `playback_error_message/1`. It has its own wording for the ones a host can
+// act on (`video_unavailable`, `embed_blocked`); the rest, and any code not
+// listed here, get the generic message. 101 and 150 are the same error.
 const ERROR_REASONS = {
   2: "invalid_video",
   5: "player_error",
@@ -72,8 +74,17 @@ export default {
     // Whether the video loaded by the last play() has started, so an "ended"
     // is only ever reported for a video that actually played.
     let started = false
-    // Set by a failed video; the next one that plays clears the host's banner.
+    // Set by a failed video. The host's banner is about that one video, so it
+    // is cleared as soon as the video is left (the next play, or a stop), not
+    // only when a later one happens to start playing.
     let failed = false
+
+    // `ctx.onReady()` clears the banner; its re-sync finds nothing to change.
+    const clearFailure = () => {
+      if (!failed) return
+      failed = false
+      ctx.onReady()
+    }
 
     const initPlayer = () => {
       // The hook can be torn down while the API script is still loading.
@@ -110,10 +121,7 @@ export default {
 
             if (event.data === states.PLAYING) {
               started = true
-              if (failed) {
-                failed = false
-                ctx.onReady()
-              }
+              clearFailure()
             } else if (event.data === states.ENDED && started) {
               started = false
               ctx.onEnded()
@@ -151,6 +159,7 @@ export default {
       play(uri) {
         const id = videoId(uri)
         started = false
+        clearFailure()
 
         if (!id) {
           failed = true
@@ -163,6 +172,7 @@ export default {
 
       pause() {
         started = false
+        clearFailure()
         if (player) { try { player.stopVideo() } catch (_e) {} }
       },
 

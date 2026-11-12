@@ -344,7 +344,8 @@ defmodule WhoseJamWeb.HostLive do
 
   # The size a video player takes on screen. The playing layout reserves this
   # much room (in place of the album art) and the player is fixed over it.
-  defp video_frame_class, do: "aspect-video w-[28rem] xl:w-[36rem]"
+  # Never wider than the screen minus the layout's side padding.
+  defp video_frame_class, do: "aspect-video w-[min(28rem,calc(100vw-6rem))] xl:w-[36rem]"
 
   # Audio providers never show their player. A video provider's player is
   # fixed over the room the playing layout reserves for it: that layout pads

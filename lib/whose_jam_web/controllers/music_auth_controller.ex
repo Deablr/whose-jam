@@ -163,9 +163,10 @@ defmodule WhoseJamWeb.MusicAuthController do
   # screen stays on the redirect's host afterwards and YouTube's player won't
   # play on a page opened by IP address. Override per provider with
   # `config :whose_jam, :<id>_redirect_uri` (runtime.exs sets
-  # :spotify_redirect_uri from SPOTIFY_REDIRECT_URI, e.g. an https URI when
-  # deployed behind TLS). Must exactly match — including port — a redirect URI
-  # registered with the provider.
+  # :spotify_redirect_uri from SPOTIFY_REDIRECT_URI and :youtube_redirect_uri
+  # from YOUTUBE_REDIRECT_URI, e.g. an https URI when deployed behind TLS).
+  # Must exactly match — including port — a redirect URI registered with the
+  # provider.
   #
   # The interpolated atom is safe: `provider` is always one of the configured
   # provider modules (resolved via Music.fetch_provider/1), never raw input.

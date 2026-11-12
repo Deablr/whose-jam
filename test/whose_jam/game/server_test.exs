@@ -967,7 +967,7 @@ defmodule WhoseJam.Game.ServerTest do
       {:ok, code} = Game.create_game(theme.id, @fast_overrides)
       for i <- 1..3, do: Game.join(code, "P#{i}")
 
-      :ok = Game.set_music(code, :youtube, %{signed_in?: true, email: nil, premium?: nil})
+      :ok = Game.set_music(code, :youtube, %{signed_in?: true, premium?: nil})
 
       {:ok, answered} =
         Music.answer_account_question(:youtube, Game.host_state(code).music_auth, false)

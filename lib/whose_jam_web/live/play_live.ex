@@ -67,6 +67,9 @@ defmodule WhoseJamWeb.PlayLive do
       search_query: "",
       search_results: [],
       search_error: nil,
+      # {token, timer} of a search waiting its turn (see throttled_search/2)
+      search_pending: nil,
+      last_search_ms: nil,
       show_times_up: false,
       times_up_dismissed: false,
       # voting
@@ -98,15 +101,24 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
-  def handle_event("search", %{"q" => q}, socket) do
+  # Only someone who has joined, while songs are being picked, can search:
+  # every search may cost the music service's quota.
+  def handle_event(
+        "search",
+        %{"q" => q},
+        %{assigns: %{status: :joined, view: %{phase: :answering}}} = socket
+      )
+      when is_binary(q) do
     query = String.trim(q)
 
     if query == "" do
-      {:noreply, assign(socket, search_query: "", search_results: [], search_error: nil)}
+      {:noreply, clear_search(socket)}
     else
-      {:noreply, run_search(socket, query)}
+      {:noreply, throttled_search(socket, query)}
     end
   end
+
+  def handle_event("search", _params, socket), do: {:noreply, socket}
 
   def handle_event("pick_song", params, socket) do
     %{"uri" => uri, "question" => qid} = params
@@ -122,7 +134,8 @@ defmodule WhoseJamWeb.PlayLive do
       :ok ->
         socket =
           socket
-          |> assign(search_query: "", search_results: [], search_error: nil, edit_qid: nil)
+          |> clear_search()
+          |> assign(edit_qid: nil)
           |> refresh_view()
 
         {:noreply, socket}
@@ -134,8 +147,7 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   def handle_event("change_pick", %{"question" => qid}, socket) do
-    {:noreply,
-     assign(socket, edit_qid: qid, search_query: "", search_results: [], search_error: nil)}
+    {:noreply, socket |> clear_search() |> assign(edit_qid: qid)}
   end
 
   def handle_event("next_q", _params, socket) do
@@ -175,6 +187,15 @@ defmodule WhoseJamWeb.PlayLive do
     {:noreply, refresh_view(socket)}
   end
 
+  # A throttled search's turn has come. A stale one (superseded or cleared
+  # since it was scheduled) no longer matches the pending token and is dropped.
+  def handle_info({:run_search, token, query}, socket) do
+    case socket.assigns.search_pending do
+      {^token, _timer} -> {:noreply, socket |> assign(search_pending: nil) |> run_search(query)}
+      _other -> {:noreply, socket}
+    end
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # =========================================================================
@@ -208,7 +229,47 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
+  # The browser debounces typing, but that is only a courtesy: a search can cost
+  # the music service's quota (YouTube allows about 100 a day), so the server
+  # enforces the same spacing per connection. A search that arrives too soon
+  # waits its turn, and only the latest one waiting is run.
+  defp throttled_search(socket, query) do
+    socket = cancel_pending_search(socket)
+    wait_ms = search_wait_ms(socket)
+
+    if wait_ms <= 0 do
+      run_search(socket, query)
+    else
+      token = make_ref()
+      timer = Process.send_after(self(), {:run_search, token, query}, wait_ms)
+      assign(socket, search_pending: {token, timer})
+    end
+  end
+
+  defp search_wait_ms(%{assigns: %{last_search_ms: nil}}), do: 0
+
+  defp search_wait_ms(socket) do
+    elapsed_ms = System.monotonic_time(:millisecond) - socket.assigns.last_search_ms
+    search_debounce(socket.assigns.view) - elapsed_ms
+  end
+
+  defp cancel_pending_search(%{assigns: %{search_pending: {_token, timer}}} = socket) do
+    Process.cancel_timer(timer)
+    assign(socket, search_pending: nil)
+  end
+
+  defp cancel_pending_search(socket), do: socket
+
+  # Empty the search box and its results, dropping any search still waiting.
+  defp clear_search(socket) do
+    socket
+    |> cancel_pending_search()
+    |> assign(search_query: "", search_results: [], search_error: nil)
+  end
+
   defp run_search(socket, query) do
+    socket = assign(socket, last_search_ms: System.monotonic_time(:millisecond))
+
     case Game.search_songs(socket.assigns.code, query) do
       {:ok, results} ->
         assign(socket, search_query: query, search_results: results, search_error: nil)
@@ -243,13 +304,9 @@ defmodule WhoseJamWeb.PlayLive do
     max_index = max(length(assigned) - 1, 0)
     new_index = min(max(socket.assigns.q_index + delta, 0), max_index)
 
-    assign(socket,
-      q_index: new_index,
-      edit_qid: nil,
-      search_query: "",
-      search_results: [],
-      search_error: nil
-    )
+    socket
+    |> clear_search()
+    |> assign(q_index: new_index, edit_qid: nil)
   end
 
   # Re-fetch the player-scoped view and recompute derived UI state.

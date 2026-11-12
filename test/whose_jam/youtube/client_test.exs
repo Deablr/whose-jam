@@ -139,9 +139,15 @@ defmodule WhoseJam.YouTube.ClientTest do
   end
 
   describe "quota_exceeded?/1" do
-    test "recognizes Google's quota reasons" do
-      for reason <- ~w(quotaExceeded dailyLimitExceeded rateLimitExceeded userRateLimitExceeded) do
+    test "recognizes a used-up daily allowance" do
+      for reason <- ~w(quotaExceeded dailyLimitExceeded) do
         assert Client.quota_exceeded?(error_body(reason)), reason
+      end
+    end
+
+    test "a short-term throttle is not the daily allowance" do
+      for reason <- ~w(rateLimitExceeded userRateLimitExceeded) do
+        refute Client.quota_exceeded?(error_body(reason)), reason
       end
     end
 
