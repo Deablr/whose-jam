@@ -111,11 +111,19 @@ pass an explicit compose file skip the local override). In Dokploy:
    SPOTIFY_CLIENT_SECRET=...
    SPOTIFY_REDIRECT_URI=https://your.domain.com/auth/spotify/callback
    POSTGRES_PASSWORD=<something strong>
+   # Only if you offer YouTube (see "YouTube setup"):
+   YOUTUBE_API_KEY=...
+   YOUTUBE_CLIENT_ID=...
+   YOUTUBE_CLIENT_SECRET=...
+   YOUTUBE_REDIRECT_URI=https://your.domain.com/auth/youtube/callback
    ```
 
-   `SPOTIFY_REDIRECT_URI` must be set explicitly here (and registered in the
-   Spotify dashboard): the loopback default only makes sense when the server
-   runs on the host's own laptop. With HTTPS, Spotify accepts the real domain.
+   `SPOTIFY_REDIRECT_URI` and `YOUTUBE_REDIRECT_URI` must be set explicitly
+   here (and registered in the Spotify dashboard and on the Google OAuth
+   client): the loopback defaults only make sense when the server runs on the
+   host's own laptop. With HTTPS, both accept the real domain. Open the host
+   screen at that domain, not at the server's IP address — YouTube won't play
+   on a page opened by IP.
 
 ---
 
