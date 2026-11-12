@@ -68,6 +68,13 @@ defmodule WhoseJam.YouTube.ClientTest do
       end
     end
 
+    test "decodes the last code point Unicode has" do
+      body = %{"items" => [item("dQw4w9WgXcQ", "&#x10FFFF;&#1114111;", "X")]}
+
+      assert [track] = Client.tracks_from_search(body)
+      assert track.name == <<0x10FFFF::utf8, 0x10FFFF::utf8>>
+    end
+
     test "decodes the HTML entities the Data API puts in titles, once" do
       body = %{
         "items" => [
@@ -85,7 +92,9 @@ defmodule WhoseJam.YouTube.ClientTest do
     end
 
     test "leaves text that only looks like an entity alone" do
-      title = "R&B; &nope; &#xD800; &#0; &#99999999; 100% &"
+      # An unknown name, a surrogate, NUL, the first code point past Unicode's
+      # last (in hex and in decimal), and a reference too long to be one.
+      title = "R&B; &nope; &#xD800; &#0; &#x110000; &#1114112; &#99999999; 100% &"
       body = %{"items" => [item("dQw4w9WgXcQ", title, "X")]}
 
       assert [track] = Client.tracks_from_search(body)
@@ -109,6 +118,11 @@ defmodule WhoseJam.YouTube.ClientTest do
 
       assert [%{album_art_url: "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"}] =
                Client.tracks_from_search(%{"items" => [item("dQw4w9WgXcQ", "S", "A", medium)]})
+
+      default = %{"default" => %{"url" => "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg"}}
+
+      assert [%{album_art_url: "https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg"}] =
+               Client.tracks_from_search(%{"items" => [item("dQw4w9WgXcQ", "S", "A", default)]})
 
       assert [%{album_art_url: nil}] =
                Client.tracks_from_search(%{"items" => [item("dQw4w9WgXcQ", "S", "A", %{})]})

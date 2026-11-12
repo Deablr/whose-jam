@@ -118,6 +118,39 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     assert Game.host_state(room).music_auth.uri == query["redirect_uri"]
   end
 
+  describe "the shipped providers' default redirect" do
+    @credential_vars ~w(SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET YOUTUBE_API_KEY
+                        YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET)
+
+    setup do
+      previous = Map.new(@credential_vars, &{&1, System.get_env(&1)})
+      Enum.each(@credential_vars, &System.put_env(&1, "test-value"))
+
+      on_exit(fn ->
+        Enum.each(previous, fn
+          {name, nil} -> System.delete_env(name)
+          {name, value} -> System.put_env(name, value)
+        end)
+      end)
+    end
+
+    defp default_redirect_uri(conn, provider, room) do
+      url = conn |> get("/auth/#{provider}?code=#{room}") |> redirected_to(302)
+      query = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      URI.parse(query["redirect_uri"])
+    end
+
+    # Spotify rejects `localhost`; YouTube's player rejects IP addresses, and the
+    # host screen stays on the redirect's host.
+    test "is on 127.0.0.1 for Spotify and on localhost for YouTube", %{conn: conn, room: room} do
+      assert %URI{scheme: "http", host: "127.0.0.1", path: "/auth/spotify/callback"} =
+               default_redirect_uri(conn, "spotify", room)
+
+      assert %URI{scheme: "http", host: "localhost", path: "/auth/youtube/callback"} =
+               default_redirect_uri(conn, "youtube", room)
+    end
+  end
+
   test "an ineligible account is stored but flashed as an error", %{conn: conn, room: room} do
     state = authorize(conn, room)
 

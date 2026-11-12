@@ -117,8 +117,8 @@ if config_env() == :prod do
 
   # Browsers legitimately reach this app from several origins at once: phones
   # via PHX_HOST (the LAN IP in the QR links), and the host's laptop via
-  # localhost or 127.0.0.1 (where the Spotify OAuth redirect lands). Allow all
-  # of them — a port-less entry matches any port on that host.
+  # localhost or 127.0.0.1 (where the Google and Spotify OAuth redirects
+  # land). Allow all of them — a port-less entry matches any port on that host.
   check_origin = ["//" <> host, "//localhost", "//127.0.0.1", "//[::1]"]
 
   config :whose_jam, WhoseJamWeb.Endpoint,

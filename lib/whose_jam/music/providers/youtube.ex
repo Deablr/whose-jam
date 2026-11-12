@@ -137,7 +137,7 @@ defmodule WhoseJam.Music.Providers.YouTube do
     do:
       "YouTube won't play on a page opened by IP address (such as 127.0.0.1). Open this " <>
         "screen by name instead, keeping the port and path: localhost if the game runs on " <>
-        "this computer, otherwise a hostname that points at the computer running it."
+        "this computer, otherwise the hostname the server is set up with (PHX_HOST)."
 
   def playback_error_message(%{"reason" => "autoplay_blocked"}),
     do: "The browser blocked the video from starting. Click the video on this screen to play it."

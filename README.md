@@ -232,10 +232,12 @@ way, and the answer can be changed in Settings.
 
 - **Open the host screen by name, not by IP address.** YouTube refuses to play
   ("This video is unavailable") in a page opened at `127.0.0.1`, `[::1]` or a
-  LAN IP, and plays in one opened at `localhost`, `your-laptop.local` or a
-  real domain. The Google sign-in returns to `localhost` for that reason, and
-  the host screen tells you if it is on an IP address. Phones are unaffected —
-  they can still join through a LAN IP.
+  LAN IP, and plays in one opened by name. On the computer running the game
+  that name is `localhost`; from another computer it has to be the hostname in
+  `PHX_HOST` (a release refuses the live connection from any other address).
+  The Google sign-in returns to `localhost` for that reason, and the host
+  screen tells you if it is on an IP address. Phones are unaffected — they can
+  still join through a LAN IP.
 - **Ads and the browser session.** The player runs with the host browser's own
   YouTube session, which is why the sign-in happens in the browser that plays
   the songs. Even with Premium, ads can appear if that browser blocks
@@ -243,7 +245,7 @@ way, and the answer can be changed in Settings.
 - **Search quota.** Google allows a project roughly **100 searches a day** by
   default. Results are cached for a few minutes and YouTube rooms wait 600 ms
   after the last keystroke before searching (Spotify rooms wait 300 ms; the
-  server enforces the same spacing per player), but a
+  server enforces the same spacing per connection), but a
   big game can still use the allowance up; players then see "search limit for
   today is used up". Request more quota in the Cloud console if you need it.
 - **The video is on screen.** YouTube's terms require a visible player, so the
@@ -467,10 +469,12 @@ blocked"* means the API key is restricted to websites — set its application
 restriction to None or IP addresses (see YouTube setup). A message about the
 API not being enabled means YouTube Data API v3 is off for that project.
 
-**YouTube shows "This video is unavailable" for every song.**
+**The host screen says "YouTube won't play on a page opened by IP address".**
 The host screen was opened by IP address (`127.0.0.1`, a LAN IP), which
-YouTube's player refuses. Open it at `http://localhost:<APP_PORT>/host/<code>`
-instead; the game carries on where it was.
+YouTube's player refuses (it would show "This video is unavailable" for every
+song). Open it by name instead, keeping the port and path: `localhost` on the
+computer running the game, otherwise the hostname in `PHX_HOST`. The game
+carries on where it was.
 
 **Google says "redirect_uri_mismatch".**
 Register exactly `http://localhost:<APP_PORT>/auth/youtube/callback` (port

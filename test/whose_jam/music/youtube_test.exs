@@ -121,6 +121,10 @@ defmodule WhoseJam.Music.YouTubeTest do
       refute YouTube.valid_art_url?("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg\n")
     end
 
+    test "is a video provider: the host screen must show the player" do
+      assert YouTube.video?()
+    end
+
     test "searches are debounced longer than Spotify's, to spare the daily quota" do
       assert YouTube.search_debounce_ms() == 600
       assert YouTube.search_debounce_ms() > Spotify.search_debounce_ms()
@@ -132,6 +136,9 @@ defmodule WhoseJam.Music.YouTubeTest do
       assert Music.playback_error_message(:youtube, %{"reason" => "embed_blocked"}) =~ "Skip"
       assert Music.playback_error_message(:youtube, %{"reason" => "video_unavailable"}) =~ "Skip"
       assert Music.playback_error_message(:youtube, %{"reason" => "autoplay_blocked"}) =~ "Click"
+
+      assert Music.playback_error_message(:youtube, %{"reason" => "sdk_load_failed"}) =~
+               "internet connection"
 
       assert Music.playback_error_message(:youtube, %{"reason" => "ip_address_origin"}) =~
                "localhost"

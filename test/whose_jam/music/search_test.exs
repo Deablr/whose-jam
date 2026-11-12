@@ -70,6 +70,16 @@ defmodule WhoseJam.Music.SearchTest do
     %{term: "term#{System.unique_integer([:positive])}"}
   end
 
+  test "with no configured list (production), Spotify and YouTube are offered" do
+    # setup's on_exit puts the list back.
+    Application.delete_env(:whose_jam, :music_providers)
+
+    assert Music.providers() == [
+             WhoseJam.Music.Providers.Spotify,
+             WhoseJam.Music.Providers.YouTube
+           ]
+  end
+
   test "searches with the normalized query and shares the result across spellings", %{term: term} do
     assert {:ok, [%{name: name}] = results} = Music.search(:stub, "  #{term}   FOO ", %{})
     assert name == "#{term} foo"

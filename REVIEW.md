@@ -106,14 +106,15 @@ metadata and threads, the check results, and the worktree path. Each reads the
 | `quality` | Code quality & conventions | Violations of `AGENTS.md` (including "Rules from past code reviews"): pure modules staying pure, the shared domain shapes, runtime state never persisted, no new deps, `req`/`eqrcode` only. Naming, dead code, duplicated logic, comments that don't match the code, code that doesn't read like its surroundings. |
 | `simplicity` | Over-engineering | Abstractions with one caller, config nobody sets, speculative extensibility, layers that could be a function, long `cond`/`case` trees that could be a clause. **Prefer the simpler solution**; propose the concrete simpler version. |
 | `security` | Vulnerabilities | See the checklist below. |
-| `tests` | Coverage | New behaviour without tests, tests asserting internals rather than the public contract, flaky timing (sleeps instead of `assert_receive`), missing edge cases. Respect the PRD rule: no LiveView/Spotify/Registry tests in v1. |
+| `tests` | Coverage | New behaviour without tests, tests asserting internals rather than the public contract, flaky timing (sleeps instead of `assert_receive`), missing edge cases. Respect the PRD rule: no LiveView, live provider API (Spotify, Google/YouTube) or Registry tests in v1. |
 | `pr` | PR hygiene | Title, description accuracy, scope, status of existing comments (from step 1). |
 
 ### Security checklist
 
-- Secrets: nothing hard-coded; Spotify credentials only via `System.get_env/1` at runtime; tokens never logged or rendered.
-- The Spotify **access token** must only reach the host view (`host_state`), never the public broadcast or the player view.
-- HTML injection: any `raw/1`, `Phoenix.HTML.raw`, or string-built `style`/`href`/`src` attribute fed by user or Spotify data (song names, album-art URLs, display names).
+- Secrets: nothing hard-coded; provider credentials (Spotify, Google/YouTube) only via `System.get_env/1` at runtime; tokens and API keys never logged or rendered.
+- The host's music **auth** (Spotify's access token, any provider's account state) must only reach the host view (`host_state`), never the public broadcast or the player view. The host screen is shown to the whole room, so it must not display account identity either.
+- HTML injection: any `raw/1`, `Phoenix.HTML.raw`, or string-built `style`/`href`/`src` attribute fed by user or provider data (song names, album-art URLs, display names).
+- Provider quota: anything a guest with a room code can trigger that spends a provider's allowance (YouTube search) is rate-limited on the server, not only in the browser.
 - OAuth: `state` is signed and verified, the redirect URI is fixed, and errors redirect safely.
 - Player session tokens: signed `Phoenix.Token`, sensible max age, can't be replayed against another room.
 - Input: lengths and types validated on every `handle_event` (names, room codes, choices, config overrides); invalid input never crashes the GenServer.

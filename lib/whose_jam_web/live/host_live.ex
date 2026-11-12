@@ -343,22 +343,24 @@ defmodule WhoseJamWeb.HostLive do
   defp play_round(_view), do: ""
 
   # The size a video player takes on screen. The playing layout reserves this
-  # much room (in place of the album art) and the player is fixed over it.
+  # much room (in place of the album art) and the player is placed over it.
   # Never wider than the screen minus the layout's side padding.
   defp video_frame_class, do: "aspect-video w-[min(28rem,calc(100vw-6rem))] xl:w-[36rem]"
 
   # Audio providers never show their player. A video provider's player is
-  # fixed over the room the playing layout reserves for it: that layout pads
+  # placed over the room the playing layout reserves for it: that layout pads
   # 7rem above and 4rem below and centres its row from `lg` up, so the row's
-  # middle is 1.5rem below the screen's; below `lg` the row starts at the top.
+  # middle is 1.5rem below the stage's; below `lg` the row starts at the top.
+  # It is positioned in the stage (`.jam-stage` is `position: relative`), not
+  # fixed to the viewport, so it scrolls with the layout it sits over.
   defp player_class(false, _playing?), do: "hidden"
 
   defp player_class(true, false),
-    do: ["pointer-events-none fixed left-0 top-0 -z-10 opacity-0", video_frame_class()]
+    do: ["pointer-events-none absolute left-0 top-0 -z-10 opacity-0", video_frame_class()]
 
   defp player_class(true, true) do
     [
-      "fixed z-20 left-12 top-28 overflow-hidden rounded-[2rem] bg-black shadow-2xl",
+      "absolute z-20 left-12 top-28 overflow-hidden rounded-[2rem] bg-black shadow-2xl",
       "lg:left-20 lg:top-[calc(50%+1.5rem)] lg:-translate-y-1/2",
       video_frame_class()
     ]
@@ -1032,7 +1034,7 @@ defmodule WhoseJamWeb.HostLive do
       <div class="shrink-0">
         <%= cond do %>
           <% @music_video? -> %>
-            <%!-- Holds the space the fixed video player (see render/1) sits over. --%>
+            <%!-- Holds the space the video player (see render/1) sits over. --%>
             <div class={video_frame_class()} aria-hidden="true"></div>
           <% @art_url -> %>
             <img

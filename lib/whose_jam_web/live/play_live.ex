@@ -23,6 +23,10 @@ defmodule WhoseJamWeb.PlayLive do
   # Mount
   # =========================================================================
 
+  # Longest search query the server accepts (the input allows a quarter as
+  # many characters). Longer ones would go to the provider and into the cache.
+  @max_query_bytes 400
+
   @impl true
   def mount(%{"code" => code}, session, socket) do
     socket = assign(socket, default_assigns(code))
@@ -101,28 +105,24 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
-  # Only someone who has joined, while songs are being picked, can search:
-  # every search may cost the music service's quota.
-  def handle_event(
-        "search",
-        %{"q" => q},
-        %{assigns: %{status: :joined, view: %{phase: :answering}}} = socket
-      )
-      when is_binary(q) do
+  # Every search may cost the music service's quota, so only someone who has
+  # songs to pick can search (see can_search?/1), and never with a query longer
+  # than a song title could need.
+  def handle_event("search", %{"q" => q}, socket)
+      when is_binary(q) and byte_size(q) <= @max_query_bytes do
     query = String.trim(q)
 
-    if query == "" do
-      {:noreply, clear_search(socket)}
-    else
-      {:noreply, throttled_search(socket, query)}
+    cond do
+      not can_search?(socket) -> {:noreply, socket}
+      query == "" -> {:noreply, clear_search(socket)}
+      true -> {:noreply, throttled_search(socket, query)}
     end
   end
 
   def handle_event("search", _params, socket), do: {:noreply, socket}
 
-  def handle_event("pick_song", params, socket) do
-    %{"uri" => uri, "question" => qid} = params
-
+  def handle_event("pick_song", %{"uri" => uri, "question" => qid} = params, socket)
+      when is_binary(uri) and is_binary(qid) do
     song = %{
       uri: uri,
       name: Map.get(params, "name"),
@@ -146,9 +146,15 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
-  def handle_event("change_pick", %{"question" => qid}, socket) do
+  def handle_event("pick_song", _params, socket) do
+    {:noreply, assign(socket, search_error: "Couldn't lock in that pick — try it again.")}
+  end
+
+  def handle_event("change_pick", %{"question" => qid}, socket) when is_binary(qid) do
     {:noreply, socket |> clear_search() |> assign(edit_qid: qid)}
   end
+
+  def handle_event("change_pick", _params, socket), do: {:noreply, socket}
 
   def handle_event("next_q", _params, socket) do
     {:noreply, move_question(socket, +1)}
@@ -188,11 +194,16 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # A throttled search's turn has come. A stale one (superseded or cleared
-  # since it was scheduled) no longer matches the pending token and is dropped.
+  # since it was scheduled) no longer matches the pending token and is dropped,
+  # and so is one whose answering phase ended while it waited.
   def handle_info({:run_search, token, query}, socket) do
     case socket.assigns.search_pending do
-      {^token, _timer} -> {:noreply, socket |> assign(search_pending: nil) |> run_search(query)}
-      _other -> {:noreply, socket}
+      {^token, _timer} ->
+        socket = assign(socket, search_pending: nil)
+        {:noreply, if(can_search?(socket), do: run_search(socket, query), else: socket)}
+
+      _other ->
+        {:noreply, socket}
     end
   end
 
@@ -228,6 +239,13 @@ defmodule WhoseJamWeb.PlayLive do
         {:noreply, assign(socket, join_error: "Couldn't join this game. It may have ended.")}
     end
   end
+
+  # Searching is for a joined player while songs are being picked. Audience
+  # members never pick songs, and anyone joining after the lobby is audience.
+  defp can_search?(%{assigns: %{status: :joined, role: :player, view: %{phase: :answering}}}),
+    do: true
+
+  defp can_search?(_socket), do: false
 
   # The browser debounces typing, but that is only a courtesy: a search can cost
   # the music service's quota (YouTube allows about 100 a day), so the server
@@ -739,6 +757,10 @@ defmodule WhoseJamWeb.PlayLive do
   defp search_placeholder(%{music: %{name: name}}), do: "Search #{name} for a song…"
   defp search_placeholder(_view), do: "Search for a song…"
 
+  # The search box's character limit. The server's limit is in bytes
+  # (@max_query_bytes) and allows four per character.
+  defp max_query_length, do: div(@max_query_bytes, 4)
+
   # How long to wait after the last keystroke before searching: the room's
   # music service says (services with scarce search quota ask for longer).
   defp search_debounce(%{music: %{search_debounce_ms: ms}}) when is_integer(ms), do: ms
@@ -777,11 +799,14 @@ defmodule WhoseJamWeb.PlayLive do
       </div>
 
       <div :if={@editing?}>
-        <form phx-change="search" class="mt-1">
+        <%!-- phx-submit too: without it, Enter submits the form natively and
+             reloads the page. --%>
+        <form id="song-search-form" phx-change="search" phx-submit="search" class="mt-1">
           <input
             type="text"
             name="q"
             value={@search_query}
+            maxlength={max_query_length()}
             autocomplete="off"
             phx-debounce={search_debounce(@view)}
             placeholder={search_placeholder(@view)}
