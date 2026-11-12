@@ -37,7 +37,7 @@ defmodule WhoseJam.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, "test.e2e": :test]
     ]
   end
 
@@ -86,7 +86,15 @@ defmodule WhoseJam.MixProject do
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.38", only: [:dev, :test], runtime: false}
+      {:ex_doc, "~> 0.38", only: [:dev, :test], runtime: false},
+      # End-to-end browser tests (`mix test.e2e`): Playwright drives real
+      # browsers, Testcontainers runs a throwaway Postgres in Docker.
+      {:phoenix_test_playwright, "~> 0.19", only: :test, runtime: false},
+      {:testcontainers, "~> 2.4", only: :test, runtime: false},
+      # Testcontainers asks for hackney ~> 1.20, but every 1.x release has open
+      # security advisories (`mix hex.audit`). Tesla's hackney adapter
+      # supports 4.x, so pin the patched line for the Docker API client.
+      {:hackney, "~> 4.10", only: :test, runtime: false, override: true}
     ]
   end
 

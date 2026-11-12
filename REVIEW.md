@@ -86,6 +86,7 @@ Run all of these and record pass/fail with the relevant output:
 | Docs | `MIX_ENV=test mix docs --warnings-as-errors` | any warning (usually a doc referencing a deleted or renamed function) |
 | Dependency advisories | `mix hex.audit` | a **new** advisory introduced by the diff (pre-existing ones are listed in the summary, not blamed) |
 | Tests | `mix test` | any failure |
+| E2E (only if LiveViews, JS hooks, `Game.Server`, `test/e2e`, `test/support/e2e`, `test/support/mix/tasks/test.e2e.ex` or `assets/package*.json` changed; needs Docker) | `npm --prefix assets ci && npm --prefix assets exec -- playwright install chromium`, then `mix test.e2e` | any failure; attach/mention the video path (`tmp/e2e/full_game.mp4`) when the review is posted |
 | Assets build | `mix assets.build` | Tailwind/esbuild errors |
 | Release build (only if `Dockerfile`, `rel/`, `config/runtime.exs`, or `mix.exs` changed) | `docker build -t whose-jam-review .` | build fails |
 
@@ -106,7 +107,7 @@ metadata and threads, the check results, and the worktree path. Each reads the
 | `quality` | Code quality & conventions | Violations of `AGENTS.md` (including "Rules from past code reviews"): pure modules staying pure, the shared domain shapes, runtime state never persisted, no new deps, `req`/`eqrcode` only. Naming, dead code, duplicated logic, comments that don't match the code, code that doesn't read like its surroundings. |
 | `simplicity` | Over-engineering | Abstractions with one caller, config nobody sets, speculative extensibility, layers that could be a function, long `cond`/`case` trees that could be a clause. **Prefer the simpler solution**; propose the concrete simpler version. |
 | `security` | Vulnerabilities | See the checklist below. |
-| `tests` | Coverage | New behaviour without tests, tests asserting internals rather than the public contract, flaky timing (sleeps instead of `assert_receive`), missing edge cases. Respect the PRD rule: no LiveView, live provider API (Spotify, Google/YouTube) or Registry tests in v1. |
+| `tests` | Coverage | New behaviour without tests, tests asserting internals rather than the public contract, flaky timing (sleeps instead of `assert_receive`), missing edge cases. Respect the PRD rule: no `Phoenix.LiveViewTest`, live provider API (Spotify, Google/YouTube) or Registry tests in v1; LiveViews are covered by the `:e2e` browser suite. |
 | `pr` | PR hygiene | Title, description accuracy, scope, status of existing comments (from step 1). |
 
 ### Security checklist

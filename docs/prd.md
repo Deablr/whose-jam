@@ -219,7 +219,7 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 - Tests target *external behavior* of a module, not its internal structure. A test should still pass after a full internal refactor as long as the module's contract is preserved.
 - Deep, pure modules are prioritized for unit tests because they offer the highest test-value-per-line-of-test.
 - The GenServer is tested through its public event API, not by peeking at internal state. Tests send events and observe the resulting public state (via the same query functions LiveViews will use).
-- LiveViews, the live provider APIs (Spotify, Google/YouTube), and the Registry are validated by manual playtesting in v1 rather than by automated tests — LiveView tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller is tested without any provider API (signed-state guard rails, and the authorize-to-callback flow via a stub redirect provider), and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
+- `Phoenix.LiveViewTest` tests, live provider API (Spotify, Google/YouTube) tests and Registry tests are out of scope in v1 — LiveView unit tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. LiveViews are instead exercised end to end: a browser suite plays a whole game (host plus 8 players across phones, tablets and laptops) against the real server and a containerized Postgres, faking only the music provider, and records a combined video. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller is tested without any provider API (signed-state guard rails, and the authorize-to-callback flow via a stub redirect provider), and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
 
 ### Modules with tests
 
@@ -227,6 +227,7 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 - **`Game.Scoring`** — a correct guess awards +1; a submitter gains +1 per fooled non-audience vote; audience cannot be "fooled onto" for scoring purposes; all-correct and all-wrong rounds produce sane totals; a round with zero votes produces zero points.
 - **`Game.Config`** — derived timings at representative player counts; overrides override; default settings produce a game whose total estimated runtime is within a configured band of the 20-minute target.
 - **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than the room provider's art host are dropped; songs from another provider are rejected.
+- **Browser end-to-end** (`mix test.e2e`, tagged `:e2e`, not part of `mix test`) — a host and 8 players on phones, tablets and laptops play a whole game; the final scoreboard is checked against an independently computed tally.
 
 ### Prior art
 
@@ -245,7 +246,7 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 - **Full implementation of `:guess_for_player` style.** Enum reserved; no runtime logic.
 - **Rich question-style engine.** Dispatch is via pattern matching on an enum. No DSL, no rules engine.
 - **Automatic playback fallback.** A host without Spotify Premium cannot host with Spotify; there are no 30-second previews and no automatic switch to another service. They can pick YouTube instead in the lobby. A previews-only provider was considered and explicitly rejected.
-- **Tests for LiveViews, the providers' HTTP calls (Spotify, Google/YouTube), and the Registry.** Manual playtesting only in v1.
+- **Tests for LiveViews (`Phoenix.LiveViewTest`), the providers' HTTP calls (Spotify, Google/YouTube), and the Registry.** LiveViews are covered only by the browser end-to-end suite; the provider APIs are manual playtesting only in v1.
 - **Multi-node deployment, Redis, external queues.** Single-node BEAM is the deployment model.
 - **Mobile apps.** Mobile web only.
 
