@@ -80,8 +80,8 @@ reseed.(
 )
 
 # ---------------------------------------------------------------------------
-# Pool 2 — "Emotional Damage" (multi-style: :guess_who then :guess_question)
-# ~10 :guess_who + ~8 :guess_question gameplay questions + 3 example previews.
+# Pool 2 — "Emotional Damage" (multi-style: :guess_question then :guess_who)
+# ~8 :guess_question + ~10 :guess_who gameplay questions + 3 example previews.
 # ---------------------------------------------------------------------------
 
 emotional_damage = [
@@ -91,7 +91,18 @@ emotional_damage = [
   {:guess_question, true, "A song for staring dramatically out of a rain-streaked window."},
   {:guess_question, true, "The track you'd put on to have a good, cathartic cry."},
 
-  # Sub-round 1 — :guess_who (guess which friend submitted this).
+  # Sub-round 1 — :guess_question (guess which prompt the song answers).
+  {:guess_question, false, "A song for driving away from your problems at night."},
+  {:guess_question, false, "The soundtrack to overthinking a text you already sent."},
+  {:guess_question, false, "A song that feels like the last day of summer."},
+  {:guess_question, false,
+   "The track for lying on the floor questioning every choice you've made."},
+  {:guess_question, false, "A song for pretending you're fine at a party."},
+  {:guess_question, false, "The tune for a very sad main-character walk in the rain."},
+  {:guess_question, false, "A song that would make a stranger cry on public transit."},
+  {:guess_question, false, "The track for finally letting go of something you held too long."},
+
+  # Sub-round 2 — :guess_who (guess which friend submitted this).
   {:guess_who, false, "The song that reliably makes you tear up no matter where you are."},
   {:guess_who, false, "A track tied to a breakup you're pretending you're over."},
   {:guess_who, false, "The song you'd want played at your funeral, purely for the drama."},
@@ -103,24 +114,13 @@ emotional_damage = [
   {:guess_who, false, "The song that hits differently at 2 a.m."},
   {:guess_who, false, "A tune that makes you miss a version of yourself that no longer exists."},
   {:guess_who, false, "The song you'd text to someone at your absolute lowest."},
-  {:guess_who, false, "A track that romanticizes staring longingly into the middle distance."},
-
-  # Sub-round 2 — :guess_question (guess which prompt the song answers).
-  {:guess_question, false, "A song for driving away from your problems at night."},
-  {:guess_question, false, "The soundtrack to overthinking a text you already sent."},
-  {:guess_question, false, "A song that feels like the last day of summer."},
-  {:guess_question, false,
-   "The track for lying on the floor questioning every choice you've made."},
-  {:guess_question, false, "A song for pretending you're fine at a party."},
-  {:guess_question, false, "The tune for a very sad main-character walk in the rain."},
-  {:guess_question, false, "A song that would make a stranger cry on public transit."},
-  {:guess_question, false, "The track for finally letting go of something you held too long."}
+  {:guess_who, false, "A track that romanticizes staring longingly into the middle distance."}
 ]
 
 reseed.(
   "Emotional Damage",
-  "For when the vibe gets tender. Two sub-rounds: first guess who bared their soul, then guess which prompt each gut-punch of a song was answering.",
-  [:guess_who, :guess_question],
+  "For when the vibe gets tender. Two sub-rounds: first guess which prompt each gut-punch of a song was answering, then guess who bared their soul.",
+  [:guess_question, :guess_who],
   emotional_damage
 )
 

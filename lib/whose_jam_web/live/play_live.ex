@@ -10,6 +10,10 @@ defmodule WhoseJamWeb.PlayLive do
 
   Reconnection is automatic: LiveView re-runs `mount/3`, which re-derives the
   full UI from the *current* phase — nothing assumes a phase was witnessed.
+
+  When the game ends (`{:game_ended, reason}`: the host ended it, closed the
+  host screen, or it sat idle) the phone says so and offers the way home. A
+  finished game keeps its final scores on screen.
   """
   use WhoseJamWeb, :live_view
 
@@ -81,7 +85,9 @@ defmodule WhoseJamWeb.PlayLive do
       vote_error: nil,
       # join
       join_error: nil,
-      audience_notice: false
+      audience_notice: false,
+      # why the game ended, once status is :ended
+      end_reason: nil
     }
   end
 
@@ -191,6 +197,12 @@ defmodule WhoseJamWeb.PlayLive do
   @impl true
   def handle_info({:game_state, _view}, socket) do
     {:noreply, refresh_view(socket)}
+  end
+
+  # The game's last word: its server is gone, so keep the last view we had
+  # (a finished game's scores) rather than fetching a new one.
+  def handle_info({:game_ended, reason}, socket) do
+    {:noreply, socket |> cancel_pending_search() |> assign(status: :ended, end_reason: reason)}
   end
 
   # A throttled search's turn has come. A stale one (superseded or cleared
@@ -454,6 +466,11 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp current_art(_view), do: nil
 
+  defp ended_message(:host_ended), do: "The host has ended the game. Thanks for playing!"
+  defp ended_message(:host_left), do: "The host closed the game screen, so the game has ended."
+  defp ended_message(:idle), do: "This game closed after sitting idle."
+  defp ended_message(_reason), do: "This game has ended."
+
   defp ordinal(0), do: "1st"
   defp ordinal(1), do: "2nd"
   defp ordinal(2), do: "3rd"
@@ -465,7 +482,9 @@ defmodule WhoseJamWeb.PlayLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, art_url: current_art(assigns.view))
+    # A game that ended mid-song no longer tints the phone with that song.
+    art_url = if assigns.status == :ended, do: nil, else: current_art(assigns.view)
+    assigns = assign(assigns, art_url: art_url)
 
     ~H"""
     <Layouts.flash_group flash={@flash} />
@@ -481,6 +500,8 @@ defmodule WhoseJamWeb.PlayLive do
             {join_screen(assigns)}
           <% :joined -> %>
             {joined_screen(assigns)}
+          <% :ended -> %>
+            {ended_screen(assigns)}
           <% _ -> %>
             <div class="flex flex-1 items-center justify-center text-white/60">Loading…</div>
         <% end %>
@@ -891,6 +912,18 @@ defmodule WhoseJamWeb.PlayLive do
 
       {now_playing(assigns)}
 
+      <%!-- Guess-who rounds say what the song was picked for. --%>
+      <figure
+        :if={@round.prompt}
+        id="round-prompt"
+        class="mt-4 rounded-2xl border-l-4 border-jam-pink bg-white/5 px-4 py-3"
+      >
+        <figcaption class="text-xs font-semibold uppercase tracking-wide text-jam-pink">
+          The prompt
+        </figcaption>
+        <blockquote class="mt-1 font-display text-base leading-snug">{@round.prompt}</blockquote>
+      </figure>
+
       <%= case @round_state do %>
         <% :revealing -> %>
           {revealing_body(assigns)}
@@ -1101,9 +1134,41 @@ defmodule WhoseJamWeb.PlayLive do
         </div>
       </div>
 
-      <p class="mt-6 text-center text-sm text-white/40">
-        Look up at the TV for the full results.
-      </p>
+      <%= if @status == :ended do %>
+        <div id="game-ended" class="mt-6 space-y-4 text-center">
+          <p class="text-sm text-white/60">{ended_message(@end_reason)}</p>
+          <.link navigate={~p"/"} class="jam-btn w-full">Back home</.link>
+        </div>
+      <% else %>
+        <p class="mt-6 text-center text-sm text-white/40">
+          Look up at the TV for the full results.
+        </p>
+      <% end %>
+    </div>
+    """
+  end
+
+  # --- game ended -----------------------------------------------------------
+
+  # A finished game keeps its final scores on screen; one that ended earlier
+  # (or one this phone never saw) just says so.
+  defp ended_screen(%{view: %{phase: :finished}} = assigns) do
+    ~H"""
+    {top_bar(assigns)}
+    {finished_screen(assigns)}
+    """
+  end
+
+  defp ended_screen(assigns) do
+    ~H"""
+    {top_bar(assigns)}
+    <div id="game-ended" class="flex flex-1 flex-col items-center justify-center gap-6 text-center">
+      <div class="text-6xl">👋</div>
+      <div>
+        <h1 class="font-display text-2xl">Game over</h1>
+        <p class="mt-2 text-white/60">{ended_message(@end_reason)}</p>
+      </div>
+      <.link navigate={~p"/"} class="jam-btn">Back home</.link>
     </div>
     """
   end

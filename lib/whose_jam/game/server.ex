@@ -34,6 +34,21 @@ defmodule WhoseJam.Game.Server do
   answering phase spanning every style, then a single playing phase over all
   resulting songs.
 
+  ## Host screens and the end of a game
+
+  Each open host screen attaches itself (`WhoseJam.Game.attach_host/2`) and
+  the server monitors it. When the last one closes and none comes back within
+  a short grace (30s; a refresh or a dropped connection comes back sooner),
+  the game ends. A host screen that left to sign in to a music service
+  (`WhoseJam.Game.host_signing_in/1`) gets 15 minutes instead. Until a host
+  screen has attached, nothing is watched (the idle timeout covers a game
+  nobody opened).
+
+  However the game ends — the host ends it (`WhoseJam.Game.end_game/1`), its
+  last host screen goes, or it sits idle — the server broadcasts
+  `{:game_ended, reason}` on the room topic (`:host_ended`, `:host_left` or
+  `:idle`) and stops, discarding its state.
+
   ## Contracts
 
   Callers only ever touch this module through `WhoseJam.Game`. Events go in as
@@ -66,6 +81,12 @@ defmodule WhoseJam.Game.Server do
   # Once every eligible voter has voted the countdown drops to this (never
   # lengthening a shorter remaining countdown).
   @all_voted_countdown_s 5
+  # How long a game outlives its last host screen: long enough for a refresh
+  # or a dropped connection to come back. A host screen that left to sign in to
+  # a music service gets as long as that sign-in may take (the OAuth state's
+  # lifetime in `WhoseJamWeb.MusicAuthController`).
+  @host_grace_ms 30 * 1000
+  @sign_in_grace_ms 15 * 60 * 1000
 
   @guess_question_decoys 3
 
@@ -111,7 +132,13 @@ defmodule WhoseJam.Game.Server do
             # listening-delay timer (:revealing -> :voting)
             vote_delay_ref: nil,
             finished_ref: nil,
-            winners: nil
+            winners: nil,
+            # monitor ref => pid of each open host screen
+            host_screens: %{},
+            # {token, timer} while no host screen is open
+            host_gone: nil,
+            # when a host screen that left to sign in must be back by (ms)
+            host_away_until_ms: nil
 
   # =========================================================================
   # Boot
@@ -318,6 +345,30 @@ defmodule WhoseJam.Game.Server do
     {:reply, {:error, :not_finished}, state}
   end
 
+  def handle_call(:end_game, _from, state) do
+    {:stop, :normal, :ok, announce_end(state, :host_ended)}
+  end
+
+  # =========================================================================
+  # Host screens
+  # =========================================================================
+
+  # A host screen is back (or opened): the game no longer counts down to its
+  # end, and any sign-in it was away for is over.
+  def handle_call({:attach_host, pid}, _from, state) when is_pid(pid) do
+    screens =
+      if pid in Map.values(state.host_screens),
+        do: state.host_screens,
+        else: Map.put(state.host_screens, Process.monitor(pid), pid)
+
+    state = %{cancel_host_gone(state) | host_screens: screens, host_away_until_ms: nil}
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:host_signing_in, _from, state) do
+    {:reply, :ok, %{state | host_away_until_ms: now_ms() + sign_in_grace_ms()}}
+  end
+
   def handle_call({:presence_diff, connected_ids}, _from, state) do
     connected = MapSet.new(connected_ids)
 
@@ -392,14 +443,33 @@ defmodule WhoseJam.Game.Server do
   end
 
   def handle_info(:finished_shutdown, %{phase: :finished} = state) do
-    {:stop, :normal, state}
+    {:stop, :normal, announce_end(state, :idle)}
+  end
+
+  # The last host screen closed: give it the grace to come back.
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{host_screens: screens} = state)
+      when is_map_key(screens, ref) do
+    state = %{state | host_screens: Map.delete(screens, ref)}
+
+    if map_size(state.host_screens) == 0,
+      do: {:noreply, schedule_host_gone(state, host_grace_ms())},
+      else: {:noreply, state}
+  end
+
+  # No host screen came back in time. One away signing in may still be on its
+  # way (whichever of its departure and the sign-in notice came first).
+  def handle_info({:host_gone, token}, %{host_gone: {token, _timer}} = state) do
+    case away_ms_left(state) do
+      ms when ms > 0 -> {:noreply, schedule_host_gone(state, ms)}
+      _none -> {:stop, :normal, announce_end(state, :host_left)}
+    end
   end
 
   def handle_info(:ttl_check, state) do
     idle_ms = now_ms() - state.last_activity_ms
 
     if state.phase == :lobby and idle_ms >= @abandoned_ttl_ms do
-      {:stop, :normal, state}
+      {:stop, :normal, announce_end(state, :idle)}
     else
       schedule(:ttl_check, @abandoned_ttl_ms)
       {:noreply, state}
@@ -758,7 +828,7 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp finish(state) do
-    ref = schedule(:finished_shutdown, @finished_shutdown_ms)
+    ref = schedule(:finished_shutdown, env_ms(:finished_shutdown_ms, @finished_shutdown_ms))
 
     %{
       state
@@ -991,6 +1061,7 @@ defmodule WhoseJam.Game.Server do
       total: length(state.rounds),
       style: round.style,
       song: round.song,
+      prompt: public_prompt(round),
       choices: round.choices,
       votes_received: map_size(round.votes),
       voters: Map.keys(round.votes),
@@ -1021,6 +1092,13 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp round_view(_state), do: nil
+
+  # The prompt the song was picked for, shown from the start of a :guess_who
+  # round so the room knows what the question was. A :guess_question round's
+  # prompt is what voters guess, so it only appears at the reveal, as
+  # `correct_prompt`.
+  defp public_prompt(%{style: :guess_who, question: %{prompt: prompt}}), do: prompt
+  defp public_prompt(_round), do: nil
 
   # The prompt of the correct question, for guess_question reveals. The correct
   # question is always among the round's choices (see `guess_question_choices/3`).
@@ -1183,6 +1261,10 @@ defmodule WhoseJam.Game.Server do
 
   defp all_voted_countdown_ms, do: env_ms(:all_voted_countdown_ms, @all_voted_countdown_s * 1000)
 
+  defp host_grace_ms, do: env_ms(:host_grace_ms, @host_grace_ms)
+
+  defp sign_in_grace_ms, do: env_ms(:sign_in_grace_ms, @sign_in_grace_ms)
+
   defp env_ms(key, default) do
     case Application.get_env(:whose_jam, key) do
       ms when is_integer(ms) and ms >= 0 -> ms
@@ -1226,6 +1308,23 @@ defmodule WhoseJam.Game.Server do
   defp cancel(nil), do: :ok
   defp cancel(ref), do: Process.cancel_timer(ref)
 
+  # The token tells a live countdown from a stale one already in the mailbox.
+  defp schedule_host_gone(state, ms) do
+    state = cancel_host_gone(state)
+    token = make_ref()
+    %{state | host_gone: {token, schedule({:host_gone, token}, ms)}}
+  end
+
+  defp cancel_host_gone(%{host_gone: {_token, timer}} = state) do
+    cancel(timer)
+    %{state | host_gone: nil}
+  end
+
+  defp cancel_host_gone(state), do: state
+
+  defp away_ms_left(%{host_away_until_ms: until}) when is_integer(until), do: until - now_ms()
+  defp away_ms_left(_state), do: 0
+
   # --- misc -----------------------------------------------------------------
 
   defp broadcast(state) do
@@ -1235,6 +1334,13 @@ defmodule WhoseJam.Game.Server do
       {:game_state, public_view(state)}
     )
 
+    state
+  end
+
+  # The last word before the process stops: every screen learns the game is
+  # over rather than waiting on a server that is gone.
+  defp announce_end(state, reason) do
+    Phoenix.PubSub.broadcast(WhoseJam.PubSub, topic(state.code), {:game_ended, reason})
     state
   end
 

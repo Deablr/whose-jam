@@ -59,6 +59,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       scores = play_every_round(devices)
 
       assert_final_scores(devices, scores)
+      exit_game(devices)
     end)
   end
 
@@ -154,9 +155,14 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       {submitter, submitter_name, _, _, _} = List.keyfind!(@players, song, 4)
       votes = votes_for(round, submitter)
 
+      # A guess-who round says what the song was picked for, on the TV and
+      # the phones alike.
+      prompt = text_of(devices.host, "#round-prompt blockquote")
+
       devices
       |> Map.fetch!(submitter)
       |> assert_has("h1", text: "This one's yours", timeout: @wait)
+      |> assert_has("#round-prompt blockquote", text: prompt)
 
       in_parallel(votes, fn {voter, choice} ->
         {_, choice_name, _, _, _} = List.keyfind!(@players, choice, 0)
@@ -227,6 +233,23 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       |> Map.fetch!(key)
       |> assert_has("h1", text: "That's a wrap!")
     end
+  end
+
+  # The host closes the room from the final scoreboard (its confirmation is
+  # accepted): the TV goes back to the start page, and every phone is told
+  # the game is over while keeping its final scores.
+  defp exit_game(devices) do
+    devices.host
+    |> click_button("Exit game")
+    |> assert_has("[role=alert]", text: "Thanks for playing!", timeout: @wait)
+    |> assert_has("button", text: "Choose a vibe")
+
+    in_parallel(@players, fn {key, _name, _device, _search, _song} ->
+      devices
+      |> Map.fetch!(key)
+      |> assert_has("#game-ended", text: "The host has ended the game.", timeout: @wait)
+      |> assert_has("h1", text: "That's a wrap!")
+    end)
   end
 
   # --- helpers ---------------------------------------------------------------

@@ -3,7 +3,9 @@ defmodule WhoseJamWeb.MusicAuthController do
   Host connect flow for `:oauth_redirect` music providers (Spotify, YouTube).
 
   `authorize/2` sends the host off to the provider with the room code and
-  provider id signed into the `state` parameter; `callback/2` recovers them,
+  provider id signed into the `state` parameter, first telling the game its
+  host screen is away signing in (`WhoseJam.Game.host_signing_in/1`), so
+  leaving for the provider's page doesn't end the game; `callback/2` recovers them,
   hands the provider's `connect/1` the auth code, and stores the result on the
   game via `WhoseJam.Game.set_music/3`. Every failure branch redirects back to
   the host screen (or `/`) with a clear flash — never a crash page.
@@ -30,8 +32,15 @@ defmodule WhoseJamWeb.MusicAuthController do
       state = Phoenix.Token.sign(conn, @state_salt, %{room: room_code, provider: provider_id})
 
       case provider.authorize_url(state, redirect_uri(provider)) do
-        {:ok, url} -> redirect(conn, external: url)
-        {:error, _} -> failure(conn, :not_configured, provider, room_code)
+        {:ok, url} ->
+          # The host screen is about to leave for the provider's page; that
+          # must not count as the host closing it. Best effort: if the game
+          # has just gone, the callback says so.
+          _ = Game.host_signing_in(room_code)
+          redirect(conn, external: url)
+
+        {:error, _} ->
+          failure(conn, :not_configured, provider, room_code)
       end
     else
       {:error, reason, provider} -> failure(conn, reason, provider, room_code)

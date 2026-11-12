@@ -33,54 +33,57 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 10. As a host, I want to start the game only when at least three players have joined, so that the guessing mechanic is non-trivial — with a "players needed to start" setting I can lower to two for development or very small groups.
 11. As a host, I want to skip a song mid-round (with a confirmation), so that a broken link or regrettable pick doesn't ruin the vibe.
 12. As a host, I want to join my own game as a player from my phone, so that I can participate.
+13. As a host, I want an "Exit game" button on the final scoreboard, so that I can close the room and everyone's phones know the game is over.
+14. As a host, I want the game to end for everyone when I close the host screen (after a short grace for a refresh or a dropped connection, and never just because I'm signing in to a music service), so that players aren't left waiting on a game nobody is running.
 
 ### Player — joining
 
-13. As a player, I want to join a game by scanning a QR code with my phone, so that I don't have to type a URL.
-14. As a player, I want to join a game by typing a short room code, so that I can still join if my camera is fussy.
-15. As a player, I want to pick a display name with no account creation required, so that I can start playing within seconds.
-16. As a player, I want my device to remember the game I joined, so that if I refresh or lock my phone I can rejoin without losing my spot.
-17. As a player, I want to know if I've joined as a player or as audience, so that I'm not surprised when I don't get a form.
+15. As a player, I want to join a game by scanning a QR code with my phone, so that I don't have to type a URL.
+16. As a player, I want to join a game by typing a short room code, so that I can still join if my camera is fussy.
+17. As a player, I want to pick a display name with no account creation required, so that I can start playing within seconds.
+18. As a player, I want my device to remember the game I joined, so that if I refresh or lock my phone I can rejoin without losing my spot.
+19. As a player, I want to know if I've joined as a player or as audience, so that I'm not surprised when I don't get a form.
 
 ### Player — submitting songs
 
-18. As a player, I want to see my assigned questions one at a time on my phone, so that I can focus on one submission at a time.
-19. As a player, I want to search the music service directly from the submission form, so that I can find songs without leaving the app.
-20. As a player, I want the search results to show song title, artist, and album art, so that I can confirm I'm picking the right version.
-21. As a player, I want to see a live countdown for the submission phase, so that I know how much time I have.
-22. As a player, I want to change my song pick before the submission timer ends, so that I can second-guess myself.
-23. As a player, I want to be told if the submission timer expires before I finish, so that I understand why my unfinished questions won't be in the game.
+20. As a player, I want to see my assigned questions one at a time on my phone, so that I can focus on one submission at a time.
+21. As a player, I want to search the music service directly from the submission form, so that I can find songs without leaving the app.
+22. As a player, I want the search results to show song title, artist, and album art, so that I can confirm I'm picking the right version.
+23. As a player, I want to see a live countdown for the submission phase, so that I know how much time I have.
+24. As a player, I want to change my song pick before the submission timer ends, so that I can second-guess myself.
+25. As a player, I want to be told if the submission timer expires before I finish, so that I understand why my unfinished questions won't be in the game.
 
 ### Voting
 
-24. As a voter (player or audience), I want to see the currently-playing song's title, artist, and art on my phone, so that I have context for my guess.
-25. As a voter, I want to pick from the list of *players* (not audience members) when guessing who submitted, so that the choices are scoped correctly.
-26. As a voter for a guess-the-question round, I want to pick from a list of candidate questions instead of players, so that the alternative style works.
-27. As a voter, I want a visible countdown for voting, so that I know how long I have.
-28. As a voter, I want my vote locked in once submitted (no changes), so that the game keeps moving — unless the host has enabled vote-changing in the settings.
-29. As a voter, I want to see on the TV that my vote was received, so that I know I'm not holding things up.
+26. As a voter (player or audience), I want to see the currently-playing song's title, artist, and art on my phone, so that I have context for my guess.
+27. As a voter in a guess-who round, I want to see the prompt the song was picked for on the TV and on my phone, so that I know what the question was.
+28. As a voter, I want to pick from the list of *players* (not audience members) when guessing who submitted, so that the choices are scoped correctly.
+29. As a voter for a guess-the-question round, I want to pick from a list of candidate questions instead of players, so that the alternative style works.
+30. As a voter, I want a visible countdown for voting, so that I know how long I have.
+31. As a voter, I want my vote locked in once submitted (no changes), so that the game keeps moving — unless the host has enabled vote-changing in the settings.
+32. As a voter, I want to see on the TV that my vote was received, so that I know I'm not holding things up.
 
 ### TV screen
 
-30. As a host, I want the TV screen to always show the current game state clearly, so that people looking up from their phones can follow along.
-31. As a host, I want the TV to display the room code and QR code during the lobby, so that latecomers can still join.
-32. As a host, I want the TV to display the currently-playing song's title, artist, and album art during rounds, so that everyone has shared context.
-33. As a host, I want the TV to reveal the correct submitter after each vote, with a brief moment for reactions, so that the room can laugh at surprising picks.
-34. As a host, I want the TV to show the running scoreboard between rounds, so that tension builds through the game.
-35. As a host, I want the TV to show a final scoreboard at the end, so that there's a clear winner.
-36. As a host, I want the TV to separate player and audience scores visually, so that the "official" winner is always a submitter.
+33. As a host, I want the TV screen to always show the current game state clearly, so that people looking up from their phones can follow along.
+34. As a host, I want the TV to display the room code and QR code during the lobby, so that latecomers can still join.
+35. As a host, I want the TV to display the currently-playing song's title, artist, and album art during rounds, so that everyone has shared context.
+36. As a host, I want the TV to reveal the correct submitter after each vote, with a brief moment for reactions, so that the room can laugh at surprising picks.
+37. As a host, I want the TV to show the running scoreboard between rounds, so that tension builds through the game.
+38. As a host, I want the TV to show a final scoreboard at the end, so that there's a clear winner.
+39. As a host, I want the TV to separate player and audience scores visually, so that the "official" winner is always a submitter.
 
 ### Disconnection and reconnection
 
-37. As a player, I want to reconnect automatically if my phone briefly loses signal, so that I don't have to rejoin manually.
-38. As a host, I want the game to not stall on a disconnected player, so that one bad phone doesn't ruin the evening.
-39. As a host, I want disconnected players' already-submitted songs to stay in the game, so that their contributions aren't wasted.
-40. As a player, I want to silently drop into whatever is happening now if I reconnect mid-game, so that I don't replay old rounds I missed.
+40. As a player, I want to reconnect automatically if my phone briefly loses signal, so that I don't have to rejoin manually.
+41. As a host, I want the game to not stall on a disconnected player, so that one bad phone doesn't ruin the evening.
+42. As a host, I want disconnected players' already-submitted songs to stay in the game, so that their contributions aren't wasted.
+43. As a player, I want to silently drop into whatever is happening now if I reconnect mid-game, so that I don't replay old rounds I missed.
 
 ### Content and themes
 
-41. As a host, I want to choose between at least two themed pools in v1 (one single-style, one multi-style), so that I can see the breadth of the game.
-42. As a host, I want the multi-style pool to group questions into sub-rounds by style, so that the flow alternates between answering and playing multiple times per game.
+44. As a host, I want to choose between at least two themed pools in v1 (one single-style, one multi-style), so that I can see the breadth of the game.
+45. As a host, I want the multi-style pool to group questions into sub-rounds by style, so that the flow alternates between answering and playing multiple times per game.
 
 ## Implementation Decisions
 
@@ -98,7 +101,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - Submitted songs are validated server-side against the room's music provider: the URI must be a well-formed song URI of that provider (for Spotify, `spotify:track:<22 alphanumerics>`; a URI from any other provider is rejected too) or the submission is rejected; name/artist are trimmed and capped at 200 characters; album art is kept only if it is hosted where that provider's art lives (for Spotify, its image CDN).
 - All LiveViews (host screen, player) subscribe to the room topic; they are pure renderers of state received from the GenServer.
 - `Phoenix.Presence` tracks connected clients per room. Players absent from Presence for a short threshold are marked AFK and excluded from "waiting on N players" counts, but their existing submissions stay live.
-- When a game ends (final scoreboard shown + short idle timeout), the GenServer shuts down and its state is discarded.
+- A game ends when the host exits it from the final scoreboard, when no host screen has been open for 30 seconds (each open host screen is monitored by the GenServer; a host screen that left for a music service's sign-in page gets 15 minutes, so connecting one never ends the game), or after a short idle timeout (an abandoned lobby, or a final scoreboard left up). Every screen is told: phones say the game is over (a finished game keeps its final scores on screen) and host screens return to the start page. Then the GenServer shuts down and its state is discarded.
 
 ### Data model
 
@@ -115,11 +118,11 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 - Each round's song starts playing with votes closed for a listening delay (default 10s, configurable). Voting then opens while the song keeps playing, with no countdown yet.
 - The vote countdown (default 30s, configurable) starts once a majority of eligible (connected, non-submitter) voters have voted — or when the song ends, so a round can never stall. Once every eligible voter has voted, the countdown drops to 5s (never lengthening a shorter one). When it hits zero the round moves to the reveal. Voters who don't vote earn no points that round.
 - The host can skip songs via a button in the host screen's control bar. No pause feature in v1.
-- After `:finished`, the TV offers a "Start a new game with these players" option, which resets state but preserves the player roster.
+- After `:finished`, the TV offers a "Start a new game with these players" option, which resets state but preserves the player roster, and an "Exit game" button, which ends the game for everyone.
 
 ### Question styles (v1)
 
-- **`:guess_who` (primary)** — a player submits a song for a prompt; voters select which player submitted it. Fully implemented.
+- **`:guess_who` (primary)** — a player submits a song for a prompt; voters select which player submitted it. The TV and phones show the prompt throughout the round, so the room knows what the question was (binning gives each prompt at least two submitters when feasible, so the prompt alone doesn't give the submitter away). Fully implemented.
 - **`:guess_question` (POC)** — a player submits a song for a prompt; voters select which prompt the song was submitted for, from a list of candidates drawn from the pool. Minimally implemented to demonstrate the multi-style architecture; present in one of the two shipped pools.
 - **`:guess_for_player` (reserved)** — enum value present in the schema but no runtime implementation in v1.
 - Styles are dispatched via pattern matching in round-handling code; no rules engine.
@@ -128,7 +131,7 @@ Question pools can bundle multiple question *styles*. v1 ships one fully playabl
 
 - Two pools shipped with v1:
   - A **single-style pool** consisting entirely of `:guess_who` questions (one sub-round).
-  - A **multi-style pool** combining `:guess_who` and `:guess_question` questions (two sub-rounds when sub-rounds are enabled).
+  - A **multi-style pool** combining `:guess_who` and `:guess_question` questions (two sub-rounds when sub-rounds are enabled: guess-the-prompt first, then guess-who).
 - Pools are seeded from source-controlled data; content written by the product owner. No user-generated questions in v1.
 - Each pool includes a small set of `is_example: true` questions shown as previews to hosts, so sample questions shown in the lobby never overlap with the actual game.
 
@@ -201,7 +204,7 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 
 ### Host screen architecture
 
-- The TV display and host controls are **one screen** at `/host/:code` (`/tv/:code` is kept as an alias). It is not bound to host identity; any browser can open it. The host's typical setup is a laptop showing `/host/:code` on the TV, plus `/play/:code` on their own phone as a player.
+- The TV display and host controls are **one screen** at `/host/:code` (`/tv/:code` is kept as an alias). It is not bound to host identity; any browser can open it, and the game lasts while at least one is open. The host's typical setup is a laptop showing `/host/:code` on the TV, plus `/play/:code` on their own phone as a player.
 - The screen renders the shared game state big and dark for the room. Host controls live in a slim top bar: music-service status (prompts to connect when none is connected), skip song (during rounds), and a Settings button.
 - Settings open on demand as a panel with two sections: **Music service** (connect / reconnect / switch account) and **Game** (the host-facing settings — including players needed to start — plus the estimated runtime; locked once the game starts).
 - In the lobby, if no music service that can play is connected (Spotify with Premium, or YouTube signed in), a "Connect your music" prompt opens automatically (dismissible), and the Start button explains what's missing. Playback failures (e.g. a browser without DRM support) are shown in the lobby, before the game starts.
@@ -219,15 +222,15 @@ What the proofs of concept needed beyond Spotify: a `video?` capability (kept, a
 - Tests target *external behavior* of a module, not its internal structure. A test should still pass after a full internal refactor as long as the module's contract is preserved.
 - Deep, pure modules are prioritized for unit tests because they offer the highest test-value-per-line-of-test.
 - The GenServer is tested through its public event API, not by peeking at internal state. Tests send events and observe the resulting public state (via the same query functions LiveViews will use).
-- `Phoenix.LiveViewTest` tests, live provider API (Spotify, Google/YouTube) tests and Registry tests are out of scope in v1 — LiveView unit tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. LiveViews are instead exercised end to end: a browser suite plays a whole game (host plus 8 players across phones, tablets and laptops) against the real server and a containerized Postgres, faking only the music provider, and records a combined video. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller is tested without any provider API (signed-state guard rails, and the authorize-to-callback flow via a stub redirect provider), and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
+- `Phoenix.LiveViewTest` tests, live provider API (Spotify, Google/YouTube) tests and Registry tests are out of scope in v1 — LiveView unit tests are brittle, provider tests require mocking external APIs that are unstable for v1, and the Registry is a thin wrapper around Phoenix.Registry. LiveViews are instead exercised end to end: a browser suite plays a whole game (host plus 8 players across phones, tablets and laptops) against the real server and a containerized Postgres, faking only the music provider, and records a combined video. What *is* tested is the provider abstraction itself: one shared contract test runs against every enabled provider (URI/art validation, cross-provider rejection, eligibility, JSON-safe client config), the facade's search caching/normalization is tested with a stub provider, the OAuth controller is tested without any provider API (signed-state guard rails, and the authorize-to-callback flow via a stub redirect provider, including that leaving to sign in doesn't end the game), and `Game.Server` plays the same game on every provider. Spotify's response mapping is manual-playtest only.
 
 ### Modules with tests
 
 - **`Game.Binning`** — correctness of assignment (every player gets their target; no player gets the same question twice), overlap guarantee (every selected question has ≥2 submitters whenever mathematically feasible), edge cases (minimum player count, more questions requested than exist).
 - **`Game.Scoring`** — a correct guess awards +1; a submitter gains +1 per fooled non-audience vote; audience cannot be "fooled onto" for scoring purposes; all-correct and all-wrong rounds produce sane totals; a round with zero votes produces zero points.
 - **`Game.Config`** — derived timings at representative player counts; overrides override; default settings produce a game whose total estimated runtime is within a configured band of the 20-minute target.
-- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than the room provider's art host are dropped; songs from another provider are rejected.
-- **Browser end-to-end** (`mix test.e2e`, tagged `:e2e`, not part of `mix test`) — a host and 8 players on phones, tablets and laptops play a whole game; the final scoreboard is checked against an independently computed tally.
+- **`Game.Server`** — state machine happy path (lobby → answering → playing → finished); invalid events in the wrong state are rejected without crashing; disconnection during answering preserves prior submissions; disconnection during voting can complete a majority / everyone-voted; vote-timer expiry advances the round even with missing votes; submitted album-art URLs other than the room provider's art host are dropped; songs from another provider are rejected; guess-who rounds show their prompt and guess-question rounds keep it hidden until the reveal; the game ends, telling every screen, when the host ends it, when its last host screen stays closed past the grace (not when one comes back in time, and not while the host is signing in to a music service), and when a finished game sits idle.
+- **Browser end-to-end** (`mix test.e2e`, tagged `:e2e`, not part of `mix test`) — a host and 8 players on phones, tablets and laptops play a whole game; the final scoreboard is checked against an independently computed tally, and the host's Exit game button tells every phone the game is over.
 
 ### Prior art
 

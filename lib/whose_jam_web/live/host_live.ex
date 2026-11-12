@@ -47,6 +47,15 @@ defmodule WhoseJamWeb.HostLive do
   voting-safety timer starts the countdown, so a dead player never wedges the
   game. Providers with `video?/0` get the player shown on screen, where the
   album art would be, while a song plays.
+
+  ## Ending the game
+
+  Each connected host screen attaches itself to the game
+  (`WhoseJam.Game.attach_host/2`), so closing the last one ends the game for
+  everyone once a short grace passes. The final scoreboard's Exit game button
+  ends it at once (`WhoseJam.Game.end_game/1`). Either way the server
+  broadcasts `{:game_ended, reason}`, and every host screen goes back to the
+  start page.
   """
   use WhoseJamWeb, :live_view
 
@@ -58,6 +67,9 @@ defmodule WhoseJamWeb.HostLive do
   def mount(%{"code" => code}, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      # The game lasts while a host screen is open. With no game under this
+      # code there is nothing to attach to, and the screen says so.
+      _ = Game.attach_host(code, self())
     end
 
     join_url = url(~p"/play/#{code}")
@@ -93,6 +105,12 @@ defmodule WhoseJamWeb.HostLive do
       if music_of(socket.assigns.view) != previous, do: assign_playback(socket), else: socket
 
     {:noreply, socket}
+  end
+
+  # The game is over and gone, whichever host screen ended it: back to the
+  # start, where the host can set up the next one.
+  def handle_info({:game_ended, reason}, socket) do
+    {:noreply, socket |> put_flash(:info, ended_message(reason)) |> push_navigate(to: ~p"/")}
   end
 
   def handle_info(:refresh_token, socket) do
@@ -161,6 +179,15 @@ defmodule WhoseJamWeb.HostLive do
     {:noreply, socket}
   end
 
+  # Ending the game broadcasts `{:game_ended, _}`, which takes every host
+  # screen, this one included, back to the start.
+  def handle_event("exit_game", _params, socket) do
+    case Game.end_game(socket.assigns.code) do
+      :ok -> {:noreply, socket}
+      {:error, _reason} -> {:noreply, push_navigate(socket, to: ~p"/")}
+    end
+  end
+
   def handle_event("song_ended", _params, socket) do
     Game.song_ended(socket.assigns.code)
     {:noreply, socket}
@@ -209,6 +236,10 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   defp config_overrides(_params), do: %{}
+
+  defp ended_message(:host_ended), do: "Thanks for playing! That game is over."
+  defp ended_message(:idle), do: "That game closed after sitting idle."
+  defp ended_message(_reason), do: "That game has ended."
 
   defp start_error(:not_enough_players), do: "Not enough players have joined yet."
   defp start_error(:not_authenticated), do: "Connect a music service first."
@@ -1061,6 +1092,18 @@ defmodule WhoseJamWeb.HostLive do
           <p class="text-3xl text-jam-cream/70 mt-3 font-bold">{@view.round.song.artist}</p>
         </div>
 
+        <%!-- Guess-who rounds say what the song was picked for. --%>
+        <figure
+          :if={@view.round.prompt}
+          id="round-prompt"
+          class="space-y-2 border-l-4 border-jam-pink pl-5"
+        >
+          <figcaption class="jam-eyebrow">The prompt</figcaption>
+          <blockquote class="font-display text-3xl xl:text-4xl leading-tight text-jam-cream/90">
+            {@view.round.prompt}
+          </blockquote>
+        </figure>
+
         <%= case @view.round_state do %>
           <% :revealing -> %>
             <div class="space-y-2">
@@ -1195,8 +1238,17 @@ defmodule WhoseJamWeb.HostLive do
         </div>
       </div>
 
-      <div>
+      <div class="flex flex-wrap items-center gap-4">
         <button phx-click="play_again" class="jam-btn text-xl">Play again with these players</button>
+        <button
+          id="exit-game"
+          type="button"
+          phx-click="exit_game"
+          data-confirm="End the game for everyone?"
+          class="jam-btn jam-btn-ghost text-xl transition-colors hover:bg-jam-cream/15"
+        >
+          <.icon name="hero-arrow-right-start-on-rectangle" class="size-6" /> Exit game
+        </button>
       </div>
     </div>
     """

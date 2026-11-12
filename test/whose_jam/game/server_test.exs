@@ -726,6 +726,184 @@ defmodule WhoseJam.Game.ServerTest do
     end
   end
 
+  describe "the round's prompt" do
+    test "guess_who rounds show the prompt the song was picked for, from the start" do
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3, %{vote_delay_s: 1})
+      :ok = Game.start_game(code)
+
+      # Each player's single prompt, keyed by the player (= their song's name).
+      prompts = Map.new(ids, fn pid -> {pid, hd(submit_all(code, pid)).prompt} end)
+
+      view = Game.get_state(code)
+      assert view.round_state == :revealing
+      assert view.round.prompt == Map.fetch!(prompts, submitter_of(view))
+
+      :ok = Game.song_ended(code)
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert view.round.prompt == Map.fetch!(prompts, submitter_of(view))
+    end
+
+    test "guess_question rounds never show it as context: the prompt is the answer" do
+      theme = insert_theme([:guess_question])
+      insert_questions(theme, :guess_question, 8)
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      :ok = Game.song_ended(code)
+
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert view.round.prompt == nil
+
+      submitter = submitter_of(view)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      choice = hd(view.round.choices).id
+      for p <- view.players, p.id != submitter, do: Game.cast_vote(code, p.id, choice)
+
+      # Revealed as the answer instead.
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
+      assert round.prompt == nil
+      assert is_binary(round.correct_prompt)
+    end
+  end
+
+  describe "the end of a game" do
+    # A stand-in for a host screen's LiveView process.
+    defp host_screen(id) do
+      start_supervised!(Supervisor.child_spec({Agent, fn -> nil end}, id: id))
+    end
+
+    # Hear the room's broadcasts and see the game's process stop.
+    defp watch(code) do
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      Process.monitor(which_pid(code))
+    end
+
+    test "end_game from the final scoreboard tells every screen and stops the game" do
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      ref = watch(code)
+      for pid <- ids, do: submit_all(code, pid)
+      assert play_to_finish(code).phase == :finished
+
+      assert Game.end_game(code) == :ok
+
+      assert_receive {:game_ended, :host_ended}
+      assert_receive {:DOWN, ^ref, :process, _pid, :normal}
+      assert Game.get_state(code) == nil
+      assert Game.end_game(code) == {:error, :not_found}
+    end
+
+    test "closing the last host screen ends the game once the grace runs out" do
+      put_test_env(:host_grace_ms, 50)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:host))
+      ref = watch(code)
+
+      stop_supervised!(:host)
+
+      assert_receive {:game_ended, :host_left}, 1000
+      assert_receive {:DOWN, ^ref, :process, _pid, :normal}, 1000
+    end
+
+    test "a host screen that comes back within the grace keeps the game going" do
+      put_test_env(:host_grace_ms, 100)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:before_refresh))
+      watch(code)
+
+      stop_supervised!(:before_refresh)
+      :ok = Game.attach_host(code, host_screen(:after_refresh))
+
+      refute_receive {:game_ended, _}, 300
+      assert Game.get_state(code).phase == :lobby
+    end
+
+    test "the game lasts while any host screen is open" do
+      put_test_env(:host_grace_ms, 50)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:tv))
+      :ok = Game.attach_host(code, host_screen(:laptop))
+      watch(code)
+
+      stop_supervised!(:tv)
+      refute_receive {:game_ended, _}, 200
+
+      stop_supervised!(:laptop)
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "a host screen away signing in to a music service gets the longer grace" do
+      put_test_env(:host_grace_ms, 50)
+      put_test_env(:sign_in_grace_ms, 600)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:host))
+      watch(code)
+
+      :ok = Game.host_signing_in(code)
+      stop_supervised!(:host)
+
+      # Well past the usual grace...
+      refute_receive {:game_ended, _}, 300
+      # ...but a sign-in that never comes back still ends the game.
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "back from signing in, the host screen has the usual grace again" do
+      put_test_env(:host_grace_ms, 50)
+      put_test_env(:sign_in_grace_ms, 5_000)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.attach_host(code, host_screen(:host))
+      watch(code)
+
+      :ok = Game.host_signing_in(code)
+      stop_supervised!(:host)
+      :ok = Game.attach_host(code, host_screen(:host_again))
+      stop_supervised!(:host_again)
+
+      assert_receive {:game_ended, :host_left}, 1000
+    end
+
+    test "a game no host screen has opened is not ended for want of one" do
+      put_test_env(:host_grace_ms, 50)
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 3)
+      watch(code)
+
+      refute_receive {:game_ended, _}, 200
+      assert Game.get_state(code).phase == :lobby
+    end
+
+    test "only a pid can attach as a host screen" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+
+      assert Game.attach_host(code, "not a pid") == {:error, :invalid}
+      assert Game.attach_host("NOPE", self()) == {:error, :not_found}
+    end
+
+    test "a finished game left alone closes and tells every screen" do
+      put_test_env(:finished_shutdown_ms, 50)
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      ref = watch(code)
+      for pid <- ids, do: submit_all(code, pid)
+      assert play_to_finish(code).phase == :finished
+
+      assert_receive {:game_ended, :idle}, 1000
+      assert_receive {:DOWN, ^ref, :process, _pid, :normal}, 1000
+    end
+  end
+
   describe "player_view :me flags" do
     test "own_round? is true only for the current round's submitter during voting" do
       theme = guess_who_theme()
@@ -810,6 +988,7 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.song_ended(code) == {:error, :not_playing}
       assert Game.skip_song(code) == {:error, :not_playing}
       assert Game.play_again(code) == {:error, :not_finished}
+      assert Game.attach_host(code, :not_a_pid) == {:error, :invalid}
       assert Game.set_config(code, %{vote_timer_s: 5}) == :ok
 
       # Process survived every invalid event.

@@ -12,6 +12,12 @@ defmodule WhoseJam.Game do
   Callers never need to know a game's pid or hold a reference — everything is
   addressed by room code. When a code has no live game, reads return `nil` and
   commands return `{:error, :not_found}`.
+
+  Besides `{:game_state, view}`, the room topic carries one last message when
+  a game ends (`end_game/1`, its last host screen closing — see
+  `attach_host/2` — or sitting idle): `{:game_ended, reason}`, with `reason`
+  one of `:host_ended`, `:host_left` or `:idle`. It is the last thing the game
+  says: its process stops right after sending it.
   """
 
   alias WhoseJam.Content
@@ -154,6 +160,34 @@ defmodule WhoseJam.Game do
   @doc "Reset a finished game back to the lobby, keeping the player roster."
   @spec play_again(String.t()) :: :ok | {:error, term()}
   def play_again(code), do: command(code, :play_again)
+
+  @doc """
+  Host action: end the game for everyone now. The server broadcasts
+  `{:game_ended, :host_ended}` on the room topic and stops; nothing is kept.
+  """
+  @spec end_game(String.t()) :: :ok | {:error, term()}
+  def end_game(code), do: command(code, :end_game)
+
+  @doc """
+  Count `pid` (a host screen's LiveView process) as an open host screen of
+  `code` for as long as it lives.
+
+  The game lasts while a host screen is open. When the last one closes and
+  none attaches again within 30 seconds, the game ends: the server broadcasts
+  `{:game_ended, :host_left}` and stops. A game no host screen has attached to
+  yet is never ended this way.
+  """
+  @spec attach_host(String.t(), pid()) :: :ok | {:error, term()}
+  def attach_host(code, pid), do: command(code, {:attach_host, pid})
+
+  @doc """
+  The host screen of `code` is leaving for a music service's sign-in page
+  (the OAuth redirect). While it is away, the game waits up to 15 minutes for
+  a host screen to come back instead of 30 seconds, so connecting a music
+  service never ends the game.
+  """
+  @spec host_signing_in(String.t()) :: :ok | {:error, term()}
+  def host_signing_in(code), do: command(code, :host_signing_in)
 
   @doc """
   Inform the server which participant ids are currently connected (LiveViews

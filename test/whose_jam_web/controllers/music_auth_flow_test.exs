@@ -235,4 +235,30 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "can't switch music service"
     assert Game.get_state(room).music.id == :mock
   end
+
+  # Signing in takes the host screen away to the provider's page, which would
+  # otherwise end the game once the (here shortened) host-screen grace ran out.
+  test "leaving to sign in doesn't end the game", %{conn: conn, room: room} do
+    previous = Application.fetch_env(:whose_jam, :host_grace_ms)
+    Application.put_env(:whose_jam, :host_grace_ms, 50)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, ms} -> Application.put_env(:whose_jam, :host_grace_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :host_grace_ms)
+      end
+    end)
+
+    host = start_supervised!({Agent, fn -> nil end})
+    :ok = Game.attach_host(room, host)
+    Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
+
+    state = authorize(conn, room)
+    stop_supervised!(Agent)
+    refute_receive {:game_ended, _}, 300
+
+    conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
+    assert redirected_to(conn) == "/host/#{room}"
+    assert %{id: :oauth_stub, eligible?: true} = Game.get_state(room).music
+  end
 end
