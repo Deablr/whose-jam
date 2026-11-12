@@ -35,6 +35,15 @@ config :whose_jam, :music_providers, [
   WhoseJam.Music.Providers.Mock
 ]
 
+# Browser end-to-end tests (`mix test.e2e`, see Mix.Tasks.Test.E2e). The
+# endpoint only serves HTTP during that task; it sets `server: true` itself.
+config :phoenix_test,
+  otp_app: :whose_jam,
+  playwright: [
+    browser_pools: [[id: :default_pool, size: 1]],
+    timeout: 10_000
+  ]
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
