@@ -102,14 +102,14 @@ defmodule WhoseJamWeb.HomeLive do
 
     <main
       data-theme="jam"
-      class="jam-stage jam-home min-h-screen flex items-center px-6 sm:px-12 lg:px-20 py-12 lg:py-20"
+      class="jam-stage jam-home min-h-screen flex items-start px-6 pt-12 pb-10 sm:px-12 lg:items-center lg:px-20 lg:py-20"
     >
-      <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
-        <header class="flex flex-col items-center lg:items-start gap-5 lg:gap-6">
+      <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
+        <header class="flex flex-col items-center lg:items-start gap-4 lg:gap-6">
           <img
             src={~p"/images/whose-jam-logo.svg"}
             alt="Whose Jam"
-            class="w-56 sm:w-80 lg:w-full lg:max-w-[min(48rem,62vh*1.33)] lg:-ml-[4%]"
+            class="w-48 sm:w-80 lg:w-full lg:max-w-[min(48rem,62vh*1.33)] lg:-ml-[4%]"
           />
           <p class="text-lg sm:text-2xl xl:text-3xl font-medium leading-snug text-jam-cream/70 max-w-xl xl:max-w-2xl text-balance">
             Everyone picks a song. The room guesses whose jam it is.
@@ -149,7 +149,7 @@ defmodule WhoseJamWeb.HomeLive do
                    where hosting is (a TV), so a screen has one pink button. --%>
               <button
                 type="submit"
-                class="jam-btn lg:bg-jam-cream lg:[--jam-lip:#9d988b] lg:hover:bg-white xl:text-2xl xl:px-10"
+                class="jam-btn lg:bg-jam-cream lg:hover:bg-white xl:text-2xl xl:px-10"
               >
                 Join
               </button>
@@ -159,8 +159,8 @@ defmodule WhoseJamWeb.HomeLive do
           <section class="jam-panel order-2 hidden p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5 lg:order-1 lg:block">
             <div class="space-y-1">
               <h2 class="text-2xl font-extrabold tracking-[-0.015em] xl:text-4xl">Host a game</h2>
-              <p class="font-medium text-jam-cream/65 xl:text-xl">
-                On the TV: pick a theme, and everyone joins on their phone.
+              <p class="font-medium text-balance text-jam-cream/65 xl:text-xl">
+                Pick a theme here on the TV. Everyone joins on their phone.
               </p>
             </div>
             <button
@@ -173,7 +173,7 @@ defmodule WhoseJamWeb.HomeLive do
           </section>
 
           <%!-- On a phone, hosting is a line, not a second panel. --%>
-          <p class="order-3 text-sm font-medium text-jam-cream/55 lg:hidden">
+          <p class="order-3 text-sm font-medium text-jam-cream/65 lg:hidden">
             Hosting? Open this page on the TV, or <button
               type="button"
               phx-click="open_host"
@@ -210,33 +210,33 @@ defmodule WhoseJamWeb.HomeLive do
           aria-label="Close"
           class="jam-chip !px-2.5 cursor-pointer"
         >
-          <.icon name="hero-x-mark" class="size-5" />
+          <.icon name="hero-x-mark-solid" class="size-5" />
         </button>
       </div>
 
-      <ul class="space-y-3">
+      <%!-- Each theme a sheet of paper: its name on orange tape, what it is
+           in a line, and one of its prompts as the players will get it. --%>
+      <ul class="space-y-6 pt-2">
         <li
           :for={theme <- @themes}
-          class="rounded-2xl bg-jam-cream/[0.05] p-5 flex flex-col sm:flex-row gap-5 sm:items-center"
+          class="jam-paper flex flex-col gap-5 bg-jam-cream px-6 pb-6 pt-7 text-jam-ink sm:flex-row sm:items-end"
         >
-          <div class="flex-1 min-w-0 space-y-2">
-            <div class="flex flex-wrap items-center gap-2">
-              <h3 class="font-display text-[1.75rem] leading-none">{theme.name}</h3>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-3">
+              <h3 class="jam-tape jam-tape-orange -ml-1 text-[1.6rem]">{theme.name}</h3>
               <span
                 :if={multi_style?(theme.style_sequence)}
-                class="jam-chip !py-0.5 !px-2.5 text-xs !font-semibold text-jam-cream/80"
+                class="rounded-sm bg-jam-ink/[0.07] px-2 py-0.5 text-xs font-bold text-jam-ink/65"
               >
                 {length(Enum.uniq(theme.style_sequence))} sub-rounds
               </span>
             </div>
-            <%!-- What the host is choosing, in a line: how this one is played. --%>
-            <p class="text-lg font-bold leading-snug text-jam-cream">
-              {how_it_plays(theme.style_sequence)}
+            <p class="mt-3 text-[0.9375rem] font-medium leading-snug text-jam-ink/70">
+              {theme.description}
             </p>
-            <p class="text-[0.9375rem] leading-snug text-jam-cream/65">{theme.description}</p>
             <p
               :if={theme.examples != []}
-              class="text-[0.9375rem] italic leading-snug text-jam-cream/55"
+              class="mt-3 font-display text-[1.35rem] leading-[1.2] text-balance"
             >
               “{hd(theme.examples).prompt}”
             </p>
@@ -244,9 +244,9 @@ defmodule WhoseJamWeb.HomeLive do
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="jam-btn shrink-0 self-start sm:self-center"
+            class="jam-btn shrink-0 self-start bg-jam-ink text-jam-cream hover:bg-black sm:self-end"
           >
-            Host this
+            Host this <.icon name="hero-arrow-right-mini" class="size-5" />
           </button>
         </li>
       </ul>
@@ -255,15 +255,4 @@ defmodule WhoseJamWeb.HomeLive do
   end
 
   defp multi_style?(styles), do: styles |> Enum.uniq() |> length() > 1
-
-  # How a theme plays, from the styles of its rounds, in the order they come.
-  defp how_it_plays(styles) do
-    case Enum.uniq(styles) do
-      [:guess_who] -> "Guess who picked each song."
-      [:guess_question] -> "Guess which prompt each song was picked for."
-      [:guess_question, :guess_who] -> "Guess the prompt, then guess the person."
-      [:guess_who, :guess_question] -> "Guess the person, then guess the prompt."
-      _ -> "Pick songs, then guess."
-    end
-  end
 end

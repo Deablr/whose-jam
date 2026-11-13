@@ -178,7 +178,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   # --- answering -------------------------------------------------------------
 
   # Everyone searches at once, like a real room. The last pick ends the
-  # answering phase, so a phone may skip straight past "Locked in"; the first
+  # answering phase, so a phone may skip straight past "Song picked"; the first
   # round's "Round 1 of 8" is what proves all eight picks landed.
   defp pick_songs(devices) do
     # The first player picks alone, so the stills catch the search before
@@ -189,6 +189,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> Map.fetch!(first)
     |> assert_has("input[name=q]", timeout: @wait)
 
+    assert_has(devices.host, "h1", text: "Heads down", timeout: @wait)
+    Stage.hold(500)
     Stage.snap(devices, [:host, first, :gus], "pick-song")
 
     devices
@@ -368,11 +370,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # (A tie for the most wrong guesses names every one of them.)
       devices.host
       |> assert_has("#forecast", text: "+1")
-      |> assert_has("#forecast", text: "Called the blame: ")
+      |> assert_has("#forecast", text: "Prediction right: ")
       |> assert_has("#forecast", text: name_of(bluff))
 
       phone
-      |> assert_has("#my-blame", text: "+1 Called the blame: ")
+      |> assert_has("#my-blame", text: "+1 Prediction right: ")
       |> assert_has("#my-blame", text: name_of(bluff))
     else
       assert_missed_guess(devices.host, phone, name_of(bluff), fooled)
@@ -385,11 +387,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   defp assert_missed_guess(host, phone, guess, _fooled) do
     # A miss is said plainly, with no points to it.
     host
-    |> assert_has("#forecast", text: "Guessed #{guess} · ")
+    |> assert_has("#forecast", text: "Predicted #{guess}, but ")
     |> assert_has("#forecast", text: "took the blame")
     |> refute_has("#forecast", text: "+")
 
-    assert_has(phone, "#my-blame", text: "Guessed #{guess} · ")
+    assert_has(phone, "#my-blame", text: "Predicted #{guess}, but ")
   end
 
   # The TV's card for the player this voter named lists the voter (the right
