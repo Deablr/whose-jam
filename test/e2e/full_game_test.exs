@@ -199,26 +199,25 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # the phones alike.
       prompt = text_of(devices.host, "#round-prompt blockquote")
 
-      # The picker's phone looks like everyone's (the same headline, names,
-      # button and locked-in screen); only the small line under the headline
-      # gives them their job: whom the room will wrongly blame for their
-      # song. What they lock in is no vote: it is their prediction, worth a
-      # point when it comes true.
+      # The picker's phone keeps everyone's layout (the same names, button
+      # and locked-in screen), but asks them their own question: whom the
+      # room will wrongly blame for their song. What they lock in is no vote:
+      # it is their prediction, worth a point when it comes true.
       bluff = picker_guess(round, submitter)
 
       devices
       |> Map.fetch!(submitter)
       |> assert_has("#phone-voting h1",
-        text: "Whose jam is this?",
+        text: "Who'll get the blame?",
         timeout: @wait
       )
-      |> assert_has("#vote-hint", text: "Your song: call who'll take the blame.")
+      |> assert_has("#vote-hint", text: "Pick who the room will think chose it")
       |> assert_has("#round-prompt blockquote", text: prompt)
       |> refute_has("#phone-voting button", text: submitter_name, exact: true)
       |> click_button(nil, name_of(bluff), exact: true)
       |> click_button("Lock in #{name_of(bluff)}")
       |> assert_has("#phone-voted h1", text: name_of(bluff), exact: true)
-      |> assert_has("#locked-note", text: "Locked in")
+      |> assert_has("#locked-note", text: "Your prediction")
       |> refute_has("#phone-voted", text: "ecoy")
 
       in_parallel(votes, fn {voter, choice} ->
@@ -237,6 +236,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         |> click_button("Lock in #{choice_name}")
         # The phone says back what was picked.
         |> assert_has("#phone-voted h1", text: choice_name, exact: true)
+        |> assert_has("#locked-note", text: "Locked in")
       end)
 
       # The TV names who is in, the picker among them (everyone has

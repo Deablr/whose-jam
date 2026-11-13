@@ -1701,12 +1701,15 @@ defmodule WhoseJamWeb.HostLive do
         <li id="vote-progress" class="pr-2 text-4xl text-jam-cream/75">
           <span class="font-display text-jam-cream">{@received} of {@expected}</span> in
         </li>
+        <%!-- Lit for whoever is in and still here, so the lit chips always
+             add up to the count (someone who locked in and dropped out is
+             neither). --%>
         <li
           :for={player <- @view.players}
           id={"chip-#{player.id}"}
           class={[
             "rounded-full px-5 py-1.5 text-3xl font-bold leading-tight transition-colors duration-300",
-            if(player.id in @view.round.voters,
+            if(player.connected? and player.id in @view.round.voters,
               do: "bg-jam-cream text-jam-ink",
               else: "bg-jam-cream/10 text-jam-cream/60"
             )
@@ -1720,7 +1723,7 @@ defmodule WhoseJamWeb.HostLive do
           id={"chip-#{member.id}"}
           class={[
             "rounded-full px-4 py-1 text-2xl font-bold leading-tight transition-colors duration-300",
-            if(member.id in @view.round.voters,
+            if(member.connected? and member.id in @view.round.voters,
               do: "bg-jam-cream text-jam-ink",
               else: "bg-jam-cream/10 text-jam-cream/60"
             )

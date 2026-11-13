@@ -269,7 +269,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
 
     picker
     |> assert_has("#phone-voting h1",
-      text: "Whose jam is this?",
+      text: "Who'll get the blame?",
       timeout: @wait
     )
     |> click_button(nil, name_of(guess), exact: true)

@@ -1436,11 +1436,11 @@ defmodule WhoseJamWeb.PlayLive do
 
   # Every phone has the same layout while a round is on, the picker's
   # included: the same heading place, names, button and locked-in screen, so
-  # a glance at someone's phone shows its shape, not whose song it is. The
-  # picker's job is different (their blame guess: whom the room will wrongly
-  # name, for a point), so the words in those places ask them that, and only
-  # them. Everyone is also told how this works once, before the first song
-  # (see own_song_explainer/1).
+  # nothing moves or changes shape to give them away. The picker's job is
+  # different (their blame guess: whom the room will wrongly name, for a
+  # point), so the words in those places ask them that, headline included.
+  # Everyone is also told how this works once, before the first song (see
+  # own_song_explainer/1).
   defp voting_body(assigns) do
     picked = assigns.me.vote
     assigns = assign(assigns, picked: picked, own?: own_round?(assigns))
@@ -1450,11 +1450,11 @@ defmodule WhoseJamWeb.PlayLive do
         assign(assigns, picked_label: choice_label(assigns.round, picked), bar_class: @bar)
 
       ~H"""
-      <%!-- A lock, not a tick: the vote is in, not yet right. The same on
-           every phone, the picker's included. --%>
+      <%!-- A lock, not a tick: the vote is in, not yet right. The same card
+           on every phone; the picker's says what they locked in. --%>
       <.locked_card
         id="phone-voted"
-        label="Locked in"
+        label={locked_label(@own?)}
         label_id="locked-note"
         name={@picked_label || "Vote locked in"}
         note={"Eyes on the TV · " <> votes_in(@round)}
@@ -1492,7 +1492,7 @@ defmodule WhoseJamWeb.PlayLive do
           <h1 class="font-display text-xl">
             {if @change? and @round.all_in?,
               do: "Final changes",
-              else: vote_question(@round)}
+              else: vote_question(@round, @own?)}
           </h1>
           <div class="flex min-h-7 items-center">{vote_timer(assigns)}</div>
         </div>
@@ -1674,24 +1674,30 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
-  # The picker's job, in the small line under the question everyone shares
-  # (a bold headline of their own could be read from the next seat), in the
-  # measure the reveal reports: where most of the wrong guesses land.
+  # The picker's job, under their own question, in the measure the reveal
+  # reports: where most of the wrong guesses land.
   defp vote_hint(%{style: :guess_who}, true, _change?),
-    do: "Your song: call who'll take the blame. +1 if most of the wrong guesses land on them."
+    do: "Your song. Pick who the room will think chose it: +1 if most wrong guesses land on them."
 
   defp vote_hint(_round, true, _change?),
-    do: "Your song: call which wrong prompt takes the blame. +1 if most wrong guesses land on it."
+    do:
+      "Your song. Pick the prompt the room will wrongly think it was for: +1 if most land on it."
 
   defp vote_hint(round, false, true),
     do: "Tap a #{choice_noun(round)} to vote; tap another to switch."
 
   defp vote_hint(round, false, false), do: "Choose a #{choice_noun(round)}, then lock it in."
 
-  # What the round asks, the same on every phone, the picker's included:
-  # their job is in the small line under it (see vote_hint/3).
-  defp vote_question(%{style: :guess_who}), do: "Whose jam is this?"
-  defp vote_question(_round), do: "Which prompt was this for?"
+  # What the round asks: the room, whose song it is; the picker, where the
+  # blame will land (see vote_hint/3).
+  defp vote_question(%{style: :guess_who}, true), do: "Who'll get the blame?"
+  defp vote_question(_round, true), do: "Which prompt takes the blame?"
+  defp vote_question(%{style: :guess_who}, false), do: "Whose jam is this?"
+  defp vote_question(_round, false), do: "Which prompt was this for?"
+
+  # What a locked-in screen calls the choice on it.
+  defp locked_label(true), do: "Your prediction"
+  defp locked_label(false), do: "Locked in"
 
   # What a round's choices are: players, or prompts.
   defp choice_noun(%{style: :guess_who}), do: "name"
@@ -1811,14 +1817,14 @@ defmodule WhoseJamWeb.PlayLive do
       class="relative flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center"
     >
       <%!-- While the TV has the reveal, the phone holds what its owner said,
-           so it is never an empty screen. The picker's shows their guess: it
-           is still the same screen as everyone's. --%>
+           so it is never an empty screen. The picker's shows their
+           prediction, on the same card as everyone's. --%>
       <%!-- The locked-in screen it follows, unchanged but for its pill. --%>
       <.locked_card
         id={"eyes-up-#{@round.index}"}
         icon={if @guessed, do: "hero-lock-closed", else: "hero-clock"}
         badge_tone={if @guessed, do: "brand", else: "quiet"}
-        label={if @guessed, do: "Locked in", else: "Time's up"}
+        label={if @guessed, do: locked_label(@own?), else: "Time's up"}
         name={@guessed || "No vote"}
         note={
           if @guessed,
