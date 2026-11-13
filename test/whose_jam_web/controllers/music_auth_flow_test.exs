@@ -79,6 +79,35 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     %{room: code}
   end
 
+  # A stand-in host screen for `room`, with the game's host-screen grace cut to
+  # 100ms, and this test subscribed to the room. Close it with
+  # `close_host_screen/1`.
+  defp open_host_screen(room) do
+    previous = Application.fetch_env(:whose_jam, :host_grace_ms)
+    Application.put_env(:whose_jam, :host_grace_ms, 100)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, ms} -> Application.put_env(:whose_jam, :host_grace_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :host_grace_ms)
+      end
+    end)
+
+    host = start_supervised!({Agent, fn -> nil end})
+    :ok = Game.attach_host(room, host)
+    Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
+  end
+
+  # Closes the stand-in host screen and waits for the game to see it. In a
+  # browser the screen stays connected until the provider's page loads, so it
+  # goes after /auth/:provider; closing it before is the fallback order, for a
+  # screen whose connection dropped just before the click.
+  defp close_host_screen(room) do
+    stop_supervised!(Agent)
+    [{game, _}] = Registry.lookup(WhoseJam.Game.Registry, room)
+    _ = :sys.get_state(game)
+  end
+
   # Runs /auth/oauth_stub and returns the signed `state` the provider would get back.
   defp authorize(conn, room) do
     conn = get(conn, "/auth/oauth_stub?code=#{room}")
@@ -234,5 +263,57 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     assert redirected_to(conn) == "/host/#{room}"
     assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "can't switch music service"
     assert Game.get_state(room).music.id == :mock
+  end
+
+  # Signing in takes the host screen away to the provider's page, which would
+  # otherwise end the game once the (here shortened) host-screen grace ran out.
+  # The callback ends the sign-in, so a host screen that then never comes back
+  # still ends the game.
+  test "leaving to sign in doesn't end the game; the callback ends the sign-in",
+       %{conn: conn, room: room} do
+    open_host_screen(room)
+
+    # As in a browser: /auth while the host screen is still connected.
+    state = authorize(conn, room)
+    close_host_screen(room)
+    refute_receive {:game_ended, _}, 300
+
+    conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
+    assert redirected_to(conn) == "/host/#{room}"
+    assert_receive {:game_state, %{music: %{id: :oauth_stub, eligible?: true}}}
+    assert_receive {:game_ended, :host_left}, 1000
+  end
+
+  test "a cancelled sign-in is over too", %{conn: conn, room: room} do
+    open_host_screen(room)
+
+    # The fallback order: the host screen dropped just before /auth.
+    close_host_screen(room)
+    state = authorize(conn, room)
+    refute_receive {:game_ended, _}, 300
+
+    conn = get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{state}")
+    assert redirected_to(conn) == "/host/#{room}"
+    assert_receive {:game_ended, :host_left}, 1000
+  end
+
+  # Anyone with the room code can get a signed state from /auth, but a notice
+  # the game refused gives no sign-in for its callback to end.
+  test "a callback for a sign-in the game refused can't end the host's",
+       %{conn: conn, room: room} do
+    open_host_screen(room)
+
+    host_state = authorize(conn, room)
+    close_host_screen(room)
+    # Past the usual grace, the game waits on the host's sign-in alone.
+    refute_receive {:game_ended, _}, 250
+
+    guest_state = authorize(build_conn(), room)
+    get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{guest_state}")
+    refute_receive {:game_ended, _}, 300
+
+    # The host's own callback does end it.
+    get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{host_state}")
+    assert_receive {:game_ended, :host_left}, 1000
   end
 end

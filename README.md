@@ -36,7 +36,8 @@ identity — any browser can open it.
 
 1. Open the app, create a game, and pick a theme. Two pools ship with v1:
    *Certified Bangers* (one style: guess-who-submitted-it) and *Emotional
-   Damage* (two sub-rounds: guess-who, then guess-which-prompt).
+   Damage* (two sub-rounds: guess-which-prompt, then guess-who). In guess-who
+   rounds the TV and phones show the prompt the song was picked for.
 2. Connect a music service. **Spotify** needs a Premium account (verified
    after OAuth; the game will not start without it). **YouTube** needs a Google
    sign-in, then asks whether the account has YouTube Premium — without it the
@@ -45,6 +46,11 @@ identity — any browser can open it.
    name, and land in the lobby.
 4. Start once at least **3 players** have joined (the host can lower this to
    2 in Settings → "Players needed to start", handy for development).
+5. After the final scoreboard, play again with the same players, or **Exit
+   game** to close the room. Closing the host screen ends the game too: once
+   no host screen has been open for 30 seconds (a refresh comes back well
+   within that, and signing in to a music service doesn't count), every phone
+   is told the game is over.
 
 **Players vs. audience:** the first 8 joiners are **players** — they get
 assigned questions and submit songs. Anyone who joins after that, or after the
@@ -428,8 +434,10 @@ device is its own browser context with its own viewport and pixel ratio; the
 phones and tablets also emulate touch and send a mobile user agent.
 The host creates the game, connects Mock Music and sets the settings; half the
 players join via the join link and half by typing the room code; everyone picks
-a song, eight rounds are voted, and the final scoreboard is checked against a
-tally the test computes independently from the scoring rules. Nothing is mocked
+a song, eight rounds are voted (each showing its prompt on the TV and the
+phones), and the final scoreboard is checked against a tally the test computes
+independently from the scoring rules. The host then exits the game, which
+returns the TV to the start page and tells every phone it's over. Nothing is mocked
 except the music service (the dev/test-only `Mock` provider): the database,
 server, websockets, PubSub and Presence are real.
 
