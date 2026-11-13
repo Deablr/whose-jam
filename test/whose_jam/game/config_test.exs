@@ -18,6 +18,14 @@ defmodule WhoseJam.Game.ConfigTest do
       assert config.subrounds_enabled? == true
     end
 
+    test "presentation choices default to the staged, named, place-free, suspenseful game" do
+      config = Config.build(%{}, 5)
+      assert config.quick_reveals? == false
+      assert config.name_non_voters? == true
+      assert config.show_places? == false
+      assert config.final_suspense? == true
+    end
+
     test "derives fewer questions per player as player count grows" do
       qpp = fn n -> Config.build(%{}, n).questions_per_player end
 
@@ -49,6 +57,28 @@ defmodule WhoseJam.Game.ConfigTest do
   end
 
   describe "build/2 overrides" do
+    test "each presentation choice can be flipped, from a form's strings too" do
+      flipped = %{
+        "quick_reveals?" => "true",
+        "name_non_voters?" => "false",
+        "show_places?" => "true",
+        "final_suspense?" => "false"
+      }
+
+      config = Config.build(flipped, 5)
+      assert config.quick_reveals? == true
+      assert config.name_non_voters? == false
+      assert config.show_places? == true
+      assert config.final_suspense? == false
+
+      # One at a time: each key drives only its own field.
+      for {key, value} <- flipped do
+        field = String.to_existing_atom(key)
+        config = Config.build(%{key => value}, 5)
+        assert Map.fetch!(config, field) == (value == "true")
+      end
+    end
+
     test "atom-keyed overrides win over defaults" do
       config =
         Config.build(

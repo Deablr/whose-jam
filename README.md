@@ -8,8 +8,9 @@ character walking out of a building"*, and each player answers by searching
 the room's music service and submitting a track. The TV then plays the songs
 one at a time through the host's account (Spotify Premium, or YouTube), and
 after every song the whole room
-votes on **who submitted it**. You score for guessing right, and for fooling
-other players into voting for your pick. A scoreboard builds between rounds; a
+votes on **who submitted it**. You score for guessing right, for fooling
+other players into voting for your pick, and (when your own song plays) for
+predicting who will get the most wrong guesses. A scoreboard builds between rounds; a
 winner is crowned at the end. Default settings aim for a ~20-minute game.
 
 No accounts, no installs for players — they scan a QR code and type a name.
@@ -56,7 +57,8 @@ identity — any browser can open it.
 assigned questions and submit songs. Anyone who joins after that, or after the
 game has started, becomes **audience**: they can vote and score for correct
 guesses, but they never submit songs and can't win the main board. The lobby
-locks when the host hits start.
+locks when the host hits start; Play again seats the audience as players while
+there are free seats.
 
 ---
 
@@ -142,10 +144,16 @@ pass an explicit compose file skip the local override). In Dokploy:
 Everything music-service-specific sits behind the `WhoseJam.Music.Provider`
 behaviour (see `AGENTS.md` for the contract and how to add one). **Spotify**
 and **YouTube** ship; a provider whose credentials are missing is listed as
-"Not configured on this server". In **dev and test** a fake **Mock Music** provider is
-also enabled (`config :whose_jam, :music_providers`): a handful of made-up
-tracks, no credentials and no audio — each song just "ends" after a few
-seconds — so you can play a whole game locally without a Spotify account.
+"Not set up on this server". In **dev and test** a fake **Mock Music** provider is
+also enabled (`config :whose_jam, :music_providers`): a small catalogue with
+placeholder cover art and no credentials, so you can play a whole game locally
+without a Spotify account. Most of its songs are made up and play nothing (each
+just "ends" after a few seconds); six are real songs from NoCopyrightSounds,
+played for real at their real length when their audio is in
+`priv/static/audio/mock/` (credits in `CREDITS.txt` there). The audio isn't
+kept in git: put the NCS downloads in a folder beside this checkout,
+`../whose-jam-mock` (or set `MOCK_AUDIO_DIR`), and `mix test.e2e` copies them
+in; without them those songs behave like the made-up ones.
 Pick it in the lobby's music-service list.
 
 ## Spotify setup
@@ -408,7 +416,8 @@ where it pays off — the **deep pure modules** and the **GenServer's public API
 - `Game.Binning` — every player gets their target count, no duplicate
   assignments, each selected question has ≥2 submitters when feasible, edge cases.
 - `Game.Scoring` — correct-guess points, submitter fool-points from non-audience
-  voters only, all-correct/all-wrong/zero-vote rounds.
+  voters only, the submitter's forecast point, all-correct/all-wrong/zero-vote
+  rounds.
 - `Game.Config` — derived timings, overrides, default runtime near the 20-minute
   target.
 - `Game.Server` — the state machine happy path, rejection of invalid events,
@@ -431,13 +440,20 @@ are validated by manual playtesting, and the Registry is a thin wrapper.
 A browser suite plays a whole "Certified Bangers" game: a host on a TV-sized
 screen plus eight players on four phones, two tablets and two laptops. Each
 device is its own browser context with its own viewport and pixel ratio; the
-phones and tablets also emulate touch and send a mobile user agent.
+phones and tablets also emulate touch and send a mobile user agent. Before the
+game starts every screen flashes white at one shared instant; the recordings
+are lined up on that flash, so the combined video shows every screen at the
+same moment.
 The host creates the game, connects Mock Music and sets the settings; half the
 players join via the join link and half by typing the room code; everyone picks
 a song, eight rounds are voted (each showing its prompt on the TV and the
-phones), and the final scoreboard is checked against a tally the test computes
+phones; the TV names who has locked in, the picker among them; the picker's
+phone keeps everyone's layout but asks them their own question, and what they lock in is their prediction of
+who gets the most wrong guesses; and the reveal says who named whom), and the final scoreboard, with tied players sharing a place
+and the best bluff named, is checked against a tally the test computes
 independently from the scoring rules. The host then exits the game, which
-returns the TV to the start page and tells every phone it's over. Nothing is mocked
+leaves the TV on a closing card (from which it hosts another game) and tells
+every phone it's over. Nothing is mocked
 except the music service (the dev/test-only `Mock` provider): the database,
 server, websockets, PubSub and Presence are real.
 
@@ -455,8 +471,9 @@ mix test.e2e
 ```
 
 It starts a throwaway `postgres:16` container (Testcontainers), runs the
-migrations and seeds, builds the assets, serves the app on `E2E_PORT` (default
-4012) and runs `mix test --only e2e`; extra arguments pass through to
+migrations and seeds, builds the assets, copies in the Mock provider's real
+songs if their folder is there (see "Music providers" above), serves the app on
+`E2E_PORT` (default 4012) and runs `mix test --only e2e`; extra arguments pass through to
 `mix test`. It takes about two minutes. The combined 1920x1080 video of every
 screen lands in `tmp/e2e/full_game.mp4` (raw per-device recordings in
 `tmp/e2e/full_game/<player>/`), and is written even when the test fails. The

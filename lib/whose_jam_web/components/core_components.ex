@@ -64,7 +64,7 @@ defmodule WhoseJamWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="toast toast-top toast-center z-50"
       {@rest}
     >
       <div class={[
@@ -450,6 +450,36 @@ defmodule WhoseJamWeb.CoreComponents do
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
     <span class={[@name, @class]} />
+    """
+  end
+
+  @doc """
+  Renders the game's illustration: a Heroicon on a disc (`.jam-badge` in
+  `app.css`). Game screens use this instead of emoji, so every state is drawn
+  the same way on every device. Its size is its font size.
+
+  ## Examples
+
+      <.jam_badge icon="hero-tv" class="text-7xl" />
+      <.jam_badge icon="hero-check" tone="mint" class="text-7xl" />
+  """
+  attr :icon, :string, required: true
+  attr :tone, :string, default: "brand", values: ~w(brand mint quiet)
+  attr :class, :any, default: nil
+
+  def jam_badge(assigns) do
+    ~H"""
+    <span
+      class={[
+        "jam-badge",
+        @tone == "mint" && "jam-badge-mint",
+        @tone == "quiet" && "jam-badge-quiet",
+        @class
+      ]}
+      aria-hidden="true"
+    >
+      <.icon name={@icon} class="size-[0.5em]" />
+    </span>
     """
   end
 

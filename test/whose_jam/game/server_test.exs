@@ -28,9 +28,12 @@ defmodule WhoseJam.Game.ServerTest do
 
   setup do
     # Play-throughs end each round once everyone has voted; shorten that final
-    # countdown (normally 5s) so the suite stays fast. Countdown tests that
-    # assert the real 5s clear this again.
+    # countdown (normally 3s) so the suite stays fast. Countdown tests that
+    # assert the real 3s clear this again.
     put_test_env(:all_voted_countdown_ms, 20)
+    # ...and skip the pause that follows the last song pick, so a play-through
+    # can act on the first round as soon as everyone has submitted.
+    put_test_env(:all_in_pause_ms, 0)
 
     # Terminate any game servers left running after each test.
     on_exit(fn ->
@@ -156,6 +159,7 @@ defmodule WhoseJam.Game.ServerTest do
               Game.cast_vote(code, p.id, submitter)
             end
 
+            lock_forecast(code, view, submitter)
             play_to_finish(code)
 
           _ ->
@@ -163,6 +167,15 @@ defmodule WhoseJam.Game.ServerTest do
         end
     after
       5000 -> flunk("game did not reach :finished")
+    end
+  end
+
+  # The submitter locks in too (their forecast: any other player will do), so
+  # the round has everyone in and doesn't wait out the vote timer.
+  defp lock_forecast(code, view, submitter) do
+    if submitter not in view.round.voters do
+      other = Enum.find(view.players, &(&1.id != submitter)).id
+      Game.cast_vote(code, submitter, other)
     end
   end
 
@@ -184,6 +197,8 @@ defmodule WhoseJam.Game.ServerTest do
           for p <- view.players, p.id != submitter, p.id not in view.round.voters do
             Game.cast_vote(code, p.id, submitter)
           end
+
+          lock_forecast(code, view, submitter)
         end
 
         check_prompts_to_finish(code, prompts, MapSet.put(checked, view.round.index))
@@ -291,6 +306,33 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.start_game(code) == :ok
     end
 
+    test "the host's presentation choices reach every screen's view" do
+      theme = guess_who_theme()
+      {code, _ids} = lobby_with_players(theme, 2)
+
+      assert %{
+               quick_reveals?: false,
+               name_non_voters?: true,
+               show_places?: false,
+               final_suspense?: true
+             } = Game.get_state(code).config
+
+      for {key, value} <- [
+            {"quick_reveals?", "true"},
+            {"name_non_voters?", "false"},
+            {"show_places?", "true"},
+            {"final_suspense?", "false"}
+          ],
+          do: :ok = Game.set_config(code, %{key => value})
+
+      assert %{
+               quick_reveals?: true,
+               name_non_voters?: false,
+               show_places?: true,
+               final_suspense?: false
+             } = Game.get_state(code).config
+    end
+
     test "requires a connected music service whose account is eligible" do
       theme = guess_who_theme()
       {:ok, code} = Game.create_game(theme.id, @fast_overrides)
@@ -324,6 +366,10 @@ defmodule WhoseJam.Game.ServerTest do
       # Each player submits their single assigned question.
       for pid <- [p1, p2, p3], do: submit_all(code, pid)
 
+      # Awards and recaps are for a finished game only.
+      assert Game.get_state(code).awards == nil
+      assert Game.player_view(code, p1).me.recap == nil
+
       final = play_to_finish(code)
 
       assert final.phase == :finished
@@ -333,6 +379,19 @@ defmodule WhoseJam.Game.ServerTest do
       assert final.winners.audience == []
       # Everyone voted correctly every round, so guessers accrued points.
       assert Enum.any?(Map.values(final.scores), &(&1 > 0))
+      # ...nobody was fooled, and all three called both songs that weren't theirs.
+      assert final.awards.best_bluff == nil
+      assert %{called: 2, player_ids: sharpest} = final.awards.sharpest
+      assert Enum.sort(sharpest) == Enum.sort([p1, p2, p3])
+      # Each player's own view says how their own game went.
+      assert Game.player_view(code, p1).me.recap == %{called: 2, fooled: 0, blamed: 0}
+      # The night's songs, in the order played, each with whose it was and
+      # its cover (none for these test songs).
+      assert length(final.playlist) == 3
+      assert Enum.sort(Enum.map(final.playlist, & &1.player_id)) == Enum.sort([p1, p2, p3])
+
+      for song <- final.playlist,
+          do: assert(%{artist: "Artist", album_art_url: nil} = song)
     end
 
     test "a 2-player game (min_players: 2) plays through to a final scoreboard" do
@@ -450,6 +509,26 @@ defmodule WhoseJam.Game.ServerTest do
     end
   end
 
+  describe "everyone has picked" do
+    test "the first song waits a moment, so the last pick is seen landing" do
+      put_test_env(:all_in_pause_ms, 150)
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+
+      # Still picking, with everyone shown as done...
+      view = Game.get_state(code)
+      assert view.phase == :answering
+      assert Enum.all?(view.answering.progress, fn {_id, p} -> p.submitted == p.total end)
+
+      # ...then the first round starts by itself.
+      assert_receive {:game_state, %{phase: :playing, round: %{index: 0}}}, 2000
+    end
+  end
+
   describe "voting rules" do
     # Bring a game to the point where round 0 is open for voting.
     defp start_voting(theme) do
@@ -464,12 +543,51 @@ defmodule WhoseJam.Game.ServerTest do
       {code, view}
     end
 
-    test "the submitter cannot vote in their own round" do
+    test "the submitter's choice is a forecast of the room's wrong answer, never a vote" do
+      put_test_env(:all_voted_countdown_ms, 20)
       theme = guess_who_theme()
       {code, view} = start_voting(theme)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
 
       submitter = submitter_of(view)
-      assert Game.cast_vote(code, submitter, submitter) == {:error, :own_round}
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      # The submitter says the room will blame b. It is theirs to see...
+      assert Game.cast_vote(code, submitter, b) == :ok
+      assert Game.player_view(code, submitter).me.vote == b
+      # ...and can't be changed, like any vote.
+      assert Game.cast_vote(code, submitter, a) == {:error, :already_voted}
+
+      # a falls for it (blames b); b calls it.
+      assert Game.cast_vote(code, a, b) == :ok
+      assert Game.cast_vote(code, b, submitter) == :ok
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 1000
+
+      # The forecast came true, and is no vote: only a and b voted.
+      assert round.forecast == %{choice: b, right?: true}
+      assert Enum.sort(Enum.map(round.votes, & &1.voter_id)) == Enum.sort([a, b])
+      # One player fooled, plus one for seeing it coming; b called it.
+      assert round.deltas == %{submitter => 2, b => 1}
+    end
+
+    test "a forecast that doesn't come true earns nothing" do
+      put_test_env(:all_voted_countdown_ms, 20)
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      submitter = submitter_of(view)
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      # The submitter says the room will blame a; nobody does.
+      assert Game.cast_vote(code, submitter, a) == :ok
+      assert Game.cast_vote(code, a, b) == :ok
+      assert Game.cast_vote(code, b, submitter) == :ok
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 1000
+      assert round.forecast == %{choice: a, right?: false}
+      assert round.deltas == %{submitter => 1, b => 1}
     end
 
     test "double voting is rejected unless allow_vote_change? is enabled" do
@@ -501,6 +619,99 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.cast_vote(code, a, b) == :ok
     end
 
+    test "a voting round says who has locked in, the submitter among them, and keeps what they chose secret" do
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      submitter = submitter_of(view)
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      # Three players: the round waits for all three, the submitter included
+      # (who is in says nothing about whose song it is).
+      assert view.round.eligible_voters == 3
+      assert view.round.voters == []
+      assert view.round.votes == nil
+      assert view.round.forecast == nil
+
+      assert Game.cast_vote(code, a, b) == :ok
+
+      view = Game.get_state(code)
+      assert view.round.votes_received == 1
+      assert view.round.voters == [a]
+      # Who chose what stays hidden until the reveal...
+      assert view.round.votes == nil
+      # ...except from the voter, whose own view carries their own choice.
+      assert Game.player_view(code, a).me.vote == b
+      assert Game.player_view(code, b).me.vote == nil
+      assert Game.player_view(code, submitter).me.vote == nil
+
+      # The submitter's forecast puts them in the list like anyone else.
+      assert Game.cast_vote(code, submitter, a) == :ok
+
+      view = Game.get_state(code)
+      assert view.round.votes_received == 2
+      assert Enum.sort(view.round.voters) == Enum.sort([a, submitter])
+      assert view.round.eligible_voters == 3
+      assert view.round.votes == nil
+      assert view.round.forecast == nil
+    end
+
+    test "the reveal carries who voted for what" do
+      # Hold :results long enough to read it.
+      put_test_env(:results_pause_ms, 5_000)
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      submitter = submitter_of(view)
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      assert Game.cast_vote(code, a, submitter) == :ok
+      assert Game.cast_vote(code, b, a) == :ok
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
+
+      assert Enum.sort_by(round.votes, & &1.voter_id) ==
+               Enum.sort_by(
+                 [
+                   %{voter_id: a, voter_role: :player, choice: submitter},
+                   %{voter_id: b, voter_role: :player, choice: a}
+                 ],
+                 & &1.voter_id
+               )
+
+      # The phone can still say what its player picked.
+      assert Game.player_view(code, b).me.vote == a
+      # A screen can count down to the next song.
+      assert round.next_ms > System.system_time(:millisecond)
+    end
+
+    test "a round says which pick for its prompt it is" do
+      theme = guess_who_theme()
+      {code, view} = start_voting(theme)
+
+      # Every song in this game has a prompt; a prompt only one player got
+      # says nothing, one that several got says which of their picks this is.
+      rounds = for index <- 0..(view.round.total - 1), do: round_at(code, index)
+
+      for {prompt, same} <- Enum.group_by(rounds, & &1.prompt) do
+        takes = Enum.map(same, & &1.prompt_take)
+
+        if length(same) == 1 do
+          assert takes == [nil], "#{prompt} has one song"
+        else
+          assert Enum.map(takes, & &1.nth) == Enum.to_list(1..length(same))
+          assert Enum.all?(takes, &(&1.of == length(same)))
+        end
+      end
+
+      # Back to back means the round before had the same prompt.
+      for {round, index} <- Enum.with_index(rounds), take = round.prompt_take do
+        before = if index > 0, do: Enum.at(rounds, index - 1).prompt
+        assert take.back_to_back? == (before == round.prompt)
+      end
+    end
+
     test "the round advances when the vote timer expires with missing votes" do
       theme = guess_who_theme()
       {code, _view} = start_voting(theme)
@@ -512,6 +723,18 @@ defmodule WhoseJam.Game.ServerTest do
       assert_receive {:game_state, %{round_state: :results, round: round}}, 2500
       assert round.revealed == true
       assert round.deltas == %{}
+    end
+  end
+
+  # The round view at `index`, skipping songs to get there.
+  defp round_at(code, index) do
+    view = Game.get_state(code)
+
+    if view.round.index < index do
+      :ok = Game.skip_song(code)
+      round_at(code, index)
+    else
+      view.round
     end
   end
 
@@ -534,7 +757,7 @@ defmodule WhoseJam.Game.ServerTest do
   end
 
   describe "listening delay and voting countdown" do
-    # These assert the real 5s all-voted countdown.
+    # These assert the real 3s all-voted countdown.
     setup do
       put_test_env(:all_voted_countdown_ms, nil)
       :ok
@@ -568,7 +791,7 @@ defmodule WhoseJam.Game.ServerTest do
       assert remaining_s(view) > 29 and remaining_s(view) <= 30
     end
 
-    test "a majority starts the countdown and everyone voting cuts it to 5s" do
+    test "a majority starts the countdown and everyone voting cuts it to 3s" do
       theme = guess_who_theme()
       code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 30})
 
@@ -577,16 +800,39 @@ defmodule WhoseJam.Game.ServerTest do
       submitter = submitter_of(view)
       [a, b, c, d] = for p <- view.players, p.id != submitter, do: p.id
 
-      # 2 of 4 eligible is not a majority: still no countdown.
+      # 2 of 5 (the submitter is waited for too) is not a majority: still no
+      # countdown.
       for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
       assert Game.get_state(code).round.deadline_ms == nil
 
-      # 3 of 4 starts the full countdown.
+      # 3 of 5 starts the full countdown.
       :ok = Game.cast_vote(code, c, submitter)
       assert remaining_s(Game.get_state(code)) > 25
 
-      # The last vote drops it to the short final countdown.
+      # Every voter in, but not the submitter's forecast: still the full one.
       :ok = Game.cast_vote(code, d, submitter)
+      assert remaining_s(Game.get_state(code)) > 25
+
+      # The last one in drops it to the short final countdown.
+      :ok = Game.cast_vote(code, submitter, a)
+      view = Game.get_state(code)
+      assert view.round_state == :voting
+      assert remaining_s(view) > 2 and remaining_s(view) <= 3
+    end
+
+    test "with vote changing on, everyone voting leaves 5s of final changes" do
+      theme = guess_who_theme()
+
+      code =
+        start_round(theme, 3, %{vote_delay_s: 0, vote_timer_s: 30, allow_vote_change?: true})
+
+      {submitter, [a, b]} = submitter_and_voters(code)
+
+      :ok = Game.cast_vote(code, a, submitter)
+      :ok = Game.cast_vote(code, b, submitter)
+      assert remaining_s(Game.get_state(code)) > 25
+
+      :ok = Game.cast_vote(code, submitter, a)
       view = Game.get_state(code)
       assert view.round_state == :voting
       assert remaining_s(view) > 4 and remaining_s(view) <= 5
@@ -610,7 +856,7 @@ defmodule WhoseJam.Game.ServerTest do
       deadline = Game.get_state(code).round.deadline_ms
       assert is_integer(deadline)
 
-      # The 5s all-voted countdown is longer than the ~2s left: keep the deadline.
+      # The 3s all-voted countdown is longer than the ~2s left: keep the deadline.
       :ok = Game.cast_vote(code, d, submitter)
       assert Game.get_state(code).round.deadline_ms == deadline
     end
@@ -678,7 +924,7 @@ defmodule WhoseJam.Game.ServerTest do
   end
 
   describe "disconnection during voting" do
-    # Asserts the real 5s all-voted countdown.
+    # Asserts the real 3s all-voted countdown.
     setup do
       put_test_env(:all_voted_countdown_ms, nil)
       :ok
@@ -689,21 +935,26 @@ defmodule WhoseJam.Game.ServerTest do
       code = start_round(theme, 5, %{vote_delay_s: 0, vote_timer_s: 30})
       {submitter, [a, b, c, _d]} = submitter_and_voters(code)
 
-      # 2 of 4 eligible: no countdown yet.
+      # 2 of 5 eligible (the submitter is one): no countdown yet.
       for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
       assert Game.get_state(code).round.deadline_ms == nil
 
-      # d drops: 2 of 3 connected eligible voters is a majority.
+      # d drops: 2 of 4 connected is still no majority.
       :ok = Game.presence_diff(code, [submitter, a, b, c])
+      assert Game.get_state(code).round.deadline_ms == nil
+
+      # c drops: 2 of 3 connected is a majority.
+      :ok = Game.presence_diff(code, [submitter, a, b])
       view = Game.get_state(code)
       assert view.round_state == :voting
       assert remaining_s(view) > 25
 
-      # c (the last non-voter) drops: everyone still connected has voted.
-      :ok = Game.presence_diff(code, [submitter, a, b])
+      # The submitter (the last one not in) drops: everyone still connected
+      # has locked in.
+      :ok = Game.presence_diff(code, [a, b])
       view = Game.get_state(code)
       assert view.round_state == :voting
-      assert remaining_s(view) > 4 and remaining_s(view) <= 5
+      assert remaining_s(view) > 2 and remaining_s(view) <= 3
     end
   end
 
@@ -1215,6 +1466,47 @@ defmodule WhoseJam.Game.ServerTest do
       # Roster preserved, scores reset.
       assert Enum.map(view.players, & &1.id) |> Enum.sort() == Enum.sort(ids)
       assert Enum.all?(Map.values(view.scores), &(&1 == 0))
+    end
+
+    test "seats whoever watched from the audience, while seats are free" do
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+
+      # Two arrive after the start: audience for this game.
+      {:ok, %{player_id: late1, role: :audience}} = Game.join(code, "Late 1")
+      {:ok, %{player_id: late2, role: :audience}} = Game.join(code, "Late 2")
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      assert play_to_finish(code).phase == :finished
+
+      :ok = Game.play_again(code)
+
+      view = Game.get_state(code)
+      assert Enum.map(view.players, & &1.id) == ids ++ [late1, late2]
+      assert view.audience == []
+      assert Game.player_view(code, late1).me.role == :player
+    end
+
+    test "keeps the audience whom the free seats can't hold, in the order they joined" do
+      theme = guess_who_theme()
+      {code, ids} = lobby_with_players(theme, Game.max_players() - 1)
+      :ok = Game.start_game(code)
+
+      {:ok, %{player_id: first, role: :audience}} = Game.join(code, "First late")
+      {:ok, %{player_id: second, role: :audience}} = Game.join(code, "Second late")
+
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      assert play_to_finish(code).phase == :finished
+
+      :ok = Game.play_again(code)
+
+      view = Game.get_state(code)
+      assert length(view.players) == Game.max_players()
+      assert List.last(view.players).id == first
+      assert Enum.map(view.audience, & &1.id) == [second]
     end
   end
 

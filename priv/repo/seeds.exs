@@ -53,7 +53,7 @@ certified_bangers = [
 
   # Gameplay questions.
   {:guess_who, false, "The song that turns any car into a concert venue."},
-  {:guess_who, false, "A banger you'd be a little embarrassed to admit is on your gym playlist."},
+  {:guess_who, false, "The song you'd choose for a dramatic entrance."},
   {:guess_who, false,
    "The one song guaranteed to get you off the couch and onto the dance floor."},
   {:guess_who, false, "A track you'd pick to open the party and set the whole vibe."},
@@ -63,8 +63,7 @@ certified_bangers = [
   {:guess_who, false,
    "The song you'd perform at karaoke if you'd had exactly the right number of drinks."},
   {:guess_who, false, "A beat drop so good it should be illegal."},
-  {:guess_who, false,
-   "The song that was undeniably the soundtrack of one specific summer of your life."},
+  {:guess_who, false, "The soundtrack to one summer of your life."},
   {:guess_who, false, "A track you'd put on to convince someone you have great taste."},
   {:guess_who, false, "The song you secretly think is the greatest thing ever recorded."},
   {:guess_who, false, "A tune that makes even the grocery store feel like a movie montage."},
@@ -74,7 +73,7 @@ certified_bangers = [
 
 reseed.(
   "Certified Bangers",
-  "Pure, unfiltered hype. Every prompt is a hunt for the biggest banger in your friends' libraries — then guess who dropped it.",
+  "Crowd-pleasers only. Everyone picks a song for a prompt, then the room guesses whose it was.",
   [:guess_who],
   certified_bangers
 )
@@ -119,7 +118,7 @@ emotional_damage = [
 
 reseed.(
   "Emotional Damage",
-  "For when the vibe gets tender. Two sub-rounds: first guess which prompt each gut-punch of a song was answering, then guess who bared their soul.",
+  "The songs that get you every time. Two sub-rounds: first guess which prompt each song was picked for, then guess who picked it.",
   [:guess_question, :guess_who],
   emotional_damage
 )

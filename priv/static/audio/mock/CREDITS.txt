@@ -1,0 +1,32 @@
+Real songs in the Mock music provider's catalogue (dev/test only), used with
+credit as NoCopyrightSounds asks. The audio files themselves are not kept in
+git: `mix test.e2e` copies them here from a local folder of NCS downloads.
+
+Song: 439*hz - Re:バース (Re:Verse)
+Music provided by NoCopyrightSounds
+Free Download/Stream: http://ncs.io/reverse
+Watch: http://ncs.lnk.to/reverseAT/youtube
+
+Song: Alie, HIKING - FLIRT (if i don’t mean it)
+Music provided by NoCopyrightSounds
+Free Download/Stream: http://ncs.io/flirt
+Watch: http://ncs.lnk.to/flirtAT/youtube
+
+Song: SadBois & Gabriel Eli - Happier Now
+Music provided by NoCopyrightSounds
+Free Download/Stream: http://ncs.io/HappierNow
+Watch: http://ncs.lnk.to/HappierNowAT/youtube
+
+Song: Oxlo - Anesthesia
+Music provided by NoCopyrightSounds
+Free Download/Stream: http://ncs.io/anesthesia
+Watch: http://ncs.lnk.to/anesthesiaAT/youtube
+
+Song: RINZO & Mahiru - デイドリーム (Daydream)
+Music provided by NoCopyrightSounds
+Free Download/Stream: http://ncs.io/RM_daydream
+Watch: http://ncs.lnk.to/RM_daydreamAT/youtube
+
+Song: SlidV & Clarx - Severed Rose
+Music provided by NoCopyrightSounds
+(The credit file that came with this download repeats Anesthesia's links; see ncs.io for Severed Rose's own page.)

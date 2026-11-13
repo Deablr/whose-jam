@@ -91,31 +91,32 @@
   --noise: 0;
 }
 
-/* whose-jam theme — colours come from the logo: purple → pink → orange on
-   ink, with cream type. Used by every game screen via data-theme="jam". */
+/* whose-jam theme — warm charcoal greys with egg-white type, and the logo's
+   pink → orange for accents (mint means right). Used by every game screen via
+   data-theme="jam". */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
   name: "jam";
   default: false;
   prefersdark: false;
   color-scheme: "dark";
-  --color-base-100: #1e1036;
-  --color-base-200: #170b2c;
-  --color-base-300: #120726;
-  --color-base-content: #fbf1e1;
+  --color-base-100: #262623;
+  --color-base-200: #1e1e1c;
+  --color-base-300: #171715;
+  --color-base-content: #f2eee4;
   --color-primary: #ff3fa8;
   --color-primary-content: #ffffff;
-  --color-secondary: #a64dff;
-  --color-secondary-content: #ffffff;
+  --color-secondary: #a19c90;
+  --color-secondary-content: #171715;
   --color-accent: #ff9f1c;
-  --color-accent-content: #120726;
-  --color-neutral: #2c1850;
-  --color-neutral-content: #fbf1e1;
-  --color-info: #a64dff;
-  --color-info-content: #ffffff;
+  --color-accent-content: #171715;
+  --color-neutral: #33322e;
+  --color-neutral-content: #f2eee4;
+  --color-info: #a19c90;
+  --color-info-content: #171715;
   --color-success: #4fe3bd;
-  --color-success-content: #0f1f2e;
+  --color-success-content: #171715;
   --color-warning: #ff9f1c;
-  --color-warning-content: #120726;
+  --color-warning-content: #171715;
   --color-error: #ff4d6d;
   --color-error-content: #ffffff;
   --radius-selector: 1rem;
@@ -132,12 +133,14 @@
   --font-display: "Lilita One", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 
-  --color-jam-ink: #120726;
-  --color-jam-night: #1e1036;
-  --color-jam-purple: #a64dff;
+  /* Greys, warm rather than blue, so the egg white sits with them. */
+  --color-jam-ink: #171715;
+  --color-jam-night: #262623;
+  --color-jam-stone: #a19c90;
   --color-jam-pink: #ff3fa8;
   --color-jam-orange: #ff9f1c;
-  --color-jam-cream: #fbf1e1;
+  /* Egg white: every light thing on a game screen. */
+  --color-jam-cream: #f2eee4;
   --color-jam-mint: #4fe3bd;
   --color-jam-red: #ff4d6d;
 }
@@ -150,6 +153,17 @@
 /* Use the data attribute for dark mode  */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
+/* A handheld with little height for a round's choices: a small phone, a
+   tablet held upright (which `.jam-handheld` scales up by half, so its 1024px
+   are worth about 680), or a laptop with a short screen (768px less the
+   browser's bars). Screens drop what they can spare to keep the choices and
+   their button, and the listening clock, in view. */
+@custom-variant short {
+  @media (max-height: 700px) { @slot; }
+  @media (min-width: 48rem) and (max-width: 63.99rem) and (max-height: 1050px) { @slot; }
+  @media (min-width: 64rem) and (max-height: 800px) { @slot; }
+}
+
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
@@ -160,14 +174,15 @@
    whose-jam design language
    =================================================================== */
 
-/* Page backdrop: ink with two soft glows in the logo's end colours. */
+/* Page backdrop: charcoal, lit softly from one corner with egg white and
+   warmed from the other. */
 .jam-stage {
   font-family: var(--font-body);
   color: var(--color-jam-cream);
   background-color: var(--color-jam-ink);
   background-image:
-    radial-gradient(70rem 45rem at -10% -20%, rgb(166 77 255 / 0.28), transparent 60%),
-    radial-gradient(60rem 40rem at 110% 120%, rgb(255 159 28 / 0.14), transparent 60%);
+    radial-gradient(70rem 45rem at -10% -20%, rgb(242 238 228 / 0.09), transparent 60%),
+    radial-gradient(60rem 40rem at 110% 120%, rgb(255 159 28 / 0.08), transparent 60%);
   position: relative;
   isolation: isolate;
 }
@@ -178,14 +193,20 @@
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgb(251 241 225 / 0.55);
+  color: rgb(242 238 228 / 0.55);
 }
 
-/* Soft panel. */
+/* Labels on the TV are read from across the room. */
+.jam-tv .jam-eyebrow {
+  font-size: 1.5rem;
+  color: rgb(242 238 228 / 0.7);
+}
+
+/* Soft panel: a solid fill, no hairline outline. */
 .jam-panel {
-  background: rgb(30 16 54 / 0.7);
-  border: 1.5px solid rgb(251 241 225 / 0.08);
-  border-radius: 1.5rem;
+  background: rgb(46 46 42 / 0.82);
+  border: none;
+  border-radius: var(--radius-3xl);
   backdrop-filter: blur(14px);
 }
 
@@ -200,7 +221,7 @@
   letter-spacing: 0.01em;
   font-size: 1.15em;
   padding: 0.7em 1.5em;
-  border-radius: 1em;
+  border-radius: var(--radius-2xl);
   background: var(--color-jam-pink);
   color: #fff;
   box-shadow: 0 0.22em 0 #a3226a;
@@ -229,7 +250,7 @@
 }
 
 .jam-btn-ghost {
-  background: rgb(251 241 225 / 0.08);
+  background: rgb(242 238 228 / 0.08);
   color: var(--color-jam-cream);
   box-shadow: none;
 }
@@ -244,9 +265,9 @@
   align-items: center;
   gap: 0.45em;
   padding: 0.4em 1em;
-  border-radius: 999px;
+  border-radius: var(--jam-pill);
   font-weight: 700;
-  background: rgb(251 241 225 / 0.08);
+  background: rgb(242 238 228 / 0.08);
 }
 
 .jam-chip-on {
@@ -254,7 +275,7 @@
   color: var(--color-jam-ink);
 }
 
-/* --- Album art, Apple Music style ------------------------------------ */
+/* --- Album art ambience ------------------------------------------------ */
 
 /* The current artwork (an <img>), blown up and blurred behind the page, with a
    vignette on top. Purely decorative: never intercepts clicks. */
@@ -272,8 +293,11 @@
   max-width: none;
   object-fit: cover;
   object-position: center;
-  filter: blur(90px) saturate(1.4) brightness(0.7);
+  filter: blur(90px) saturate(1.7) brightness(0.55);
   transform: scale(1.15);
+  /* A tint, not a wash: a warm cover over the charcoal would otherwise turn
+     the corners khaki, so it is kept rich and dark, and light. */
+  opacity: 0.35;
 }
 
 .jam-ambient::after {
@@ -281,20 +305,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at center, transparent 0%, rgb(18 7 38 / 0.55) 75%),
-    linear-gradient(to bottom, rgb(18 7 38 / 0.15), rgb(18 7 38 / 0.6));
-}
-
-/* Foreground artwork with soft, feathered edges — no frame. Two fades are
-   intersected so every side dissolves into the ambience, the bottom most. */
-.jam-art {
-  object-fit: cover;
-  --jam-fade-x: linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
-  --jam-fade-y: linear-gradient(to bottom, transparent, #000 12%, #000 70%, transparent);
-  -webkit-mask-image: var(--jam-fade-x), var(--jam-fade-y);
-  -webkit-mask-composite: source-in;
-  mask-image: var(--jam-fade-x), var(--jam-fade-y);
-  mask-composite: intersect;
+    radial-gradient(ellipse at center, rgb(23 23 21 / 0.5) 0%, rgb(23 23 21 / 0.65) 75%),
+    linear-gradient(to bottom, rgb(23 23 21 / 0.15), rgb(23 23 21 / 0.6));
 }
 
 /* Soft pulsing equalizer bars for "now playing". */
@@ -312,16 +324,343 @@
   animation: jam-eq 900ms ease-in-out infinite;
 }
 
-.jam-eq > span:nth-child(2) { animation-delay: -300ms; background: var(--color-jam-purple); }
+.jam-eq > span:nth-child(2) { animation-delay: -300ms; background: var(--color-jam-cream); }
 .jam-eq > span:nth-child(3) { animation-delay: -600ms; background: var(--color-jam-orange); }
 .jam-eq > span:nth-child(4) { animation-delay: -150ms; }
+
+/* At headline size the bars are slim, so they read as sound, not a chart. */
+.jam-eq-lg { gap: 0.07em; }
+.jam-eq-lg > span { width: 0.09em; border-radius: 999px; }
+.jam-eq-lg > span:nth-child(5) { animation-delay: -450ms; background: var(--color-jam-cream); }
+.jam-eq-lg > span:nth-child(6) { animation-delay: -750ms; background: var(--color-jam-orange); }
 
 @keyframes jam-eq {
   0%, 100% { height: 25%; }
   50% { height: 100%; }
 }
 
+/* --- Icon badge -------------------------------------------------------- */
+
+/* The one illustration style: a line icon on a disc in the logo's gradient,
+   drawn by hand (no two sides of it quite the same). Sized by the font size
+   of whoever uses it. */
+.jam-badge {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+  border-radius: 53% 47% 51% 45% / 46% 53% 47% 52%;
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-jam-pink), var(--color-jam-orange));
+}
+
+.jam-badge-mint {
+  color: var(--color-jam-ink);
+  background: var(--color-jam-mint);
+}
+
+.jam-badge-quiet {
+  color: rgb(242 238 228 / 0.7);
+  background: rgb(242 238 228 / 0.08);
+}
+
+/* --- Entrances --------------------------------------------------------- */
+
+/* Content that arrives with a phase change eases in rather than cutting.
+   `jam-rise` is the default; `jam-pop` is for the one thing a screen is
+   about (the name at a reveal, a player taking a seat). The `jam-beat-N`
+   classes hold an entrance back, so a reveal lands in order. */
+.jam-rise {
+  animation: jam-rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.jam-pop {
+  animation: jam-pop 480ms cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+
+@keyframes jam-rise {
+  from { opacity: 0; transform: translateY(0.6rem); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes jam-pop {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Leaves as its replacement arrives (an old score giving way to a new one). */
+.jam-out {
+  animation: jam-out 200ms ease both;
+}
+
+@keyframes jam-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* One guess at a reveal: a suspect and who named them. The row that named
+   the right player says so. */
+.jam-guess {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--radius-2xl);
+  background: rgb(242 238 228 / 0.07);
+}
+
+.jam-guess-right {
+  background: var(--color-jam-mint);
+  color: var(--color-jam-ink);
+}
+
+/* The card that opens a round: holds, then clears for the song. Its words
+   leave a touch ahead of it, as one move: they never hang half-faded over the
+   screen behind, and the card is never left standing empty. */
+.jam-round-card {
+  animation: jam-round-card 3200ms ease both;
+}
+
+.jam-round-card-text {
+  animation: jam-round-card-text 3200ms ease both;
+}
+
+@keyframes jam-round-card {
+  0%, 66% { opacity: 1; visibility: visible; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+/* After the first, a round's card is a quicker beat. */
+.jam-round-card-short,
+.jam-round-card-short .jam-round-card-text {
+  animation-duration: 2200ms;
+}
+
+@keyframes jam-round-card-text {
+  0% { opacity: 0; transform: scale(0.9); }
+  12%, 64% { opacity: 1; transform: none; }
+  82%, 100% { opacity: 0; transform: none; }
+}
+
+/* A grown tile, without ever leaving the screen (a seat that just locked in). */
+.jam-bump {
+  animation: jam-bump 420ms cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+@keyframes jam-bump {
+  from { transform: scale(0.9); }
+  to { transform: none; }
+}
+
+/* A reveal's beats. "It was…" comes up as the vote closes and holds the
+   room for a breath (about a second) before the name lands; then, once the
+   room has had the name to itself, what it meant (who said whom, the
+   verdict, the points); then each phone's own result. The TV and the phones
+   keep the same time. (A host who prefers it quick has `.jam-quick`.)
+
+   These come after every rule above that sets `animation`, because that
+   shorthand resets the delay: declared earlier, they would be ignored. */
+.jam-beat-1 { animation-delay: 900ms; }
+.jam-beat-2 { animation-delay: 1900ms; }
+.jam-beat-2c { animation-delay: 2900ms; }
+.jam-beat-3 { animation-delay: 3600ms; }
+
+/* What arrives in the space something else is still shrinking out of. */
+.jam-rise.jam-late { animation-delay: 500ms; }
+
+
+/* What takes the place of something leaving on the same beat (`.jam-out`)
+   waits for it to have gone, so the two are never on top of each other. */
+.jam-beat-2.jam-after { animation-delay: 2100ms; }
+.jam-beat-3.jam-after { animation-delay: 3800ms; }
+
+/* The ending. The TV's table fills from the bottom: the lower places one at
+   a time, then third, then second (`.jam-count-*`), while "And the winner is…"
+   holds the headline for a breath; then it leaves (`.jam-finale-wait`) and the winner
+   lands in first place and the headline together (`.jam-finale-win`),
+   followed by how they won it, the awards and the host's buttons
+   (`.jam-finale-after-N`). Phones wait for the winner to be named
+   (`.jam-until-winner`, then `.jam-after-winner`). */
+/* The places below third come in one at a time from the bottom
+   (`.jam-count-step-N`, N counted up from last place). */
+.jam-count-step-0 { animation-delay: 150ms; }
+.jam-count-step-1 { animation-delay: 500ms; }
+.jam-count-step-2 { animation-delay: 850ms; }
+.jam-count-step-3 { animation-delay: 1200ms; }
+.jam-count-step-4 { animation-delay: 1550ms; }
+.jam-count-step-5 { animation-delay: 1900ms; }
+.jam-count-third { animation-delay: 2400ms; }
+.jam-count-second { animation-delay: 3100ms; }
+
+.jam-out.jam-finale-wait { animation-delay: 4600ms; }
+.jam-finale-win { animation-delay: 4800ms; }
+
+/* The winner's name gets the screen to itself: it comes up over the table
+   as the name is said and holds while the room reacts (six seconds); then
+   it crossfades, quickly, to the full table (which has landed beneath it),
+   and how they won it, the awards and the buttons follow. It never takes a
+   tap meant for what is under it. */
+.jam-winner-card {
+  pointer-events: none;
+  animation: jam-winner-card 6300ms ease 4650ms both;
+}
+
+.jam-winner-card > * {
+  animation: jam-winner-card-body 6300ms ease 4650ms both;
+}
+
+@keyframes jam-winner-card {
+  0% { opacity: 0; visibility: visible; }
+  4%, 95% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+/* Its words arrive a beat after the card and leave a beat before it, so
+   the two layouts are never seen through each other for long. */
+@keyframes jam-winner-card-body {
+  0%, 3% { opacity: 0; }
+  7%, 93% { opacity: 1; }
+  98%, 100% { opacity: 0; }
+}
+
+.jam-finale-after-1 { animation-delay: 11050ms; }
+.jam-finale-after-2 { animation-delay: 11350ms; }
+.jam-finale-after-3 { animation-delay: 11550ms; }
+
+.jam-out.jam-until-winner { animation-delay: 6000ms; }
+.jam-rise.jam-after-winner { animation-delay: 6250ms; }
+
+/* Quick reveals (a host setting, `.jam-quick` on the screen): each reveal
+   lands nearly at once (the name, then everything else a moment later, the
+   phones with it), and the ending names its winner after one short count
+   and holds them two seconds. Same order, same places, less ceremony. */
+.jam-quick .jam-beat-1 { animation-delay: 0ms; }
+.jam-quick .jam-beat-2,
+.jam-quick .jam-beat-2c { animation-delay: 450ms; }
+.jam-quick .jam-beat-3 { animation-delay: 700ms; }
+.jam-quick .jam-beat-2.jam-after { animation-delay: 550ms; }
+.jam-quick .jam-beat-3.jam-after { animation-delay: 850ms; }
+
+.jam-quick [class*="jam-count-step-"],
+.jam-quick .jam-count-third,
+.jam-quick .jam-count-second { animation-delay: 150ms; }
+.jam-quick .jam-out.jam-finale-wait { animation-delay: 900ms; }
+.jam-quick .jam-finale-win { animation-delay: 1050ms; }
+.jam-quick .jam-winner-card,
+.jam-quick .jam-winner-card > * {
+  animation-duration: 2600ms;
+  animation-delay: 950ms;
+}
+.jam-quick .jam-finale-after-1 { animation-delay: 3600ms; }
+.jam-quick .jam-finale-after-2 { animation-delay: 3750ms; }
+.jam-quick .jam-finale-after-3 { animation-delay: 3900ms; }
+.jam-quick .jam-out.jam-until-winner { animation-delay: 1100ms; }
+.jam-quick .jam-rise.jam-after-winner { animation-delay: 1300ms; }
+
 @media (prefers-reduced-motion: reduce) {
   .jam-eq > span { animation: none; height: 60%; }
+  .jam-rise, .jam-pop, .jam-bump { animation: none; }
+  .jam-out, .jam-round-card, .jam-winner-card { animation: none; display: none; }
 }
+}
+
+/* --- Drawn by hand ------------------------------------------------------- */
+
+/* A screen's hero surface (the song's poster, the reveal's cards, a phone's
+   result) is drawn as if by hand: each corner a long,
+   shallow ellipse, so a side reads as a line drawn a touch crooked, and no
+   two corners match (uneven elliptical radii; the browser scales them down
+   to fit). Mark one with `.jam-hand`; it takes one of three hands, chosen by
+   its place among its siblings, so a row of cards isn't stamped from one
+   mould.
+
+   Everything else, the controls and anything repeated (buttons, chips, vote
+   tiles, score cells, inputs, rows, pills), is straight-edged with one small
+   corner, so a grid of them lines up and nothing small reads as a rendering
+   slip: inside a game screen every radius size (Tailwind's `rounded-*`,
+   daisyUI's, the `jam-*` components') is that one corner.
+
+   Unlayered, so it beats the utilities. */
+:where(.jam-stage, [data-theme="jam"]),
+:where(.jam-stage, [data-theme="jam"]) * {
+  --radius-sm: 0.5rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.5rem;
+  --radius-3xl: 0.5rem;
+  --radius-box: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-selector: 0.5rem;
+  --jam-pill: 0.5rem;
+}
+
+:where(.jam-stage, [data-theme="jam"]) .rounded-full {
+  border-radius: var(--jam-pill);
+}
+
+.jam-hand,
+.jam-hand:nth-child(3n + 1) {
+  border-radius: 16rem 0.9rem 14rem 0.9rem / 0.9rem 14rem 0.9rem 16rem;
+}
+
+.jam-hand:nth-child(3n + 2) {
+  border-radius: 1rem 15rem 0.8rem 13rem / 13rem 0.8rem 15rem 1rem;
+}
+
+.jam-hand:nth-child(3n) {
+  border-radius: 14rem 1.1rem 16rem 0.8rem / 0.8rem 16rem 1.1rem 14rem;
+}
+
+/* A song is printed as a poster: a sheet of paper laid on the stage a touch
+   askew, lifted off it by its shadow. (`rotate`, not `transform`, so an
+   entrance's movement still applies.) */
+.jam-poster {
+  rotate: -1.5deg;
+  box-shadow:
+    0 0.2rem 0.5rem rgb(0 0 0 / 0.3),
+    0 1.25rem 2.5rem rgb(0 0 0 / 0.45);
+}
+
+/* A hand-drawn outline is a touch heavier on two sides, as a pen's is. */
+.jam-panel.jam-hand {
+  border-width: 2px 2.5px 3px 2px;
+}
+
+/* --- Screen-size scaling ------------------------------------------------- */
+
+/* Every size in the game is in rem, so these scale whole screens.
+
+   The TV screen is composed like a slide for a 16:9 display of about
+   96rem × 54rem, and scales with the screen so it reads from the sofa
+   whether the TV reports 1280 or 1920 pixels across. */
+@media (min-width: 64rem) {
+  html:has(.jam-tv) {
+    font-size: clamp(12px, min(1.04vw, 1.85vh), 30px);
+  }
+}
+
+/* The start page on a TV-sized screen (where the host picks a vibe) is read
+   from the sofa too. */
+@media (min-width: 96rem) {
+  html:has(.jam-home) {
+    font-size: 125%;
+  }
+}
+
+/* A tablet or laptop in a player's hands gets the phone layout, larger. */
+@media (min-width: 48rem) {
+  html:has(.jam-handheld) {
+    font-size: 150%;
+  }
+}
+
+/* Only where there is the height for it: a short laptop keeps the smaller
+   size so a round's choices and its button all stay on screen. */
+@media (min-width: 80rem) and (min-height: 50rem) {
+  html:has(.jam-handheld) {
+    font-size: 165%;
+  }
 }
