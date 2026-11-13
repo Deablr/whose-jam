@@ -61,7 +61,7 @@ defmodule WhoseJamWeb.HostLive do
   use WhoseJamWeb, :live_view
 
   alias WhoseJam.Game
-  alias WhoseJam.Game.{Config, Standings}
+  alias WhoseJam.Game.{Awards, Config, Standings}
   alias WhoseJam.Music
 
   @impl true
@@ -1597,7 +1597,7 @@ defmodule WhoseJamWeb.HostLive do
   # give nothing away.
   defp voting(assigns) do
     received = assigns.view.round.votes_received
-    expected = max(assigns.view.round.eligible_voters, received)
+    expected = assigns.view.round.eligible_voters
     all_in? = assigns.view.round.all_in?
 
     # The players the round waits for (connected, the picker too) not yet in.
@@ -2476,12 +2476,17 @@ defmodule WhoseJamWeb.HostLive do
     song.player_id == player_id and is_binary(url) and url != ""
   end
 
-  # The night's best bluff, if it was this player's and fooled more than one.
-  defp best_bluff_of(%{awards: %{best_bluff: %{fooled: fooled, bluffs: bluffs}}}, player_id)
-       when fooled > 1 do
-    case Enum.find(bluffs, &(&1.player_id == player_id)) do
-      %{song_name: song_name} -> {song_name, fooled}
-      nil -> nil
+  # The night's best bluff, if it was this player's and the award is given
+  # (`Awards.given?/1`: the awards beside the poster say so too).
+  defp best_bluff_of(
+         %{awards: %{best_bluff: %{fooled: fooled, bluffs: bluffs} = award}},
+         player_id
+       ) do
+    with true <- Awards.given?(award),
+         %{song_name: song_name} <- Enum.find(bluffs, &(&1.player_id == player_id)) do
+      {song_name, fooled}
+    else
+      _ -> nil
     end
   end
 
@@ -2801,41 +2806,36 @@ defmodule WhoseJamWeb.HostLive do
     end
   end
 
-  defp bluff_line(_view, nil), do: nil
-  # Fooling one player is no feat to hand out.
-  defp bluff_line(_view, %{fooled: fooled}) when fooled <= 1, do: nil
+  # An award is only handed out when it singles somebody out
+  # (`Awards.given?/1`). Tied bluffs can be one player's songs, or two
+  # players'.
+  defp bluff_line(view, %{fooled: fooled, bluffs: bluffs} = award) do
+    if Awards.given?(award) do
+      case Enum.uniq_by(bluffs, & &1.player_id) do
+        [%{player_id: id}] ->
+          {"Best bluff", "#{name_of(view, id)} fooled #{fooled} with #{bluff_songs(bluffs)}"}
 
-  # Tied bluffs can be one player's songs, or several players'. An award more
-  # than two players share singles nobody out, so it isn't given.
-  defp bluff_line(view, %{fooled: fooled, bluffs: bluffs}) do
-    case Enum.uniq_by(bluffs, & &1.player_id) do
-      [%{player_id: id}] ->
-        {"Best bluff", "#{name_of(view, id)} fooled #{fooled} with #{bluff_songs(bluffs)}"}
-
-      [_, _] = holders ->
-        names = holders |> Enum.map(&name_of(view, &1.player_id)) |> join_names()
-        {"Best bluff", "#{names} each fooled #{fooled}"}
-
-      _shared ->
-        nil
+        holders ->
+          names = holders |> Enum.map(&name_of(view, &1.player_id)) |> join_names()
+          {"Best bluff", "#{names} each fooled #{fooled}"}
+      end
     end
   end
+
+  defp bluff_line(_view, nil), do: nil
 
   defp bluff_songs([%{song_name: song}]), do: song
   defp bluff_songs(songs), do: "each of #{length(songs)} songs"
 
-  defp sharpest_line(_view, nil), do: nil
-  defp sharpest_line(_view, %{called: called}) when called <= 1, do: nil
-
-  defp sharpest_line(view, %{called: called, player_ids: [id]}),
-    do: {"Sharpest ears", "#{name_of(view, id)} guessed #{called} right"}
-
-  defp sharpest_line(view, %{called: called, player_ids: [_, _] = ids}) do
-    names = ids |> Enum.map(&name_of(view, &1)) |> join_names()
-    {"Sharpest ears", "#{names} each guessed #{called} right"}
+  defp sharpest_line(view, %{called: called, player_ids: ids} = award) do
+    if Awards.given?(award) do
+      names = ids |> Enum.map(&name_of(view, &1)) |> join_names()
+      each = if length(ids) > 1, do: " each", else: ""
+      {"Sharpest ears", "#{names}#{each} guessed #{called} right"}
+    end
   end
 
-  defp sharpest_line(_view, _shared), do: nil
+  defp sharpest_line(_view, nil), do: nil
 
   defp winner_rows(board), do: Enum.filter(board, &(&1.rank == 1))
 

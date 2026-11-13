@@ -23,7 +23,7 @@ defmodule WhoseJamWeb.PlayLive do
   use WhoseJamWeb, :live_view
 
   alias WhoseJam.Game
-  alias WhoseJam.Game.Standings
+  alias WhoseJam.Game.{Awards, Standings}
   alias WhoseJamWeb.{PlayerToken, Presence}
 
   # =========================================================================
@@ -1651,7 +1651,7 @@ defmodule WhoseJamWeb.PlayLive do
   # How many of the round's voters are in, as the TV counts them.
   defp votes_in(%{votes_received: received, eligible_voters: expected})
        when is_integer(received) and is_integer(expected),
-       do: "#{received} of #{max(expected, received)} in"
+       do: "#{received} of #{expected} in"
 
   defp votes_in(_round), do: "votes coming in"
 
@@ -2377,28 +2377,27 @@ defmodule WhoseJamWeb.PlayLive do
   defp finish_line(%{tied?: true} = row, _role, _count), do: "You #{place(row)}"
   defp finish_line(row, _role, _count), do: "You finished #{place(row)}"
 
-  # The awards this player holds, worded as the TV words them. Like the TV, an
-  # award more than two players share singles nobody out, so it isn't shown
-  # (several tied songs of one player's are one award).
+  # The awards this player holds, worded as the TV words them, and only the
+  # ones the TV hands out (`Awards.given?/1`).
   defp my_awards(%{awards: %{} = awards}, player_id) do
     bluff =
-      with %{fooled: fooled, bluffs: bluffs} when fooled > 1 <- awards[:best_bluff],
-           true <- bluffs |> Enum.uniq_by(& &1.player_id) |> length() <= 2 do
+      with %{fooled: fooled, bluffs: bluffs} = award <- awards[:best_bluff],
+           true <- Awards.given?(award) do
         my_bluff(for(%{player_id: ^player_id, song_name: song} <- bluffs, do: song), fooled)
       else
         _ -> []
       end
 
     sharpest =
-      case awards[:sharpest] do
-        %{called: called, player_ids: ids} when length(ids) <= 2 and called > 1 ->
-          if player_id in ids, do: ["Sharpest ears: #{called} right"], else: []
-
-        _ ->
-          []
+      with %{called: called, player_ids: ids} = award <- awards[:sharpest],
+           true <- Awards.given?(award),
+           true <- player_id in ids do
+        ["Sharpest ears: #{called} right"]
+      else
+        _ -> []
       end
 
-    Enum.take(bluff, 1) ++ sharpest
+    bluff ++ sharpest
   end
 
   defp my_awards(_view, _player_id), do: []

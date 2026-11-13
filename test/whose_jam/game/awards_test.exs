@@ -54,4 +54,28 @@ defmodule WhoseJam.Game.AwardsTest do
 
     assert awards.sharpest == %{called: 2, player_ids: ["ben", "cleo"]}
   end
+
+  describe "given?/1" do
+    test "an award is handed out when earned more than once, by up to two players" do
+      bluff = fn fooled, holders ->
+        %{fooled: fooled, bluffs: for(id <- holders, do: %{player_id: id, song_name: "Song"})}
+      end
+
+      assert Awards.given?(bluff.(2, ["ava"]))
+      assert Awards.given?(bluff.(2, ["ava", "ben"]))
+      refute Awards.given?(bluff.(2, ["ava", "ben", "cleo"]))
+      # Fooling one player is no feat.
+      refute Awards.given?(bluff.(1, ["ava"]))
+      # Three tied songs of one player's are one holder.
+      assert Awards.given?(bluff.(2, ["ava", "ava", "ava"]))
+      refute Awards.given?(nil)
+    end
+
+    test "sharpest ears follows the same rule" do
+      assert Awards.given?(%{called: 2, player_ids: ["ava"]})
+      assert Awards.given?(%{called: 2, player_ids: ["ava", "ben"]})
+      refute Awards.given?(%{called: 2, player_ids: ["ava", "ben", "cleo"]})
+      refute Awards.given?(%{called: 1, player_ids: ["ava"]})
+    end
+  end
 end

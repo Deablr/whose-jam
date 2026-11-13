@@ -53,6 +53,27 @@ defmodule WhoseJam.Game.Awards do
     %{best_bluff: best_bluff(rounds), sharpest: sharpest(rounds)}
   end
 
+  @doc """
+  Whether an award (`best_bluff` or `sharpest` from `summarize/1`) singles
+  somebody out, so a screen hands it out: it was earned more than once (more
+  than one player fooled, or more than one song called), and at most two
+  players hold it (an award half the room shares singles nobody out). Several
+  tied songs of one player's are one holder.
+
+      iex> WhoseJam.Game.Awards.given?(%{fooled: 2, bluffs: [%{player_id: "ava", song_name: "Neon"}]})
+      true
+      iex> WhoseJam.Game.Awards.given?(%{called: 1, player_ids: ["ben"]})
+      false
+  """
+  @spec given?(map() | nil) :: boolean()
+  def given?(%{fooled: fooled, bluffs: bluffs}),
+    do: fooled > 1 and holders(Enum.map(bluffs, & &1.player_id)) <= 2
+
+  def given?(%{called: called, player_ids: ids}), do: called > 1 and holders(ids) <= 2
+  def given?(nil), do: false
+
+  defp holders(ids), do: ids |> Enum.uniq() |> length()
+
   defp best_bluff(rounds) do
     case rounds |> Enum.map(& &1.fooled) |> Enum.max(fn -> 0 end) do
       0 ->

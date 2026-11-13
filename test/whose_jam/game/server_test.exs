@@ -972,10 +972,12 @@ defmodule WhoseJam.Game.ServerTest do
       for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
       refute Game.get_state(code).round.all_in?
 
-      # b drops: three lock-ins for three connected, but c hasn't voted.
+      # b drops: three lock-ins and three connected, but c hasn't voted. The
+      # count is of the connected, so it agrees: two of three are in.
       :ok = Game.presence_diff(code, [submitter, a, c])
       view = Game.get_state(code)
-      assert view.round.votes_received == view.round.eligible_voters
+      assert {view.round.votes_received, view.round.eligible_voters} == {2, 3}
+      assert b in view.round.voters
       refute view.round.all_in?
       assert remaining_s(view) > 25
 

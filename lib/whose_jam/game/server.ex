@@ -1255,6 +1255,8 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp round_view(%{phase: :playing, round: round} = state) when not is_nil(round) do
+    {eligible, locked} = eligible_vote_counts(state)
+
     base = %{
       index: state.round_index,
       total: length(state.rounds),
@@ -1267,13 +1269,14 @@ defmodule WhoseJam.Game.Server do
       # (everyone connected). The submitter is among them (their forecast
       # counts here, though it is no vote), so a screen can name who is in
       # and who isn't without giving the submitter away.
-      votes_received: length(locked_in(round)),
+      # The counts are of the connected (someone who locked in and then
+      # dropped out is no longer waited for, nor counted as in), so "N of M
+      # in" and `all_in?`, the server's own test for the all-in countdown,
+      # always agree.
+      votes_received: locked,
       voters: locked_in(round),
-      eligible_voters: length(eligible_voter_ids(state)),
-      # Whether everyone connected has locked in: the server's own test for
-      # the all-in countdown, so no screen has to work it out from counts
-      # that include someone who has since dropped out.
-      all_in?: all_eligible_voted?(state),
+      eligible_voters: eligible,
+      all_in?: eligible > 0 and locked == eligible,
       votes_open_ms: state.votes_open_ms,
       deadline_ms: state.vote_deadline_ms,
       revealed: round.revealed
