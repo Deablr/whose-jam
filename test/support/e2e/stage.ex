@@ -13,14 +13,23 @@ defmodule WhoseJamWeb.E2E.Stage do
   its video) and lays the recordings out on one 1920×1080 canvas with
   `WhoseJamWeb.E2E.Video` — even when the body fails, so a failing run still
   leaves a video to watch.
+
+  Before the body runs, every screen flashes white at the same instant. A
+  recording starts whenever its page first paints, not when its browser opens,
+  so that flash is what the recordings are lined up on; the combined video
+  starts just after it.
   """
 
   alias PhoenixTest.Playwright
   alias PlaywrightEx.BrowserContext
   alias WhoseJamWeb.E2E.Video
 
-  @typedoc "A device preset name: a key of `@devices` in this module."
-  @type device :: atom()
+  @typedoc """
+  A device preset name (a key of `@devices` in this module), or a preset with
+  overrides: `{preset, reduced_motion?: true}` asks the page for less motion
+  (`prefers-reduced-motion: reduce`), as a phone set up that way would.
+  """
+  @type device :: atom() | {atom(), [{:reduced_motion?, boolean()}]}
 
   @typedoc "`{key, caption, device}` — `key` names the session in the map passed to the body."
   @type role :: {atom(), String.t(), device()}
@@ -127,6 +136,9 @@ defmodule WhoseJamWeb.E2E.Stage do
   # tiles are far smaller anyway.
   @max_video_side 1280
   @close_timeout to_timeout(second: 30)
+  @flash_ms 500
+  # Long enough for the instruction to reach all nine browsers first.
+  @flash_lead_ms 1_000
   @caption_px 14
 
   @doc """
@@ -147,6 +159,7 @@ defmodule WhoseJamWeb.E2E.Stage do
     started_ms = System.monotonic_time(:millisecond)
     stage = Enum.map(assign_slots(roles), &open(&1, raw_dir, started_ms, context))
     sessions = Map.new(stage, &{&1.key, &1.session})
+    flash(stage)
 
     try do
       fun.(sessions)
@@ -161,13 +174,39 @@ defmodule WhoseJamWeb.E2E.Stage do
     end
   end
 
+  @doc """
+  Keeps every screen as it is for `ms`, so the video shows a screen the test
+  would otherwise leave at once (the final scoreboard, before the host exits).
+
+  Only for the recording. Never wait for the app with it: nothing has changed
+  when it returns, so assert on what the screen shows instead.
+  """
+  @spec hold(non_neg_integer()) :: :ok
+  def hold(ms) when is_integer(ms) and ms >= 0 do
+    # A pause for the camera, not a wait: there is no event to receive
+    # instead, and no assertion depends on it.
+    # credo:disable-for-next-line WhoseJam.Credo.Checks.NoSleepInTests
+    Process.sleep(ms)
+  end
+
+  @doc """
+  `hold/1` in the middle of a pipeline: keeps every screen as it is for `ms`,
+  then hands `session` on. Only for the recording, as `hold/1` is.
+  """
+  @spec then_hold(Playwright.t(), non_neg_integer()) :: Playwright.t()
+  def then_hold(session, ms) do
+    hold(ms)
+    session
+  end
+
   defp finish(stage, video_path, on_error) do
     stage
     |> Task.async_stream(&close/1, timeout: :infinity)
     |> Stream.run()
 
     try do
-      Video.compose!(Enum.map(stage, &tile/1), @canvas, video_path)
+      {tiles, skip_ms} = stage |> Enum.map(&tile/1) |> align()
+      Video.compose!(tiles, @canvas, video_path, skip_ms)
       IO.puts("\nGame video: #{Path.relative_to_cwd(video_path)}")
     rescue
       error -> on_error.(Exception.message(error))
@@ -176,10 +215,63 @@ defmodule WhoseJamWeb.E2E.Stage do
     :ok
   end
 
+  # Puts a white screen on every device at the same instant, for half a
+  # second: the mark align/1 looks for. Every browser is told the moment to do
+  # it (they share this machine's clock) rather than told to do it now, so it
+  # doesn't matter that the nine calls land a few frames apart.
+  defp flash(stage) do
+    at_ms = System.os_time(:millisecond) + @flash_lead_ms
+    script = flash_script(at_ms)
+
+    stage
+    |> Task.async_stream(&Playwright.evaluate(&1.session, script), timeout: :infinity)
+    |> Stream.run()
+
+    # Let it happen before the game starts painting over it.
+    hold(max(at_ms + @flash_ms - System.os_time(:millisecond), 0))
+  end
+
+  defp flash_script(at_ms) do
+    """
+    (() => {
+      const flash = () => {
+        const el = document.createElement("div");
+        el.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:#fff";
+        document.documentElement.appendChild(el);
+        setTimeout(() => el.remove(), #{@flash_ms});
+      };
+      setTimeout(flash, Math.max(0, #{at_ms} - Date.now()));
+    })();
+    """
+  end
+
+  # Holds each recording back so that every flash ends at the same moment
+  # (the recording whose flash ends latest started first, and is not held
+  # back at all), and says how much of the combined video to skip so it starts
+  # once the flash is over. A recording with no flash to be found keeps the
+  # moment its device opened, as before.
+  defp align(tiles) do
+    flashes = Map.new(tiles, &{&1.path, Video.flash_end(&1.path)})
+
+    case flashes |> Map.values() |> Enum.reject(&is_nil/1) do
+      [] ->
+        {tiles, 0}
+
+      found ->
+        latest = Enum.max(found)
+
+        {Enum.map(tiles, &hold_back(&1, Map.fetch!(flashes, &1.path), latest)),
+         round(latest * 1000) + 200}
+    end
+  end
+
+  defp hold_back(tile, nil, _latest), do: tile
+  defp hold_back(tile, flash, latest), do: %{tile | offset_ms: round((latest - flash) * 1000)}
+
   defp assign_slots(roles) do
     {placed, _free} =
       Enum.map_reduce(roles, @slots, fn {key, caption, device}, free ->
-        spec = Map.fetch!(@devices, device)
+        spec = device_spec(device)
 
         case Map.fetch!(free, spec.kind) do
           [slot | rest] ->
@@ -193,6 +285,11 @@ defmodule WhoseJamWeb.E2E.Stage do
 
     placed
   end
+
+  defp device_spec({preset, overrides}),
+    do: Map.merge(device_spec(preset), Map.new(overrides))
+
+  defp device_spec(preset), do: Map.fetch!(@devices, preset)
 
   defp open(role, raw_dir, started_ms, context) do
     dir = Path.join(raw_dir, Atom.to_string(role.key))
@@ -234,6 +331,9 @@ defmodule WhoseJamWeb.E2E.Stage do
         size: %{width: round(width * shrink), height: round(height * shrink)}
       }
     ]
+
+    opts =
+      if spec[:reduced_motion?], do: Keyword.put(opts, :reduced_motion, "reduce"), else: opts
 
     case spec.user_agent do
       :default -> opts

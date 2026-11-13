@@ -31,10 +31,15 @@ defmodule WhoseJam.MusicFixtures do
       hostile_art: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');color:red"
     },
     mock: %{
-      song: %{uri: "mock:track:001", name: "Neon Overdrive", artist: "X", album_art_url: nil},
+      song: %{
+        uri: "mock:track:001",
+        name: "Neon Overdrive",
+        artist: "X",
+        album_art_url: "/images/mock/001.svg"
+      },
       auth: %{},
       ineligible_auth: nil,
-      hostile_art: "https://example.com/art.png"
+      hostile_art: "/images/mock/001.svg');color:red"
     }
   }
 

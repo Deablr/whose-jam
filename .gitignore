@@ -41,3 +41,7 @@ npm-debug.log
 
 # macOS Finder metadata
 .DS_Store
+
+# The Mock provider's real songs (NCS downloads), copied in by `mix test.e2e`
+# from a local folder; their credits are committed, the audio is not.
+/priv/static/audio/mock/*.mp3

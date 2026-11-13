@@ -17,7 +17,12 @@ defmodule Mix.Tasks.Test.E2e do
        `priv/repo/seeds.exs`,
     3. builds the JS/CSS bundles and serves the app over HTTP on
        `E2E_PORT` (default `4012`),
-    4. starts the Playwright browser pool, then runs `mix test --only e2e`.
+    4. copies the Mock provider's real songs (NoCopyrightSounds downloads)
+       into `priv/static/audio/mock/`, from the folder in `MOCK_AUDIO_DIR`
+       (default `../whose-jam-mock`, beside this checkout), so those songs
+       play for real and at their real length; any that aren't there play
+       as the made-up five-second kind, and the suite runs either way,
+    5. starts the Playwright browser pool, then runs `mix test --only e2e`.
 
   Needs Docker, plus Playwright and its Chromium in `assets/`:
 
@@ -33,6 +38,7 @@ defmodule Mix.Tasks.Test.E2e do
   use Mix.Task
 
   alias Testcontainers.PostgresContainer
+  alias WhoseJam.Music.Providers.Mock
 
   @postgres_image "postgres:16"
   @default_port 4012
@@ -48,6 +54,7 @@ defmodule Mix.Tasks.Test.E2e do
 
     Mix.Task.run("assets.setup")
     Mix.Task.run("assets.build")
+    copy_mock_audio()
     Mix.Task.run("ecto.create", ["--quiet"])
     Mix.Task.run("ecto.migrate", ["--quiet"])
     Mix.Task.run("app.start")
@@ -61,6 +68,25 @@ defmodule Mix.Tasks.Test.E2e do
     Application.put_env(:phoenix_test, :base_url, WhoseJamWeb.Endpoint.url())
 
     Mix.Task.run("test", ["--only", "e2e" | test_paths(args)])
+  end
+
+  # The real songs' audio, from a local folder of NCS downloads (kept out of
+  # git). A song whose file isn't there plays as a made-up one.
+  defp copy_mock_audio do
+    source = System.get_env("MOCK_AUDIO_DIR") || Path.expand("../whose-jam-mock", File.cwd!())
+    target = Path.join(["priv", "static", "audio", "mock"])
+    File.mkdir_p!(target)
+
+    copied =
+      for {id, file} <- Mock.ncs_tracks(),
+          from = Path.join(source, file),
+          File.regular?(from) do
+        File.cp!(from, Path.join(target, id <> ".mp3"))
+        id
+      end
+
+    total = length(Mock.ncs_tracks())
+    Mix.shell().info("Mock music: #{length(copied)} of #{total} real songs from #{source}")
   end
 
   # With no file arguments, run just the e2e directory.

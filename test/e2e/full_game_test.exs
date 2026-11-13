@@ -7,6 +7,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   use PhoenixTest.Playwright.Case, async: false
   use WhoseJamWeb, :verified_routes
 
+  alias WhoseJam.Game.Standings
   alias WhoseJamWeb.E2E.Stage
 
   @moduletag :e2e
@@ -18,25 +19,45 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
 
   # {key, name, device, search typed, song picked}. Each player picks a
   # different Mock track, so a song identifies its submitter.
+  # Six of the songs are real (NoCopyrightSounds tracks the Mock provider
+  # plays for real when `mix test.e2e` has copied them in), with long and
+  # non-Latin titles; two are made up. Dev's phone asks for less motion.
   @players [
-    {:ava, "Ava", :iphone_15, "neon", "Neon Overdrive"},
-    {:ben, "Ben", :pixel_8, "paper", "Paper Planes at Midnight"},
-    {:cleo, "Cleo", :iphone_se, "slow burn", "Slow Burn Sunday"},
-    {:dev, "Dev", :galaxy_s24, "concrete", "Concrete Garden"},
-    {:eli, "Eli", :ipad_mini, "rewind", "Rewind to Summer"},
-    {:fern, "Fern", :galaxy_tab_s9, "static", "Static in the Stars"},
-    {:gus, "Gus", :macbook_air, "karaoke", "Backseat Karaoke"},
+    {:ava, "Ava", :iphone_15, "anesthesia", "Anesthesia"},
+    {:ben, "Ben", :pixel_8, "flirt", "FLIRT (if i don’t mean it)"},
+    {:cleo, "Cleo", :iphone_se, "happier", "Happier Now"},
+    {:dev, "Dev", {:galaxy_s24, reduced_motion?: true}, "concrete", "Concrete Garden"},
+    {:eli, "Eli", :ipad_mini, "daydream", "デイドリーム (Daydream)"},
+    {:fern, "Fern", :galaxy_tab_s9, "severed", "Severed Rose"},
+    {:gus, "Gus", :macbook_air, "verse", "Re:バース (Re:Verse)"},
     {:hana, "Hana", :windows_laptop, "golden", "Golden Hour Hangover"}
   ]
 
   # One question each, so one round per player.
   @rounds length(@players)
 
+  # Notes how the phone's result card looks the instant it is first on the
+  # page (a MutationObserver runs before the next paint).
+  @watch_outcome """
+  (() => {
+    const seen = () => {
+      const card = document.querySelector("#my-outcome");
+      if (card) window.firstOutcomeOpacity = getComputedStyle(card).opacity;
+      return card !== null;
+    };
+    if (!seen()) {
+      const watch = new MutationObserver(() => { if (seen()) watch.disconnect(); });
+      watch.observe(document.body, {childList: true, subtree: true});
+    }
+  })()
+  """
+
   setup do
     # config/test.exs shortens the reveal to a blink. Hold it long enough to
-    # read in the video and for the per-round reveal assertions to see it.
+    # read in the video and for the per-round reveal assertions to see it
+    # (a real game holds it for ten seconds).
     previous = Application.fetch_env!(:whose_jam, :results_pause_ms)
-    Application.put_env(:whose_jam, :results_pause_ms, 4_000)
+    Application.put_env(:whose_jam, :results_pause_ms, 8_000)
     on_exit(fn -> Application.put_env(:whose_jam, :results_pause_ms, previous) end)
   end
 
@@ -52,14 +73,20 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       join_everyone(devices, code, join_url)
 
       devices.host
-      |> assert_has("p", text: "Players #{length(@players)}/8")
+      |> assert_has("#player-count", text: "#{length(@players)}/#{WhoseJam.Game.max_players()}")
       |> click_button("Start game")
 
       pick_songs(devices)
-      scores = play_every_round(devices)
+      {scores, most_fooled} = play_every_round(devices)
 
       assert_final_scores(devices, scores)
+      assert_awards(devices.host, most_fooled)
+      # First place is held back for a couple of seconds, then the awards and
+      # each phone's own result arrive; all of it needs long enough on film
+      # to be read.
+      Stage.hold(to_timeout(second: 14))
       exit_game(devices)
+      Stage.hold(to_timeout(second: 2))
     end)
   end
 
@@ -69,29 +96,32 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     host
     |> visit(~p"/")
     |> assert_connected()
-    |> click_button("Choose a vibe")
+    |> click_button("Choose a theme")
     |> within("li:has(h3:text-is('#{@theme}'))", &click_button(&1, "Host this"))
     |> assert_has("p", text: "Room code")
     |> assert_connected()
-    # Mock Music needs no account: one click connects it.
+    # Mock Music needs no account: one click connects it, and the top bar
+    # says so without a notice to dismiss.
     |> within("#music-prompt-modal", &click_button(&1, nil, "Connect", exact: true))
-    # Dismiss the "connected" toast; it sits over the top bar.
-    |> click("[role=alert]", "Mock Music connected.")
+    |> refute_has("#music-prompt-modal")
     |> refute_has("[role=alert]")
     |> click_button("Settings")
     # The Mock player hook is running in this browser.
-    |> assert_has("p", text: "Player is live on this screen.")
-    |> fill_in("Answer timer (s)", with: "120")
-    |> fill_in("Questions per player", with: "1")
-    # The longest listening delay: voting then opens only when the TV's player
-    # reports the 5s Mock track ended, so every round proves the hook works.
-    |> fill_in("Listen before voting opens (s)", with: "60")
+    |> assert_has("p", text: "This screen is ready to play the music.")
+    |> fill_in("Time to pick songs (s)", with: "120")
+    |> fill_in("Prompts per player", with: "1")
+    # Ten seconds of listening (the default). A made-up Mock song opens
+    # voting early, when the TV's player reports its five seconds ended (so
+    # those rounds prove the hook works); a real one plays on past it.
+    |> fill_in("Listen before voting opens (s)", with: "10")
     |> click_button("Close settings")
 
     "/host/" <> code = current_path(host)
-    join_url = text_of(host, "p > span.font-bold")
-    assert String.ends_with?(join_url, "/play/#{code}")
-    {code, join_url}
+    # The TV shows the address as someone would type it, without the scheme.
+    shown = text_of(host, "#join-url")
+    assert String.ends_with?(shown, "/play/#{code}")
+    refute shown =~ "://"
+    {code, "#{URI.parse(WhoseJamWeb.Endpoint.url()).scheme}://#{shown}"}
   end
 
   # Half the room follows the join link the TV shows (what its QR code
@@ -117,10 +147,10 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       |> assert_has("h1", text: "Pick a name")
       |> assert_connected()
       |> type("input[name=name]", name, delay: 90)
-      |> click_button("Join the party")
-      |> assert_has("h1", text: "You're in, #{name}!")
+      |> click_button("Join game")
+      |> assert_has("h1", text: "You're in, #{name}")
 
-      assert_has(devices.host, ".jam-chip", text: name)
+      assert_has(devices.host, "#lobby-players li", text: name)
     end)
   end
 
@@ -143,11 +173,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
 
   # Each round: read the song off the TV, have every other player vote (some
   # right, some fooled), check the TV reveals the submitter, and keep a tally of
-  # the points the rules should award.
+  # the points the rules should award (and of the most players any one song
+  # fooled, for the awards).
   defp play_every_round(devices) do
     initial = Map.new(@players, fn {key, _, _, _, _} -> {key, 0} end)
 
-    Enum.reduce(1..@rounds, initial, fn round, scores ->
+    Enum.reduce(1..@rounds, {initial, 0}, fn round, {scores, most_fooled} ->
       devices.host
       |> assert_has("p", text: "Round #{round} of #{@rounds}", timeout: @wait)
 
@@ -155,35 +186,174 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       {submitter, submitter_name, _, _, _} = List.keyfind!(@players, song, 4)
       votes = votes_for(round, submitter)
 
+      if round == 1 do
+        devices.dev
+        |> evaluate(
+          "matchMedia('(prefers-reduced-motion: reduce)').matches",
+          &assert(&1 == true)
+        )
+        |> evaluate(@watch_outcome)
+      end
+
       # A guess-who round says what the song was picked for, on the TV and
       # the phones alike.
       prompt = text_of(devices.host, "#round-prompt blockquote")
 
+      # The picker's phone keeps everyone's layout (the same names, button
+      # and locked-in screen), but asks them their own question: whom the
+      # room will wrongly blame for their song. What they lock in is no vote:
+      # it is their prediction, worth a point when it comes true.
+      bluff = picker_guess(round, submitter)
+
       devices
       |> Map.fetch!(submitter)
-      |> assert_has("h1", text: "This one's yours", timeout: @wait)
+      |> assert_has("#phone-voting h1",
+        text: "Who'll get the blame?",
+        timeout: @wait
+      )
+      |> assert_has("#vote-hint", text: "Pick who the room will think chose it")
       |> assert_has("#round-prompt blockquote", text: prompt)
+      |> refute_has("#phone-voting button", text: submitter_name, exact: true)
+      |> click_button(nil, name_of(bluff), exact: true)
+      |> click_button("Lock in #{name_of(bluff)}")
+      |> assert_has("#phone-voted h1", text: name_of(bluff), exact: true)
+      |> assert_has("#locked-note", text: "Your prediction")
+      |> refute_has("#phone-voted", text: "ecoy")
 
       in_parallel(votes, fn {voter, choice} ->
+        {_, voter_name, _, _, _} = List.keyfind!(@players, voter, 0)
         {_, choice_name, _, _, _} = List.keyfind!(@players, choice, 0)
 
         devices
         |> Map.fetch!(voter)
-        |> assert_has("h1", text: "Who submitted this?", timeout: @wait)
+        |> assert_has("#phone-voting h1", text: "Whose jam is this?", timeout: @wait)
+        # Nobody is offered their own name.
+        |> refute_has("#phone-voting button", text: voter_name, exact: true)
+        # A tap chooses; locking it in is the vote.
+        |> assert_has("#vote-hint", text: "Choose a name, then lock it in.")
+        |> refute_has("#phone-voting", text: "blame")
         |> click_button(nil, choice_name, exact: true)
-        |> assert_has("h1", text: "Vote locked in")
+        |> click_button("Lock in #{choice_name}")
+        # The phone says back what was picked.
+        |> assert_has("#phone-voted h1", text: choice_name, exact: true)
+        |> assert_has("#locked-note", text: "Locked in")
       end)
+
+      # The TV names who is in, the picker among them (everyone has
+      # something to lock in, so the list gives nobody away).
+      devices.host
+      |> assert_has("#vote-progress", text: "#{length(@players)} of #{length(@players)}")
+      |> assert_has("#vote-chips li", text: submitter_name, exact: true)
 
       devices.host
       |> assert_has("p", text: "It was", timeout: @wait)
       |> assert_has("p.font-display", text: submitter_name)
 
-      tally(scores, submitter, votes)
+      assert_reveal(devices, submitter, votes, bluff)
+
+      # Less motion is no head start: Dev's result still waited for the TV's
+      # name (it arrived unseen, and faded in on the same beat as everyone's).
+      if round == 1,
+        do: evaluate(devices.dev, "window.firstOutcomeOpacity", &assert(&1 == "0"))
+
+      # The default screen choices: the last reveal keeps the totals for the
+      # final scores, and says so on the strip.
+      if round == @rounds,
+        do: assert_has(devices.host, "#strip-label", text: "final scores next")
+
+      fooled = Enum.count(votes, fn {_voter, choice} -> choice != submitter end)
+      {tally(scores, submitter, votes, bluff), max(most_fooled, fooled)}
     end)
   end
 
-  # Deterministic but mixed: each voter guesses right two rounds in three and
-  # otherwise names the next player along (never themselves).
+  # The reveal groups the votes by who was named, sums the round up in two
+  # lines, and each phone says what the round meant for its own player.
+  defp assert_reveal(devices, submitter, votes, bluff) do
+    for vote <- votes, do: assert_guess_shown(devices, submitter, vote)
+
+    fooled = for {voter, choice} <- votes, choice != submitter, do: voter
+    assert_verdict(devices.host, length(votes) - length(fooled), fooled)
+
+    outcome = if fooled == [], do: "Nobody fell for it", else: "You fooled"
+    phone = Map.fetch!(devices, submitter)
+    assert_has(phone, "#my-outcome", text: outcome)
+
+    # The picker's prediction is said on the TV and on their phone, right or
+    # not; one that came true is a point of its own.
+    if guessed_right?(submitter, votes, bluff) do
+      # (A tie for the most wrong guesses names every one of them.)
+      devices.host
+      |> assert_has("#forecast", text: "+1")
+      |> assert_has("#forecast", text: "Called the blame: ")
+      |> assert_has("#forecast", text: name_of(bluff))
+
+      phone
+      |> assert_has("#my-blame", text: "+1 Called the blame: ")
+      |> assert_has("#my-blame", text: name_of(bluff))
+    else
+      assert_missed_guess(devices.host, phone, name_of(bluff), fooled)
+    end
+  end
+
+  # A prediction that missed is said only when somebody got a wrong guess.
+  defp assert_missed_guess(_host, _phone, _guess, []), do: :ok
+
+  defp assert_missed_guess(host, phone, guess, _fooled) do
+    # A miss is said plainly, with no points to it.
+    host
+    |> assert_has("#forecast", text: "Guessed #{guess} · ")
+    |> assert_has("#forecast", text: "took the blame")
+    |> refute_has("#forecast", text: "+")
+
+    assert_has(phone, "#my-blame", text: "Guessed #{guess} · ")
+  end
+
+  # The TV's card for the player this voter named lists the voter (the right
+  # one is headed "N called it"), and the voter's own phone says how their
+  # guess went.
+  defp assert_guess_shown(devices, submitter, {voter, choice}) do
+    heading = if choice == submitter, do: " called it$", else: " said #{name_of(choice)}$"
+
+    assert_has(
+      devices.host,
+      "#room-said li:has(span:text-matches('#{heading}'))",
+      text: name_of(voter)
+    )
+
+    phone = Map.fetch!(devices, voter)
+
+    if choice == submitter do
+      assert_has(phone, "#my-outcome", text: "You called it")
+    else
+      phone
+      |> assert_has("#my-outcome", text: "#{name_of(submitter)} got you")
+      |> assert_has("#my-outcome", text: "You said #{name_of(choice)}")
+    end
+  end
+
+  # Two lines, the same every round: what the picker made of it (naming up to
+  # three fooled players), then how the room did.
+  defp assert_verdict(host, right, fooled) do
+    host
+    |> assert_has("#reveal-summary", text: picker_line(right, length(fooled)))
+
+    if length(fooled) <= 3 do
+      for voter <- fooled, do: assert_has(host, "#reveal-summary", text: name_of(voter))
+    end
+  end
+
+  defp picker_line(_right, 0), do: "Everyone saw through it."
+  defp picker_line(_right, wrong) when wrong <= 3, do: "+#{wrong}"
+  defp picker_line(right, wrong), do: "Fooled #{wrong} of #{right + wrong}"
+
+  defp name_of(key) do
+    {_, name, _, _, _} = List.keyfind!(@players, key, 0)
+    name
+  end
+
+  # Deterministic but mixed: every voter is fooled in some rounds, some far
+  # more often than others (so the game usually has a winner), and a fooled
+  # voter names the next player along (never themselves).
   defp votes_for(round, submitter) do
     keys = Enum.map(@players, &elem(&1, 0))
 
@@ -191,7 +361,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> Enum.with_index()
     |> Enum.reject(fn {voter, _index} -> voter == submitter end)
     |> Enum.map(fn {voter, index} ->
-      if rem(index + round, 3) == 0 do
+      if rem(index + round, 2 + rem(index, 4)) == 0 do
         {voter, decoy(keys, submitter, voter)}
       else
         {voter, submitter}
@@ -207,49 +377,116 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> Enum.find(&(&1 != voter and &1 != submitter))
   end
 
-  # The scoring rules, from the players' side: +1 for naming the submitter,
-  # and the submitter gets +1 for every player they fooled.
-  defp tally(scores, submitter, votes) do
-    Enum.reduce(votes, scores, fn
-      {voter, ^submitter}, acc -> Map.update!(acc, voter, &(&1 + 1))
-      {_voter, _decoy}, acc -> Map.update!(acc, submitter, &(&1 + 1))
-    end)
+  # Who the picker says the room will blame: usually the player the fooled
+  # voters name (so the guess often comes true), and every third round the
+  # player before the picker (whom nobody names).
+  defp picker_guess(round, submitter) do
+    keys = Enum.map(@players, &elem(&1, 0))
+
+    if rem(round, 3) == 0 do
+      decoy(Enum.reverse(keys), submitter, submitter)
+    else
+      decoy(keys, submitter, submitter)
+    end
+  end
+
+  # The picker guessed right when the player they named took the most wrong
+  # votes (alone or level with another).
+  defp guessed_right?(submitter, votes, bluff) do
+    blamed =
+      votes
+      |> Enum.reject(fn {_voter, choice} -> choice == submitter end)
+      |> Enum.frequencies_by(fn {_voter, choice} -> choice end)
+
+    case blamed[bluff] do
+      nil -> false
+      count -> count == blamed |> Map.values() |> Enum.max()
+    end
+  end
+
+  # The scoring rules, from the players' side: +1 for naming the submitter;
+  # the submitter gets +1 for every player they fooled, and +1 more for
+  # guessing who the room would blame.
+  defp tally(scores, submitter, votes, bluff) do
+    scores =
+      Enum.reduce(votes, scores, fn
+        {voter, ^submitter}, acc -> Map.update!(acc, voter, &(&1 + 1))
+        {_voter, _decoy}, acc -> Map.update!(acc, submitter, &(&1 + 1))
+      end)
+
+    if guessed_right?(submitter, votes, bluff),
+      do: Map.update!(scores, submitter, &(&1 + 1)),
+      else: scores
   end
 
   # --- finished --------------------------------------------------------------
 
+  # Players on the same score share a place, on the TV and on their phones.
   defp assert_final_scores(devices, scores) do
     devices.host
     |> assert_has("p", text: "Final scores", timeout: @wait)
 
-    for {key, name, _device, _search, _song} <- @players do
+    board =
+      @players
+      |> Enum.map(fn {key, name, _, _, _} -> %{id: key, name: name} end)
+      |> Standings.rank(scores)
+
+    for row <- board do
+      place = Standings.ordinal(row.rank)
+
       devices.host
-      |> assert_has("li:has-text('#{name}') span.font-display",
-        text: Integer.to_string(Map.fetch!(scores, key)),
+      |> assert_has("#final-scores li:has-text('#{row.name}') span.font-display",
+        text: Integer.to_string(row.score),
         exact: true
       )
+      |> assert_has("#final-scores li:has-text('#{row.name}')", text: place)
 
       devices
-      |> Map.fetch!(key)
-      |> assert_has("h1", text: "That's a wrap!")
+      |> Map.fetch!(row.id)
+      |> assert_has("h1#my-place", text: finish_line(row, place), exact: true)
     end
   end
 
+  defp finish_line(%{rank: 1, tied?: false}, _place), do: "You won"
+  defp finish_line(%{rank: 1, tied?: true}, _place), do: "You tied for the win"
+  defp finish_line(%{tied?: true}, place), do: "You tied for #{place}"
+  defp finish_line(_row, place), do: "You finished #{place}"
+
+  # The final screen remembers the best bluff: the most players one song
+  # fooled, when that was more than one.
+  defp assert_awards(host, most_fooled) when most_fooled <= 1,
+    do: refute_has(host, "#awards dt", text: "Best bluff")
+
+  defp assert_awards(host, most_fooled) do
+    host
+    |> assert_has("#awards dt", text: "Best bluff")
+    |> assert_has("#awards dd", text: "fooled #{most_fooled}")
+  end
+
   # The host closes the room from the final scoreboard (its confirmation is
-  # accepted): the TV goes back to the start page, and every phone is told
-  # the game is over while keeping its final scores.
+  # accepted): the TV signs off with a closing card and stays on it, with the
+  # way to host the next game, and every phone is told the game is over
+  # while keeping its final scores.
   defp exit_game(devices) do
     devices.host
     |> click_button("Exit game")
-    |> assert_has("[role=alert]", text: "Thanks for playing!", timeout: @wait)
-    |> assert_has("button", text: "Choose a vibe")
+    |> assert_has("#closing-card h1", text: "Thanks for playing", timeout: @wait)
 
     in_parallel(@players, fn {key, _name, _device, _search, _song} ->
       devices
       |> Map.fetch!(key)
-      |> assert_has("#game-ended", text: "The host has ended the game.", timeout: @wait)
-      |> assert_has("h1", text: "That's a wrap!")
+      |> assert_has("#game-ended", text: "That's the night.", timeout: @wait)
+      # The final scores stay on screen.
+      |> assert_has("h1#my-place")
+      |> assert_has("#final-scores li", count: length(@players))
     end)
+
+    Stage.hold(to_timeout(second: 3))
+
+    # The next game starts from the closing card, with the themes to choose.
+    devices.host
+    |> click_link("Host another game")
+    |> assert_has("h2", text: "Pick a theme", timeout: @wait)
   end
 
   # --- helpers ---------------------------------------------------------------

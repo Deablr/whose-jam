@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="Placeholder cover art">
+<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1433"/><stop offset="1" stop-color="#27408b"/></linearGradient></defs>
+<rect width="600" height="600" fill="url(#g)"/><circle cx="440" cy="150" r="70" fill="#f4ecd0"/><circle cx="470" cy="135" r="62" fill="#132044"/><path d="M90 430 L470 250 L330 480 L290 400 Z" fill="#f6f1e4"/><path d="M290 400 L470 250 L310 440 Z" fill="#c9c2b0"/>
+</svg>

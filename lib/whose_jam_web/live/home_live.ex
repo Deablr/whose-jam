@@ -6,20 +6,38 @@ defmodule WhoseJamWeb.HomeLive do
   navigates to the host screen, which doubles as the TV display), or someone joins an existing game by typing a
   room code (which navigates to the player screen — the join UX itself lives in
   `PlayLive`).
+
+  A device that still holds a seat in a game that is on (its session's
+  `WhoseJamWeb.PlayerToken`) is offered the way back first, so a phone that
+  left by accident needn't find the code again. `?host` opens the theme picker
+  straight away (the TV's closing card links here to host another game).
   """
   use WhoseJamWeb, :live_view
 
-  alias WhoseJam.Content
+  alias WhoseJam.{Content, Game}
+  alias WhoseJamWeb.PlayerToken
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, session, socket) do
     {:ok,
      assign(socket,
        page_title: "A song-guessing party game",
        themes: load_themes(),
        join_code: "",
-       host_open?: false
+       host_open?: Map.has_key?(params, "host"),
+       seat: live_seat(session)
      )}
+  end
+
+  # The room code of the game this device has a seat in, while that game is
+  # on and still knows the player.
+  defp live_seat(session) do
+    with {:ok, code, player_id} <- PlayerToken.seat(session),
+         %{me: %{}} <- Game.player_view(code, player_id) do
+      code
+    else
+      _ -> nil
+    end
   end
 
   defp load_themes do
@@ -79,11 +97,12 @@ defmodule WhoseJamWeb.HomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.flash_group flash={@flash} />
+    <%!-- In the game's own colours, like every other screen's notices. --%>
+    <div data-theme="jam"><Layouts.flash_group flash={@flash} /></div>
 
     <main
       data-theme="jam"
-      class="jam-stage min-h-screen flex items-center px-6 sm:px-12 lg:px-20 py-12 lg:py-20"
+      class="jam-stage jam-home min-h-screen flex items-center px-6 sm:px-12 lg:px-20 py-12 lg:py-20"
     >
       <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
         <header class="flex flex-col items-center lg:items-start gap-6">
@@ -98,8 +117,19 @@ defmodule WhoseJamWeb.HomeLive do
         </header>
 
         <div class="space-y-6 xl:space-y-8">
+          <%!-- A phone that left its game by accident goes straight back. --%>
+          <.link
+            :if={@seat}
+            id="back-to-game"
+            navigate={~p"/play/#{@seat}"}
+            class="jam-btn w-full text-lg xl:text-2xl"
+          >
+            <span>Back to your game · <span class="tracking-widest">{@seat}</span></span>
+          </.link>
           <section class="jam-panel p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5">
-            <h2 class="font-display text-3xl xl:text-5xl">Join a game</h2>
+            <h2 class="font-display text-3xl xl:text-5xl">
+              {if @seat, do: "Join another game", else: "Join a game"}
+            </h2>
             <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
@@ -119,14 +149,14 @@ defmodule WhoseJamWeb.HomeLive do
           <section class="jam-panel p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5">
             <div class="space-y-1">
               <h2 class="font-display text-3xl xl:text-5xl">Host a game</h2>
-              <p class="text-jam-cream/60 xl:text-xl">Put it on the TV and pick a vibe.</p>
+              <p class="text-jam-cream/60 xl:text-xl">Put it on the TV and pick a theme.</p>
             </div>
             <button
               type="button"
               phx-click="open_host"
               class="jam-btn jam-btn-orange w-full xl:text-2xl"
             >
-              Choose a vibe
+              Choose a theme
             </button>
           </section>
         </div>
@@ -149,7 +179,7 @@ defmodule WhoseJamWeb.HomeLive do
       <div class="flex items-start justify-between gap-4">
         <div>
           <p class="jam-eyebrow">Host a game</p>
-          <h2 class="font-display text-4xl">Pick a vibe</h2>
+          <h2 class="font-display text-4xl">Pick a theme</h2>
         </div>
         <button
           type="button"
@@ -176,10 +206,12 @@ defmodule WhoseJamWeb.HomeLive do
                 {length(Enum.uniq(theme.style_sequence))} sub-rounds
               </span>
             </div>
+            <%!-- What the host is choosing, in a line: how this one is played. --%>
+            <p class="text-lg font-bold text-jam-cream">{how_it_plays(theme.style_sequence)}</p>
             <p class="text-sm text-jam-cream/70">{theme.description}</p>
-            <ul :if={theme.examples != []} class="text-sm text-jam-cream/45 italic space-y-0.5">
-              <li :for={example <- theme.examples}>“{example.prompt}”</li>
-            </ul>
+            <p :if={theme.examples != []} class="text-base text-jam-cream/65">
+              Like: “{hd(theme.examples).prompt}”
+            </p>
           </div>
           <button
             phx-click="create"
@@ -195,4 +227,15 @@ defmodule WhoseJamWeb.HomeLive do
   end
 
   defp multi_style?(styles), do: styles |> Enum.uniq() |> length() > 1
+
+  # How a theme plays, from the styles of its rounds, in the order they come.
+  defp how_it_plays(styles) do
+    case Enum.uniq(styles) do
+      [:guess_who] -> "Guess who picked each song."
+      [:guess_question] -> "Guess which prompt each song was picked for."
+      [:guess_question, :guess_who] -> "Guess the prompt, then guess the person."
+      [:guess_who, :guess_question] -> "Guess the person, then guess the prompt."
+      _ -> "Pick songs, then guess."
+    end
+  end
 end

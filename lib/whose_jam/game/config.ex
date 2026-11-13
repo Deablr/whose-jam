@@ -18,7 +18,8 @@ defmodule WhoseJam.Game.Config do
       `10`; `0` opens voting as soon as the song starts.
     * `vote_timer_s` — the voting countdown, in seconds. It starts once a
       majority of eligible voters have voted (or the song ends) and drops to a
-      fixed 5s (a `Game.Server` constant) once everyone has voted. Defaults to `30`.
+      short final countdown once everyone has voted (3s, or 5s when votes can
+      be changed; `Game.Server` constants). Defaults to `30`.
     * `questions_per_player` — songs each player submits. Default is tuned per
       player count so the estimated runtime lands near the 20-minute target
       (fewer questions at higher player counts, since every submitted song adds
@@ -30,6 +31,18 @@ defmodule WhoseJam.Game.Config do
       `3` (so guessing is non-trivial); can be lowered to `2` for development
       and small groups. Clamped to `2..8` (see `min_players_range/0`).
 
+  Host-facing presentation choices (how the screens tell the game; they never
+  change the scoring or the timers):
+
+    * `quick_reveals?` — each reveal lands all at once, and the winner's
+      moment is short, instead of in staged beats. Defaults to `false`.
+    * `name_non_voters?` — the reveal names who let the clock run out ("1
+      didn't vote · Ava") rather than only counting them. Defaults to `true`.
+    * `show_places?` — every seat in the TV's score strip shows its place
+      ("2nd"), not only the leader's outline. Defaults to `false`.
+    * `final_suspense?` — the game's last reveal shows only what the round
+      was worth, keeping the totals for the final scores. Defaults to `true`.
+
   Every integer override is clamped to a safe range, so a hand-crafted
   `set_config` can never produce a negative or timer-overflowing value:
   `answer_timer_s` `1..1800`, `vote_delay_s` `0..60`, `vote_timer_s` `1..300`,
@@ -38,7 +51,7 @@ defmodule WhoseJam.Game.Config do
 
   Internal (fixed values that shape `estimated_runtime_s/3`; `song_playback_s`
   also sizes the server's voting safety timeout). They are **not** overridable
-  via `build/2` — only the seven host-facing settings above can be overridden:
+  via `build/2` — only the eleven host-facing settings above can be overridden:
 
     * `song_playback_s` — typical listening time before most votes are in.
       Default `30`.
@@ -68,6 +81,10 @@ defmodule WhoseJam.Game.Config do
           subrounds_enabled?: boolean(),
           allow_vote_change?: boolean(),
           min_players: pos_integer(),
+          quick_reveals?: boolean(),
+          name_non_voters?: boolean(),
+          show_places?: boolean(),
+          final_suspense?: boolean(),
           song_playback_s: non_neg_integer(),
           reveal_padding_s: non_neg_integer(),
           results_padding_s: non_neg_integer()
@@ -80,6 +97,10 @@ defmodule WhoseJam.Game.Config do
             subrounds_enabled?: true,
             allow_vote_change?: false,
             min_players: @default_min_players,
+            quick_reveals?: false,
+            name_non_voters?: true,
+            show_places?: false,
+            final_suspense?: true,
             song_playback_s: @default_song_playback_s,
             reveal_padding_s: @default_reveal_padding_s,
             results_padding_s: @default_results_padding_s
@@ -91,9 +112,10 @@ defmodule WhoseJam.Game.Config do
   may use atom or string keys (LiveView forms send strings), and string values
   are coerced for known fields (`"45"` → `45`, `"true"` → `true`).
 
-  Only the seven host-facing settings can be overridden (`answer_timer_s`,
+  Only the eleven host-facing settings can be overridden (`answer_timer_s`,
   `vote_timer_s`, `vote_delay_s`, `questions_per_player`, `subrounds_enabled?`,
-  `allow_vote_change?`, `min_players`); any other key in `overrides` is ignored. The internal
+  `allow_vote_change?`, `min_players`, `quick_reveals?`, `name_non_voters?`,
+  `show_places?`, `final_suspense?`); any other key in `overrides` is ignored. The internal
   estimator fields stay fixed at their constant defaults. Integer overrides are
   clamped to the ranges listed in the moduledoc.
 
@@ -123,6 +145,10 @@ defmodule WhoseJam.Game.Config do
       subrounds_enabled?: fetch_bool(overrides, :subrounds_enabled?, true),
       allow_vote_change?: fetch_bool(overrides, :allow_vote_change?, false),
       min_players: fetch_int(overrides, :min_players, @default_min_players, @min_players_range),
+      quick_reveals?: fetch_bool(overrides, :quick_reveals?, false),
+      name_non_voters?: fetch_bool(overrides, :name_non_voters?, true),
+      show_places?: fetch_bool(overrides, :show_places?, false),
+      final_suspense?: fetch_bool(overrides, :final_suspense?, true),
       song_playback_s: @default_song_playback_s,
       reveal_padding_s: @default_reveal_padding_s,
       results_padding_s: @default_results_padding_s

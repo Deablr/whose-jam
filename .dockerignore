@@ -45,6 +45,9 @@ erl_crash.dump
 /priv/static/assets/
 /priv/static/cache_manifest.json
 
+# The Mock provider's local songs, copied in by `mix test.e2e` (dev/test only)
+/priv/static/audio/mock/*.mp3
+
 # Local environment files
 .env
 .env.*

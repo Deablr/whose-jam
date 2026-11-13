@@ -30,6 +30,13 @@ defmodule WhoseJam.Game do
   @max_code_attempts 25
 
   @doc """
+  How many joiners a game seats as players. Anyone who joins after that, or
+  once the game has started, is audience.
+  """
+  @spec max_players() :: pos_integer()
+  defdelegate max_players, to: Server
+
+  @doc """
   Create a new game for `theme_id`, optionally with host setting `overrides`.
 
   Returns `{:ok, code}` with a freshly minted, unused room code, or
@@ -138,8 +145,10 @@ defmodule WhoseJam.Game do
     do: command(code, {:submit_song, player_id, question_id, song})
 
   @doc """
-  Cast a vote in the current round. Rejects the submitter voting on their own
-  round and double votes (unless `allow_vote_change?` is enabled).
+  Cast a vote in the current round. From the round's submitter the choice is
+  not a vote but their forecast of the wrong answer the room will fall for
+  (worth a point if it comes true). Rejects a choice the round doesn't offer
+  and double votes (unless `allow_vote_change?` is enabled).
   """
   @spec cast_vote(String.t(), String.t(), term()) :: :ok | {:error, term()}
   def cast_vote(code, voter_id, choice), do: command(code, {:cast_vote, voter_id, choice})
