@@ -1598,7 +1598,7 @@ defmodule WhoseJamWeb.HostLive do
   defp voting(assigns) do
     received = assigns.view.round.votes_received
     expected = max(assigns.view.round.eligible_voters, received)
-    all_in? = expected > 0 and received >= expected
+    all_in? = assigns.view.round.all_in?
 
     # The players the round waits for (connected, the picker too) not yet in.
     # The audience isn't called out: its chips go quiet on their own.
@@ -1805,7 +1805,7 @@ defmodule WhoseJamWeb.HostLive do
         </div>
 
         <p
-          :if={@breakdown.right == [] and @breakdown.wrong == []}
+          :if={@breakdown.right == [] and @breakdown.wrong == [] and @breakdown.audience_missed == 0}
           class="text-3xl text-jam-cream/60"
         >
           Nobody voted on this one.
@@ -2523,9 +2523,7 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   # The vote closed on the clock rather than with every vote in.
-  defp timed_out?(%{eligible_voters: expected, votes_received: received}),
-    do: received < expected
-
+  defp timed_out?(%{all_in?: all_in?}), do: not all_in?
   defp timed_out?(_round), do: false
 
   # The last round of the whole game (its last sub-round's last round).
@@ -2554,11 +2552,13 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   # Who called it and who was fooled, in seat order, from the votes the reveal
-  # carries. A fooled guess-who voter comes with the name they said instead.
+  # carries. Only players can be fooled, as only they earn the picker points
+  # (`Scoring.score_round/2`): an audience guess that missed is counted apart.
   defp vote_breakdown(%{round: round} = view) do
     choices = Map.new(round.votes || [], &{&1.voter_id, &1.choice})
     voters = Enum.filter(view.players ++ view.audience, &Map.has_key?(choices, &1.id))
-    {right, wrong} = Enum.split_with(voters, &(choices[&1.id] == round.correct_choice))
+    {right, missed} = Enum.split_with(voters, &(choices[&1.id] == round.correct_choice))
+    {wrong, audience_missed} = Enum.split_with(missed, &(&1.role == :player))
 
     # Who could have voted (connected, and not the picker) and didn't.
     missing =
@@ -2571,6 +2571,8 @@ defmodule WhoseJamWeb.HostLive do
     %{
       right: Enum.map(right, & &1.name),
       wrong: Enum.map(wrong, & &1.name),
+      audience_missed: length(audience_missed),
+      players_voted: Enum.count(voters, &(&1.role == :player)),
       missing: missing,
       # What fooling the room was worth: the picker's points, less the one
       # for a guess that came true (which gets a line of its own).
@@ -2731,7 +2733,13 @@ defmodule WhoseJamWeb.HostLive do
   # What the picker made of the round: always the first line, because fooling
   # the room is what the game pays for. Up to three fooled players are named.
   # What the picker made of the room, led by its points.
-  defp reveal_summary(%{right: [], wrong: []}), do: %{points: nil, text: "Nobody voted."}
+  defp reveal_summary(%{right: [], wrong: [], audience_missed: 0}),
+    do: %{points: nil, text: "Nobody voted."}
+
+  # Not "nobody" when the audience fell for it, though that scores nothing.
+  defp reveal_summary(%{wrong: [], audience_missed: n}) when n > 0,
+    do: %{points: nil, text: "No player fell for it."}
+
   # Not "everyone" when somebody didn't vote.
   defp reveal_summary(%{wrong: [], missing: [_ | _]}),
     do: %{points: nil, text: "Nobody fell for it."}
@@ -2741,11 +2749,8 @@ defmodule WhoseJamWeb.HostLive do
   defp reveal_summary(%{wrong: wrong, fool_points: points}) when length(wrong) <= 3,
     do: %{points: plus_points(points), text: "Fooled #{join_names(wrong)}"}
 
-  defp reveal_summary(%{right: right, wrong: wrong, fool_points: points}),
-    do: %{
-      points: plus_points(points),
-      text: "Fooled #{length(wrong)} of #{length(right) + length(wrong)}"
-    }
+  defp reveal_summary(%{wrong: wrong, players_voted: voted, fool_points: points}),
+    do: %{points: plus_points(points), text: "Fooled #{length(wrong)} of #{voted}"}
 
   defp plus_points(0), do: nil
   defp plus_points(points), do: "+#{points}"
@@ -2800,17 +2805,24 @@ defmodule WhoseJamWeb.HostLive do
   # Fooling one player is no feat to hand out.
   defp bluff_line(_view, %{fooled: fooled}) when fooled <= 1, do: nil
 
-  defp bluff_line(view, %{fooled: fooled, bluffs: [bluff]}),
-    do:
-      {"Best bluff", "#{name_of(view, bluff.player_id)} fooled #{fooled} with #{bluff.song_name}"}
+  # Tied bluffs can be one player's songs, or several players'. An award more
+  # than two players share singles nobody out, so it isn't given.
+  defp bluff_line(view, %{fooled: fooled, bluffs: bluffs}) do
+    case Enum.uniq_by(bluffs, & &1.player_id) do
+      [%{player_id: id}] ->
+        {"Best bluff", "#{name_of(view, id)} fooled #{fooled} with #{bluff_songs(bluffs)}"}
 
-  # An award half the room shares singles nobody out, so it isn't given.
-  defp bluff_line(view, %{fooled: fooled, bluffs: [_, _] = bluffs}) do
-    names = bluffs |> Enum.map(&name_of(view, &1.player_id)) |> Enum.uniq() |> join_names()
-    {"Best bluff", "#{names} each fooled #{fooled}"}
+      [_, _] = holders ->
+        names = holders |> Enum.map(&name_of(view, &1.player_id)) |> join_names()
+        {"Best bluff", "#{names} each fooled #{fooled}"}
+
+      _shared ->
+        nil
+    end
   end
 
-  defp bluff_line(_view, _shared), do: nil
+  defp bluff_songs([%{song_name: song}]), do: song
+  defp bluff_songs(songs), do: "each of #{length(songs)} songs"
 
   defp sharpest_line(_view, nil), do: nil
   defp sharpest_line(_view, %{called: called}) when called <= 1, do: nil

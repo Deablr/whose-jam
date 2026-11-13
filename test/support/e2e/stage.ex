@@ -24,8 +24,12 @@ defmodule WhoseJamWeb.E2E.Stage do
   alias PlaywrightEx.BrowserContext
   alias WhoseJamWeb.E2E.Video
 
-  @typedoc "A device preset name: a key of `@devices` in this module."
-  @type device :: atom()
+  @typedoc """
+  A device preset name (a key of `@devices` in this module), or a preset with
+  overrides: `{preset, reduced_motion?: true}` asks the page for less motion
+  (`prefers-reduced-motion: reduce`), as a phone set up that way would.
+  """
+  @type device :: atom() | {atom(), [{:reduced_motion?, boolean()}]}
 
   @typedoc "`{key, caption, device}` — `key` names the session in the map passed to the body."
   @type role :: {atom(), String.t(), device()}
@@ -267,7 +271,7 @@ defmodule WhoseJamWeb.E2E.Stage do
   defp assign_slots(roles) do
     {placed, _free} =
       Enum.map_reduce(roles, @slots, fn {key, caption, device}, free ->
-        spec = Map.fetch!(@devices, device)
+        spec = device_spec(device)
 
         case Map.fetch!(free, spec.kind) do
           [slot | rest] ->
@@ -281,6 +285,11 @@ defmodule WhoseJamWeb.E2E.Stage do
 
     placed
   end
+
+  defp device_spec({preset, overrides}),
+    do: Map.merge(device_spec(preset), Map.new(overrides))
+
+  defp device_spec(preset), do: Map.fetch!(@devices, preset)
 
   defp open(role, raw_dir, started_ms, context) do
     dir = Path.join(raw_dir, Atom.to_string(role.key))
@@ -322,6 +331,9 @@ defmodule WhoseJamWeb.E2E.Stage do
         size: %{width: round(width * shrink), height: round(height * shrink)}
       }
     ]
+
+    opts =
+      if spec[:reduced_motion?], do: Keyword.put(opts, :reduced_motion, "reduce"), else: opts
 
     case spec.user_agent do
       :default -> opts

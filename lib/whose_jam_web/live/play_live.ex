@@ -11,10 +11,10 @@ defmodule WhoseJamWeb.PlayLive do
   Reconnection is automatic: LiveView re-runs `mount/3`, which re-derives the
   full UI from the *current* phase — nothing assumes a phase was witnessed.
 
-  One thing is kept here and never sent to the server: while a round is on,
-  the phone of the player who picked the song shows the same screen as
-  everyone else's (anything else would give its owner away), and the name
-  they tap to blend in is only remembered in this LiveView.
+  While a round's vote is open, the phone of the player who picked the song
+  keeps everyone's layout (anything else would give its owner away): they
+  lock in through the same buttons, and what they send is their forecast of
+  who takes the blame (see `WhoseJam.Game.cast_vote/3`).
 
   When the game ends (`{:game_ended, reason}`: the host ended it, closed the
   host screen, or it sat idle) the phone says so and offers the way home. A
@@ -97,7 +97,6 @@ defmodule WhoseJamWeb.PlayLive do
       times_up_dismissed: false,
       # voting
       vote_error: nil,
-      # {round, choice}: the name the round's own picker tapped to blend in
       # {round, choice}: a name tapped but not yet locked in
       chosen: nil,
       # join
@@ -1491,7 +1490,7 @@ defmodule WhoseJamWeb.PlayLive do
              beside it and nothing below moves when it starts. --%>
         <div class="mb-3 flex flex-col gap-2 transition-colors has-[[data-urgent]]:text-jam-orange sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <h1 class="font-display text-xl">
-            {if @change? and all_in?(@round),
+            {if @change? and @round.all_in?,
               do: "Final changes",
               else: vote_question(@round)}
           </h1>
@@ -1509,7 +1508,7 @@ defmodule WhoseJamWeb.PlayLive do
           </p>
           <p :if={@change?} class={["text-sm text-jam-mint", !@picked && "invisible"]}>
             {cond do
-              all_in?(@round) -> "Everyone's in. Last chance to switch."
+              @round.all_in? -> "Everyone's in. Last chance to switch."
               @own? -> "Prediction saved."
               true -> "Vote's in."
             end}
@@ -1760,7 +1759,7 @@ defmodule WhoseJamWeb.PlayLive do
       assign(
         assigns,
         :timer_label,
-        if(all_in?(assigns.round), do: "Reveal in", else: "Time left")
+        if(assigns.round.all_in?, do: "Reveal in", else: "Time left")
       )
 
     assigns = assign(assigns, pill_class: @pill, bar?: assigns[:timer_bar?] == true)
@@ -1792,10 +1791,6 @@ defmodule WhoseJamWeb.PlayLive do
     </div>
     """
   end
-
-  # Every vote the round is waiting for is in: the reveal is seconds away.
-  defp all_in?(round),
-    do: round.eligible_voters > 0 and round.votes_received >= round.eligible_voters
 
   # The reveal belongs to the room, so the phone sends eyes to the TV while the
   # reveal plays out there (`.jam-beat-1` and `-2` in app.css) and only then
@@ -1947,14 +1942,24 @@ defmodule WhoseJamWeb.PlayLive do
 
     wrong = for v <- votes, v.choice != round.correct_choice, into: MapSet.new(), do: v.voter_id
 
-    # In seat order, as the TV names them.
-    fooled = for p <- view.players ++ view.audience, p.id in wrong, do: p.name
+    # In seat order, as the TV names them. Only players can be fooled: an
+    # audience guess that missed earns the picker nothing (`Scoring`).
+    fooled = for p <- view.players, p.id in wrong, do: p.name
 
     case {votes, fooled} do
-      {[], _} -> miss("Nobody voted")
-      # A prediction still gets its line: it had nobody to come true on.
-      {_, []} -> Map.put(miss("Nobody fell for it"), :blame, blame_line(round))
-      {_, names} -> bluff("You fooled #{join_names(names)}", round, delta)
+      {[], _} ->
+        miss("Nobody voted")
+
+      # A prediction still gets its line: it had nobody to come true on. Not
+      # "nobody" when only the audience fell for it (that scores nothing).
+      {_, []} ->
+        headline =
+          if MapSet.size(wrong) > 0, do: "No player fell for it", else: "Nobody fell for it"
+
+        Map.put(miss(headline), :blame, blame_line(round))
+
+      {_, names} ->
+        bluff("You fooled #{join_names(names)}", round, delta)
     end
   end
 
@@ -2373,16 +2378,15 @@ defmodule WhoseJamWeb.PlayLive do
   defp finish_line(row, _role, _count), do: "You finished #{place(row)}"
 
   # The awards this player holds, worded as the TV words them. Like the TV, an
-  # award more than two players share singles nobody out, so it isn't shown.
+  # award more than two players share singles nobody out, so it isn't shown
+  # (several tied songs of one player's are one award).
   defp my_awards(%{awards: %{} = awards}, player_id) do
     bluff =
-      case awards[:best_bluff] do
-        %{fooled: fooled, bluffs: bluffs} when length(bluffs) <= 2 and fooled > 1 ->
-          for %{player_id: ^player_id, song_name: song} <- bluffs,
-              do: "Best bluff: #{song} fooled #{fooled}"
-
-        _ ->
-          []
+      with %{fooled: fooled, bluffs: bluffs} when fooled > 1 <- awards[:best_bluff],
+           true <- bluffs |> Enum.uniq_by(& &1.player_id) |> length() <= 2 do
+        my_bluff(for(%{player_id: ^player_id, song_name: song} <- bluffs, do: song), fooled)
+      else
+        _ -> []
       end
 
     sharpest =
@@ -2398,6 +2402,10 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   defp my_awards(_view, _player_id), do: []
+
+  defp my_bluff([], _fooled), do: []
+  defp my_bluff([song], fooled), do: ["Best bluff: #{song} fooled #{fooled}"]
+  defp my_bluff(songs, fooled), do: ["Best bluff: #{length(songs)} songs each fooled #{fooled}"]
 
   # --- game ended -----------------------------------------------------------
 

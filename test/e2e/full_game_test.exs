@@ -21,12 +21,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   # different Mock track, so a song identifies its submitter.
   # Six of the songs are real (NoCopyrightSounds tracks the Mock provider
   # plays for real when `mix test.e2e` has copied them in), with long and
-  # non-Latin titles; two are made up.
+  # non-Latin titles; two are made up. Dev's phone asks for less motion.
   @players [
     {:ava, "Ava", :iphone_15, "anesthesia", "Anesthesia"},
     {:ben, "Ben", :pixel_8, "flirt", "FLIRT (if i don’t mean it)"},
     {:cleo, "Cleo", :iphone_se, "happier", "Happier Now"},
-    {:dev, "Dev", :galaxy_s24, "concrete", "Concrete Garden"},
+    {:dev, "Dev", {:galaxy_s24, reduced_motion?: true}, "concrete", "Concrete Garden"},
     {:eli, "Eli", :ipad_mini, "daydream", "デイドリーム (Daydream)"},
     {:fern, "Fern", :galaxy_tab_s9, "severed", "Severed Rose"},
     {:gus, "Gus", :macbook_air, "verse", "Re:バース (Re:Verse)"},
@@ -35,6 +35,22 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
 
   # One question each, so one round per player.
   @rounds length(@players)
+
+  # Notes how the phone's result card looks the instant it is first on the
+  # page (a MutationObserver runs before the next paint).
+  @watch_outcome """
+  (() => {
+    const seen = () => {
+      const card = document.querySelector("#my-outcome");
+      if (card) window.firstOutcomeOpacity = getComputedStyle(card).opacity;
+      return card !== null;
+    };
+    if (!seen()) {
+      const watch = new MutationObserver(() => { if (seen()) watch.disconnect(); });
+      watch.observe(document.body, {childList: true, subtree: true});
+    }
+  })()
+  """
 
   setup do
     # config/test.exs shortens the reveal to a blink. Hold it long enough to
@@ -170,6 +186,15 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       {submitter, submitter_name, _, _, _} = List.keyfind!(@players, song, 4)
       votes = votes_for(round, submitter)
 
+      if round == 1 do
+        devices.dev
+        |> evaluate(
+          "matchMedia('(prefers-reduced-motion: reduce)').matches",
+          &assert(&1 == true)
+        )
+        |> evaluate(@watch_outcome)
+      end
+
       # A guess-who round says what the song was picked for, on the TV and
       # the phones alike.
       prompt = text_of(devices.host, "#round-prompt blockquote")
@@ -225,6 +250,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       |> assert_has("p.font-display", text: submitter_name)
 
       assert_reveal(devices, submitter, votes, bluff)
+
+      # Less motion is no head start: Dev's result still waited for the TV's
+      # name (it arrived unseen, and faded in on the same beat as everyone's).
+      if round == 1,
+        do: evaluate(devices.dev, "window.firstOutcomeOpacity", &assert(&1 == "0"))
 
       # The default screen choices: the last reveal keeps the totals for the
       # final scores, and says so on the strip.

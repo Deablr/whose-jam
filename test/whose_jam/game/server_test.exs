@@ -654,6 +654,10 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.round.eligible_voters == 3
       assert view.round.votes == nil
       assert view.round.forecast == nil
+
+      # Nor does the order of the list: the submitter isn't always first.
+      assert Game.cast_vote(code, b, a) == :ok
+      assert Game.get_state(code).round.voters == Enum.sort([a, b, submitter])
     end
 
     test "the reveal carries who voted for what" do
@@ -954,7 +958,29 @@ defmodule WhoseJam.Game.ServerTest do
       :ok = Game.presence_diff(code, [a, b])
       view = Game.get_state(code)
       assert view.round_state == :voting
+      assert view.round.all_in?
       assert remaining_s(view) > 2 and remaining_s(view) <= 3
+    end
+
+    test "a voter dropping out never makes the round all in while someone connected is still choosing" do
+      theme = guess_who_theme()
+      code = start_round(theme, 4, %{vote_delay_s: 0, vote_timer_s: 30})
+      {submitter, [a, b, c]} = submitter_and_voters(code)
+
+      # The submitter's forecast and two votes are in; c is still choosing.
+      :ok = Game.cast_vote(code, submitter, a)
+      for v <- [a, b], do: :ok = Game.cast_vote(code, v, submitter)
+      refute Game.get_state(code).round.all_in?
+
+      # b drops: three lock-ins for three connected, but c hasn't voted.
+      :ok = Game.presence_diff(code, [submitter, a, c])
+      view = Game.get_state(code)
+      assert view.round.votes_received == view.round.eligible_voters
+      refute view.round.all_in?
+      assert remaining_s(view) > 25
+
+      :ok = Game.cast_vote(code, c, submitter)
+      assert Game.get_state(code).round.all_in?
     end
   end
 

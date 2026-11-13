@@ -559,10 +559,26 @@
 .jam-quick .jam-out.jam-until-winner { animation-delay: 1100ms; }
 .jam-quick .jam-rise.jam-after-winner { animation-delay: 1300ms; }
 
+/* Less motion, the same timing. Entrances fade in place rather than rise or
+   grow, but keep their delays: a reveal still waits for its beat, so a phone
+   or a score never gets ahead of the TV. What only fades (leaving, the
+   round's card, the winner's card) is left as it is. */
 @media (prefers-reduced-motion: reduce) {
   .jam-eq > span { animation: none; height: 60%; }
-  .jam-rise, .jam-pop, .jam-bump { animation: none; }
-  .jam-out, .jam-round-card, .jam-winner-card { animation: none; display: none; }
+  .jam-rise, .jam-pop { animation-name: jam-fade-in; }
+  .jam-round-card-text { animation-name: jam-round-card-text-fade; }
+  .jam-bump { animation: none; }
+}
+
+@keyframes jam-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes jam-round-card-text-fade {
+  0% { opacity: 0; }
+  12%, 64% { opacity: 1; }
+  82%, 100% { opacity: 0; }
 }
 }
 

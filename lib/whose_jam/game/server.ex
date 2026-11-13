@@ -734,9 +734,10 @@ defmodule WhoseJam.Game.Server do
     do: %{round | votes: Map.put(round.votes, voter.id, %{choice: choice, role: voter.role})}
 
   # Everyone who has locked something in: the voters, and the submitter once
-  # their forecast is in.
-  defp locked_in(%{forecast: nil} = round), do: Map.keys(round.votes)
-  defp locked_in(round), do: [round.submitter_id | Map.keys(round.votes)]
+  # their forecast is in. Sorted, so where the submitter sits in the list
+  # says nothing about whose song it is.
+  defp locked_in(%{forecast: nil} = round), do: Enum.sort(Map.keys(round.votes))
+  defp locked_in(round), do: Enum.sort([round.submitter_id | Map.keys(round.votes)])
 
   defp guess_who_choices(state) do
     state
@@ -1269,6 +1270,10 @@ defmodule WhoseJam.Game.Server do
       votes_received: length(locked_in(round)),
       voters: locked_in(round),
       eligible_voters: length(eligible_voter_ids(state)),
+      # Whether everyone connected has locked in: the server's own test for
+      # the all-in countdown, so no screen has to work it out from counts
+      # that include someone who has since dropped out.
+      all_in?: all_eligible_voted?(state),
       votes_open_ms: state.votes_open_ms,
       deadline_ms: state.vote_deadline_ms,
       revealed: round.revealed
