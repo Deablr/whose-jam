@@ -130,15 +130,19 @@
 }
 
 @theme {
-  --font-display: "Lilita One", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Lilita One", "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  /* Marker on tape: only ever a player's name on a `.jam-tape` strip. */
+  --font-marker: "Shantell Sans", "Figtree", ui-sans-serif, system-ui, sans-serif;
 
   /* Greys, warm rather than blue, so the egg white sits with them. */
   --color-jam-ink: #171715;
   --color-jam-night: #262623;
   --color-jam-stone: #a19c90;
   --color-jam-pink: #ff3fa8;
+  --color-jam-pink-hi: #ff62b8;
   --color-jam-orange: #ff9f1c;
+  --color-jam-orange-hi: #ffb247;
   /* Egg white: every light thing on a game screen. */
   --color-jam-cream: #f2eee4;
   --color-jam-mint: #4fe3bd;
@@ -154,13 +158,14 @@
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /* A handheld with little height for a round's choices: a small phone, a
-   tablet held upright (which `.jam-handheld` scales up by half, so its 1024px
-   are worth about 680), or a laptop with a short screen (768px less the
-   browser's bars). Screens drop what they can spare to keep the choices and
-   their button, and the listening clock, in view. */
+   tablet held upright with little height for its size (`.jam-handheld`
+   scales a tablet up by a quarter, so it needs 875px to have a small
+   phone's 700), or a laptop with a short screen (768px less the browser's
+   bars). Screens drop what they can spare to keep the choices and their
+   button, and the listening clock, in view. */
 @custom-variant short {
   @media (max-height: 700px) { @slot; }
-  @media (min-width: 48rem) and (max-width: 63.99rem) and (max-height: 1050px) { @slot; }
+  @media (min-width: 48rem) and (max-width: 63.99rem) and (max-height: 875px) { @slot; }
   @media (min-width: 64rem) and (max-height: 800px) { @slot; }
 }
 
@@ -187,72 +192,98 @@
   isolation: isolate;
 }
 
-/* Small uppercase label above a heading. */
+/* A quiet label above a heading: sentence case, a weight up from the body,
+   a step back in colour. */
 .jam-eyebrow {
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgb(242 238 228 / 0.55);
+  font-size: 0.875rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  color: rgb(242 238 228 / 0.6);
 }
 
 /* Labels on the TV are read from across the room. */
 .jam-tv .jam-eyebrow {
-  font-size: 1.5rem;
-  color: rgb(242 238 228 / 0.7);
+  font-size: 1.6rem;
+  color: rgb(242 238 228 / 0.66);
 }
 
-/* Soft panel: a solid fill, no hairline outline. */
+/* A panel: one step up from the stage, a solid fill with no outline. */
 .jam-panel {
-  background: rgb(46 46 42 / 0.82);
+  background: var(--color-jam-night);
   border: none;
   border-radius: var(--radius-3xl);
-  backdrop-filter: blur(14px);
 }
 
-/* Chunky button with a hard offset shadow that presses in. */
+/* A button: the one shape every action takes, the UI's small corner, set
+   in the body face, heavy, so it reads as a control and not as a headline.
+   A short lip under it presses in when tapped. */
 .jam-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
-  font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: 0.01em;
-  font-size: 1.15em;
-  padding: 0.7em 1.5em;
-  border-radius: var(--radius-2xl);
+  font-family: var(--font-body);
+  font-weight: 800;
+  letter-spacing: -0.005em;
+  font-size: 1.05em;
+  line-height: 1.2;
+  padding: 0.85em 1.5em;
+  border-radius: var(--radius-lg);
   background: var(--color-jam-pink);
-  color: #fff;
-  box-shadow: 0 0.22em 0 #a3226a;
-  transition: transform 80ms ease, box-shadow 80ms ease, opacity 120ms ease;
+  color: var(--color-jam-ink);
+  box-shadow: 0 0.18em 0 var(--jam-lip, #a8256d);
+  transition: transform 80ms ease, box-shadow 80ms ease, background-color 150ms ease, opacity 120ms ease;
   cursor: pointer;
 }
 
-.jam-btn:active:not(:disabled) {
-  transform: translateY(0.18em);
-  box-shadow: 0 0.04em 0 #a3226a;
+.jam-btn:hover:not(:disabled) {
+  background: var(--color-jam-pink-hi);
 }
 
+.jam-btn:active:not(:disabled) {
+  transform: translateY(0.14em);
+  box-shadow: 0 0.04em 0 var(--jam-lip, #a8256d);
+}
+
+/* Disabled is a flat, quiet slab: no colour, no lip. */
 .jam-btn:disabled {
-  opacity: 0.35;
+  background: rgb(242 238 228 / 0.08);
+  color: rgb(242 238 228 / 0.45);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
 .jam-btn-orange {
+  --jam-lip: #a8650c;
   background: var(--color-jam-orange);
   color: var(--color-jam-ink);
-  box-shadow: 0 0.22em 0 #b36a07;
 }
 
-.jam-btn-orange:active:not(:disabled) {
-  box-shadow: 0 0.04em 0 #b36a07;
+.jam-btn-orange:hover:not(:disabled) {
+  background: var(--color-jam-orange-hi);
 }
 
+/* The quieter primary: egg white, for the main action of a screen that
+   already has a pink one. */
+.jam-btn-cream {
+  --jam-lip: #9d988b;
+  background: var(--color-jam-cream);
+  color: var(--color-jam-ink);
+}
+
+.jam-btn-cream:hover:not(:disabled) {
+  background: #fff;
+}
+
+/* Secondary: a flat tint, no lip. */
 .jam-btn-ghost {
-  background: rgb(242 238 228 / 0.08);
+  background: rgb(242 238 228 / 0.1);
   color: var(--color-jam-cream);
   box-shadow: none;
+}
+
+.jam-btn-ghost:hover:not(:disabled) {
+  background: rgb(242 238 228 / 0.16);
 }
 
 .jam-btn-ghost:active:not(:disabled) {
@@ -264,10 +295,10 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45em;
-  padding: 0.4em 1em;
-  border-radius: var(--jam-pill);
+  padding: 0.4em 0.9em;
+  border-radius: var(--radius-md);
   font-weight: 700;
-  background: rgb(242 238 228 / 0.08);
+  background: rgb(242 238 228 / 0.1);
 }
 
 .jam-chip-on {
@@ -341,28 +372,24 @@
 
 /* --- Icon badge -------------------------------------------------------- */
 
-/* The one illustration style: a line icon on a disc in the logo's gradient,
-   drawn by hand (no two sides of it quite the same). Sized by the font size
-   of whoever uses it. */
+/* A status mark: a solid icon in its colour, on nothing. Sized by the font
+   size of whoever uses it, and kept small: it marks a state, it isn't the
+   state's picture. */
 .jam-badge {
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
   width: 1em;
   height: 1em;
-  border-radius: 53% 47% 51% 45% / 46% 53% 47% 52%;
-  color: #fff;
-  background: linear-gradient(135deg, var(--color-jam-pink), var(--color-jam-orange));
+  color: var(--color-jam-pink);
 }
 
 .jam-badge-mint {
-  color: var(--color-jam-ink);
-  background: var(--color-jam-mint);
+  color: var(--color-jam-mint);
 }
 
 .jam-badge-quiet {
-  color: rgb(242 238 228 / 0.7);
-  background: rgb(242 238 228 / 0.08);
+  color: rgb(242 238 228 / 0.6);
 }
 
 /* --- Entrances --------------------------------------------------------- */
@@ -582,67 +609,108 @@
 }
 }
 
-/* --- Drawn by hand ------------------------------------------------------- */
+/* --- Shapes ---------------------------------------------------------------
 
-/* A screen's hero surface (the song's poster, the reveal's cards, a phone's
-   result) is drawn as if by hand: each corner a long,
-   shallow ellipse, so a side reads as a line drawn a touch crooked, and no
-   two corners match (uneven elliptical radii; the browser scales them down
-   to fit). Mark one with `.jam-hand`; it takes one of three hands, chosen by
-   its place among its siblings, so a row of cards isn't stamped from one
-   mould.
+   Two families, so a shape says what a thing is:
 
-   Everything else, the controls and anything repeated (buttons, chips, vote
-   tiles, score cells, inputs, rows, pills), is straight-edged with one small
-   corner, so a grid of them lines up and nothing small reads as a rendering
-   slip: inside a game screen every radius size (Tailwind's `rounded-*`,
-   daisyUI's, the `jam-*` components') is that one corner.
+   - The UI is flat, with one small corner: buttons, chips, tiles, rows,
+     inputs, pills and panels (Tailwind's `rounded-*` and daisyUI's radii,
+     retuned here for every game screen; a panel's corner is a touch larger
+     than a tile's, and nothing is a capsule).
+   - Props are things the game hands the room, made of paper and tape, with
+     square corners, a tilt and a shadow: the song's poster and the prompt's
+     slip (`.jam-paper`), a player's name on a strip of tape (`.jam-tape`),
+     the room's ticket (`.jam-ticket`).
 
    Unlayered, so it beats the utilities. */
 :where(.jam-stage, [data-theme="jam"]),
 :where(.jam-stage, [data-theme="jam"]) * {
-  --radius-sm: 0.5rem;
-  --radius-md: 0.5rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
   --radius-xl: 0.5rem;
-  --radius-2xl: 0.5rem;
-  --radius-3xl: 0.5rem;
-  --radius-box: 0.5rem;
+  --radius-2xl: 0.625rem;
+  --radius-3xl: 0.875rem;
+  --radius-box: 0.875rem;
   --radius-field: 0.5rem;
-  --radius-selector: 0.5rem;
+  --radius-selector: 0.25rem;
   --jam-pill: 0.5rem;
 }
 
+/* No capsules: a "full" corner is the UI's small one (a dot stays round,
+   being smaller than the corner). */
 :where(.jam-stage, [data-theme="jam"]) .rounded-full {
   border-radius: var(--jam-pill);
 }
 
-.jam-hand,
-.jam-hand:nth-child(3n + 1) {
-  border-radius: 16rem 0.9rem 14rem 0.9rem / 0.9rem 14rem 0.9rem 16rem;
-}
-
-.jam-hand:nth-child(3n + 2) {
-  border-radius: 1rem 15rem 0.8rem 13rem / 13rem 0.8rem 15rem 1rem;
-}
-
-.jam-hand:nth-child(3n) {
-  border-radius: 14rem 1.1rem 16rem 0.8rem / 0.8rem 16rem 1.1rem 14rem;
-}
-
-/* A song is printed as a poster: a sheet of paper laid on the stage a touch
-   askew, lifted off it by its shadow. (`rotate`, not `transform`, so an
-   entrance's movement still applies.) */
-.jam-poster {
-  rotate: -1.5deg;
+/* A sheet of paper: a paper's corner, and a shadow that lifts it off the
+   stage. Siblings lie at slightly different angles, as sheets dropped on a
+   table do. (`rotate`, not `transform`, so an entrance's movement still
+   applies.) */
+.jam-paper {
+  border-radius: 0.125rem;
   box-shadow:
-    0 0.2rem 0.5rem rgb(0 0 0 / 0.3),
-    0 1.25rem 2.5rem rgb(0 0 0 / 0.45);
+    0 0.2rem 0 rgb(0 0 0 / 0.22),
+    0 0.9rem 1.8rem -0.6rem rgb(0 0 0 / 0.5);
 }
 
-/* A hand-drawn outline is a touch heavier on two sides, as a pen's is. */
-.jam-panel.jam-hand {
-  border-width: 2px 2.5px 3px 2px;
+.jam-paper:nth-child(3n + 1) { rotate: -0.8deg; }
+.jam-paper:nth-child(3n + 2) { rotate: 0.6deg; }
+.jam-paper:nth-child(3n) { rotate: -0.3deg; }
+
+/* The song's poster leans a little further: it is the thing on the table. */
+.jam-paper.jam-poster {
+  rotate: -1.5deg;
+}
+
+/* A name written in marker on a strip of white tape, the way a sound desk
+   labels its channels: the one prop a player's name wears. The ends are
+   torn, not cut. A strip's tilt is its player's (`.jam-tilt-N`, from their
+   id), so a name lies the same way on every screen. */
+.jam-tape {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0.3em 0.85em 0.35em;
+  background: #ebe4d2;
+  color: var(--color-jam-ink);
+  font-family: var(--font-marker);
+  font-weight: 700;
+  font-variation-settings: "INFM" 55;
+  line-height: 1.1;
+  clip-path: polygon(
+    0.22em 0, calc(100% - 0.3em) 0, 100% 16%, calc(100% - 0.18em) 34%, 100% 52%,
+    calc(100% - 0.24em) 70%, 100% 86%, calc(100% - 0.12em) 100%, 0.3em 100%,
+    0 84%, 0.2em 66%, 0 48%, 0.24em 30%, 0 12%
+  );
+}
+
+.jam-tilt-0 { rotate: -1.6deg; }
+.jam-tilt-1 { rotate: -0.7deg; }
+.jam-tilt-2 { rotate: 0.3deg; }
+.jam-tilt-3 { rotate: 0.9deg; }
+.jam-tilt-4 { rotate: 1.7deg; }
+
+/* An admission ticket, for the room: egg-white card stock with a notch
+   cut from either end, and a perforation (a dashed rule, inside it) between
+   its stub and the rest. */
+.jam-ticket {
+  --jam-notch: 0.8rem;
+  background: var(--color-jam-cream);
+  color: var(--color-jam-ink);
+  border-radius: 0.25rem;
+  -webkit-mask:
+    radial-gradient(circle var(--jam-notch) at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--jam-notch) at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+  mask:
+    radial-gradient(circle var(--jam-notch) at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--jam-notch) at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+}
+
+/* A mask clips a box shadow, so a ticket is lifted from outside. */
+.jam-lift {
+  filter: drop-shadow(0 0.2rem 0 rgb(0 0 0 / 0.25)) drop-shadow(0 0.8rem 1.2rem rgb(0 0 0 / 0.35));
 }
 
 /* --- Screen-size scaling ------------------------------------------------- */
@@ -666,8 +734,16 @@
   }
 }
 
-/* A tablet or laptop in a player's hands gets the phone layout, larger. */
+/* A tablet in a player's hands gets the phone layout, a little larger (and
+   no larger: it is held at reading distance, like a phone); a laptop, set
+   further back, larger still. */
 @media (min-width: 48rem) {
+  html:has(.jam-handheld) {
+    font-size: 125%;
+  }
+}
+
+@media (min-width: 64rem) {
   html:has(.jam-handheld) {
     font-size: 150%;
   }

@@ -47,27 +47,27 @@ end
 certified_bangers = [
   # Example previews (is_example: true) — never used in actual gameplay.
   {:guess_who, true,
-   "The song you'd blast to feel like the main character walking out of a building."},
+   "The song you’d blast to feel like the main character walking out of a building."},
   {:guess_who, true, "A track that instantly resets your entire mood for the better."},
   {:guess_who, true, "The song you know every single word to, including the ad-libs."},
 
   # Gameplay questions.
   {:guess_who, false, "The song that turns any car into a concert venue."},
-  {:guess_who, false, "The song you'd choose for a dramatic entrance."},
+  {:guess_who, false, "The song you’d choose for a dramatic entrance."},
   {:guess_who, false,
    "The one song guaranteed to get you off the couch and onto the dance floor."},
-  {:guess_who, false, "A track you'd pick to open the party and set the whole vibe."},
+  {:guess_who, false, "A track you’d pick to open the party and set the whole vibe."},
   {:guess_who, false, "The song you crank up when you need to feel unstoppable."},
   {:guess_who, false,
-   "A tune that's objectively too good, no matter how many times it's overplayed."},
+   "A tune that’s objectively too good, no matter how many times it’s overplayed."},
   {:guess_who, false,
-   "The song you'd perform at karaoke if you'd had exactly the right number of drinks."},
+   "The song you’d perform at karaoke if you’d had exactly the right number of drinks."},
   {:guess_who, false, "A beat drop so good it should be illegal."},
   {:guess_who, false, "The soundtrack to one summer of your life."},
-  {:guess_who, false, "A track you'd put on to convince someone you have great taste."},
+  {:guess_who, false, "A track you’d put on to convince someone you have great taste."},
   {:guess_who, false, "The song you secretly think is the greatest thing ever recorded."},
   {:guess_who, false, "A tune that makes even the grocery store feel like a movie montage."},
-  {:guess_who, false, "The song you'd want playing as you win something in slow motion."},
+  {:guess_who, false, "The song you’d want playing as you win something in slow motion."},
   {:guess_who, false, "A guilty-pleasure banger you refuse to apologize for."}
 ]
 
@@ -88,31 +88,31 @@ emotional_damage = [
   {:guess_who, true,
    "The song that would play over the closing credits of a movie about your life."},
   {:guess_question, true, "A song for staring dramatically out of a rain-streaked window."},
-  {:guess_question, true, "The track you'd put on to have a good, cathartic cry."},
+  {:guess_question, true, "The track you’d put on to have a good, cathartic cry."},
 
   # Sub-round 1 — :guess_question (guess which prompt the song answers).
   {:guess_question, false, "A song for driving away from your problems at night."},
   {:guess_question, false, "The soundtrack to overthinking a text you already sent."},
   {:guess_question, false, "A song that feels like the last day of summer."},
   {:guess_question, false,
-   "The track for lying on the floor questioning every choice you've made."},
-  {:guess_question, false, "A song for pretending you're fine at a party."},
+   "The track for lying on the floor questioning every choice you’ve made."},
+  {:guess_question, false, "A song for pretending you’re fine at a party."},
   {:guess_question, false, "The tune for a very sad main-character walk in the rain."},
   {:guess_question, false, "A song that would make a stranger cry on public transit."},
   {:guess_question, false, "The track for finally letting go of something you held too long."},
 
   # Sub-round 2 — :guess_who (guess which friend submitted this).
   {:guess_who, false, "The song that reliably makes you tear up no matter where you are."},
-  {:guess_who, false, "A track tied to a breakup you're pretending you're over."},
-  {:guess_who, false, "The song you'd want played at your funeral, purely for the drama."},
+  {:guess_who, false, "A track tied to a breakup you’re pretending you’re over."},
+  {:guess_who, false, "The song you’d want played at your funeral, purely for the drama."},
   {:guess_who, false,
    "A tune that instantly transports you back to being fifteen and misunderstood."},
-  {:guess_who, false, "The song you play on repeat when you're deep in your feelings."},
+  {:guess_who, false, "The song you play on repeat when you’re deep in your feelings."},
   {:guess_who, false,
-   "A track that reminds you of someone you probably shouldn't still think about."},
+   "A track that reminds you of someone you probably shouldn’t still think about."},
   {:guess_who, false, "The song that hits differently at 2 a.m."},
   {:guess_who, false, "A tune that makes you miss a version of yourself that no longer exists."},
-  {:guess_who, false, "The song you'd text to someone at your absolute lowest."},
+  {:guess_who, false, "The song you’d text to someone at your absolute lowest."},
   {:guess_who, false, "A track that romanticizes staring longingly into the middle distance."}
 ]
 

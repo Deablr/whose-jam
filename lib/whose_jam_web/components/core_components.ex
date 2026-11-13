@@ -454,14 +454,15 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
-  Renders the game's illustration: a Heroicon on a disc (`.jam-badge` in
-  `app.css`). Game screens use this instead of emoji, so every state is drawn
-  the same way on every device. Its size is its font size.
+  Renders a status mark: a solid Heroicon in its tone's colour, on nothing
+  (`.jam-badge` in `app.css`). Game screens use this instead of emoji, so a
+  state is drawn the same way on every device. Its size is its font size;
+  keep it small, beside the words it marks.
 
   ## Examples
 
-      <.jam_badge icon="hero-tv" class="text-7xl" />
-      <.jam_badge icon="hero-check" tone="mint" class="text-7xl" />
+      <.jam_badge icon="hero-lock-closed-solid" class="text-xl" />
+      <.jam_badge icon="hero-check-circle-solid" tone="mint" class="text-2xl" />
   """
   attr :icon, :string, required: true
   attr :tone, :string, default: "brand", values: ~w(brand mint quiet)
@@ -478,10 +479,42 @@ defmodule WhoseJamWeb.CoreComponents do
       ]}
       aria-hidden="true"
     >
-      <.icon name={@icon} class="size-[0.5em]" />
+      <.icon name={@icon} class="size-[1em]" />
     </span>
     """
   end
+
+  @doc """
+  Renders a player's name written on a strip of tape (`.jam-tape` in
+  `app.css`), the one prop a name wears on a game screen. The strip's tilt
+  comes from the player's id (`tilt_class/1`), so a name lies the same way
+  on every screen it appears on. Its size is its font size.
+
+  ## Examples
+
+      <.name_tape player_id={p.id} name={p.name} class="text-2xl" />
+  """
+  attr :player_id, :string, required: true
+  attr :name, :string, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, doc: "anything written on the strip after the name (a mark)"
+
+  def name_tape(assigns) do
+    ~H"""
+    <span class={["jam-tape", tilt_class(@player_id), @class]} {@rest}>
+      <span class="min-w-0 truncate">{@name}</span>
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  @doc """
+  The tilt a player's props lie at (`.jam-tilt-0` to `.jam-tilt-4` in
+  `app.css`): the same for the same id, on every screen.
+  """
+  @spec tilt_class(term()) :: String.t()
+  def tilt_class(id), do: "jam-tilt-#{:erlang.phash2(id, 5)}"
 
   @doc """
   Renders an open modal dialog. Render it conditionally with `:if`; Escape and
