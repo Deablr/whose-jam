@@ -859,7 +859,7 @@ defmodule WhoseJamWeb.PlayLive do
           </li>
           <li :if={@role == :player} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
-            <span class="text-pretty">if you predict your song’s top wrong guess</span>
+            <span class="text-pretty">for predicting the most popular wrong answer to your song</span>
           </li>
         </ul>
       </div>
@@ -1297,7 +1297,7 @@ defmodule WhoseJamWeb.PlayLive do
       id="own-song-explainer"
       class="mt-3 text-base leading-[1.4] text-jam-cream/85"
     >
-      <.inline_points text="When your song plays, predict the room’s top wrong guess. +1 if you’re right." />
+      <.inline_points text="When your song plays, predict the most popular wrong answer. +1 if you’re right." />
     </p>
     """
   end
@@ -1970,11 +1970,8 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The picker's job, under their own question, in the measure the reveal
   # reports: where most of the wrong guesses land.
-  defp vote_hint(%{style: :guess_who}, true, _change?),
-    do: "Predict the room’s top wrong guess for +1."
-
   defp vote_hint(_round, true, _change?),
-    do: "Predict the room’s top wrong prompt for +1."
+    do: "Predict the most popular wrong answer. +1 if you’re right."
 
   defp vote_hint(round, false, true), do: "Tap a #{choice_noun(round)}. Tap another to switch."
 
@@ -2547,7 +2544,7 @@ defmodule WhoseJamWeb.PlayLive do
                   <.marker_stroke
                     :if={@won?}
                     kind={:crown}
-                    class="absolute left-[0.01em] -top-[0.3em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.24rem]"
+                    class="absolute left-[0.01em] -top-[0.24em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.24rem]"
                   />
                   {if @mine, do: finish_line(@mine, @role, length(@board)), else: "Game over"}
                 </h1>
@@ -2598,7 +2595,7 @@ defmodule WhoseJamWeb.PlayLive do
           <%!-- Every award the same way, a line each: its title on orange
                tape, and the song it was won with beside it (the counts are
                the receipt's, above). --%>
-          <dl :if={my_awards(@view, @player_id) != []} class="mt-3.5 space-y-2">
+          <dl :if={my_awards(@view, @player_id) != []} class="mt-3 space-y-1.5">
             <div
               :for={{title, detail} <- my_awards(@view, @player_id)}
               class="flex flex-wrap items-center gap-x-3 gap-y-1"
@@ -2623,7 +2620,7 @@ defmodule WhoseJamWeb.PlayLive do
             </.link>
           </div>
         <% else %>
-          <p id="what-next" class="mt-4 px-1 text-sm font-medium text-jam-cream/65 short:mt-3">
+          <p id="what-next" class="mt-3.5 px-1 text-sm font-medium text-jam-cream/65 short:mt-2.5">
             Waiting for the host to start another game.
           </p>
         <% end %>
@@ -2633,7 +2630,7 @@ defmodule WhoseJamWeb.PlayLive do
           :if={@playlist != []}
           id="to-playlist"
           href="#my-playlist"
-          class="mt-2 flex items-center gap-1.5 px-1 text-sm font-bold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
+          class="mt-1.5 flex items-center gap-1.5 px-1 text-sm font-bold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
         >
           See tonight’s playlist ({songs(length(@playlist))})
           <.icon name="hero-arrow-down-mini" class="size-4" />
@@ -2822,10 +2819,10 @@ defmodule WhoseJamWeb.PlayLive do
       end
 
     sharpest =
-      with %{player_ids: ids} = award <- awards[:sharpest],
+      with %{called: called, player_ids: ids} = award <- awards[:sharpest],
            true <- Awards.given?(award),
            true <- player_id in ids do
-        [{"Sharpest ears", nil}]
+        [{"Sharpest ears", "#{called} right"}]
       else
         _ -> []
       end

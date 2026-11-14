@@ -1278,7 +1278,7 @@ defmodule WhoseJamWeb.HostLive do
           <%!-- The one rule that changes how you pick: fooling people scores. --%>
           <ul
             id="how-to-score"
-            class="mt-6 space-y-1.5 text-[1.65rem] font-semibold text-jam-cream/85"
+            class="mt-6 max-w-[40rem] space-y-1.5 text-[1.65rem] font-medium leading-snug text-jam-cream/85"
           >
             <li class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
@@ -1290,7 +1290,7 @@ defmodule WhoseJamWeb.HostLive do
             </li>
             <li class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
-              <span>if you predict your song’s top wrong guess</span>
+              <span class="text-pretty">for predicting the most popular wrong answer to your song</span>
             </li>
           </ul>
         </div>
@@ -2150,7 +2150,7 @@ defmodule WhoseJamWeb.HostLive do
            it was worth to the picker right under it, then who said whom. --%>
       <div class="flex flex-col items-start gap-y-3">
         <div>
-          <p class="jam-rise text-[1.85rem] font-bold text-jam-cream/65">
+          <p class="jam-rise text-[1.6rem] font-bold text-jam-cream/65">
             {if timed_out?(@view.round), do: "Time’s up. It was…", else: "It was…"}
           </p>
           <%!-- The name, underlined in marker once it has landed. --%>
@@ -2169,11 +2169,13 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- What it was worth to the picker, as aligned rows at one size
            under the name: the fooling, then the prediction, each led by its
            points on an orange sticker. --%>
-        <div class="jam-rise jam-beat-2 space-y-1.5 text-[1.75rem] font-semibold leading-snug">
-          <p id="reveal-summary" class="flex items-center gap-4 font-bold text-jam-cream">
+        <%!-- Set a step quieter than the name: the body face at 500–600, so
+             the answer stays the loudest thing on the screen. --%>
+        <div class="jam-rise jam-beat-2 space-y-1.5 text-[1.55rem] font-medium leading-snug">
+          <p id="reveal-summary" class="flex items-center gap-4 font-semibold text-jam-cream">
             <span
               :if={@summary.points}
-              class="jam-sticker w-[3.6rem] shrink-0 bg-jam-orange py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-ink"
+              class="jam-sticker w-[3.3rem] shrink-0 bg-jam-orange py-0.5 text-center font-display text-[1.45rem] leading-tight text-jam-ink"
             >
               {@summary.points}
             </span>
@@ -2206,9 +2208,9 @@ defmodule WhoseJamWeb.HostLive do
             <%!-- The group's heading is a count, in the body face: the names
                  under it are what the room reads. --%>
             <p class={[
-              "flex items-baseline gap-3 font-extrabold leading-tight tracking-[-0.01em]",
+              "flex items-baseline gap-3 font-bold leading-tight tracking-[-0.01em]",
               @guess_size.said,
-              guess.none? && "text-jam-cream/60"
+              if(guess.none?, do: "text-jam-cream/60", else: "text-jam-cream/85")
             ]}>
               <span class="whitespace-nowrap">{card_heading(guess)}</span>
             </p>
@@ -2533,7 +2535,7 @@ defmodule WhoseJamWeb.HostLive do
           {@seat.score}
           <span
             :if={@gain > 0}
-            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-[4deg] bg-jam-orange px-[0.3rem] py-[0.12rem] font-display text-[0.95rem] leading-none text-jam-ink"
+            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-[4deg] bg-jam-orange px-[0.32rem] py-[0.12rem] font-display text-[1.1rem] leading-none text-jam-ink"
           >
             +{@gain}
           </span>
@@ -2721,15 +2723,32 @@ defmodule WhoseJamWeb.HostLive do
           >
             <%!-- Each award a slip of paper sized to its words, the two lying
                  opposite ways: its title on orange tape, what it was for,
-                 and the song it was won with on a row of its own. --%>
+                 and the song it was won with on a row of its own. One
+                 player's two awards share a slip with their name on its
+                 tape, a row each, each award named at its row's head. --%>
             <div
-              :for={{title, line, song} <- @awards}
+              :for={{title, rows, song} <- @awards}
               class="jam-paper relative w-fit min-w-[22rem] max-w-[34rem] px-6 pb-6 pt-7 text-jam-ink odd:!rotate-[-1.5deg] even:!rotate-[1.3deg]"
             >
-              <dt class="jam-tape jam-tape-orange absolute -top-4 left-5 whitespace-nowrap text-[1.4rem]">
+              <dt
+                :if={!Enum.any?(rows, &elem(&1, 0))}
+                class="jam-tape jam-tape-orange absolute -top-4 left-5 whitespace-nowrap text-[1.4rem]"
+              >
                 {title}
               </dt>
-              <dd class="text-[1.65rem] font-medium leading-snug text-balance">{line}</dd>
+              <p
+                :if={Enum.any?(rows, &elem(&1, 0))}
+                class="jam-tape jam-tape-orange absolute -top-4 left-5 whitespace-nowrap text-[1.4rem]"
+              >
+                {title}
+              </p>
+              <div
+                :for={{label, text} <- rows}
+                class="flex flex-wrap items-baseline gap-x-2 text-[1.65rem] leading-snug [&+&]:mt-1"
+              >
+                <dt :if={label} class="font-bold after:content-[':']">{label}</dt>
+                <dd class="font-medium text-balance">{text}</dd>
+              </div>
               <dd :if={song} class="mt-2.5 flex items-center gap-3">
                 <img
                   :if={song[:album_art_url]}
@@ -3118,14 +3137,14 @@ defmodule WhoseJamWeb.HostLive do
     >
       <span
         :if={elem(@line, 1)}
-        class="jam-sticker w-[3.6rem] shrink-0 bg-jam-orange py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-ink"
+        class="jam-sticker w-[3.3rem] shrink-0 bg-jam-orange py-0.5 text-center font-display text-[1.45rem] leading-tight text-jam-ink"
       >
         +1
       </span>
       <%!-- A miss wins nothing, so it has no sticker: only its place, so
            the lines stay aligned (and not even that when the line above has
            no sticker either). --%>
-      <span :if={!elem(@line, 1) and @pad?} class="w-[3.6rem] shrink-0" aria-hidden="true"></span>
+      <span :if={!elem(@line, 1) and @pad?} class="w-[3.3rem] shrink-0" aria-hidden="true"></span>
       <span>{elem(@line, 0)}.</span>
     </p>
     """
@@ -3274,11 +3293,13 @@ defmodule WhoseJamWeb.HostLive do
 
   defp playlist(_view), do: {[], 0}
 
-  # The finished game's awards as {title, sentence, song} lines: the song an
-  # award was won with, when there is one, has a row of its own.
+  # The finished game's awards as {title, rows, song}: each row a sentence,
+  # with its award's name beside it when one slip holds two awards; the song
+  # an award was won with, when there is one, has a row of its own.
   defp award_lines(%{awards: awards} = view) when is_map(awards) do
     case {bluff_line(view, awards.best_bluff), sharpest_line(view, awards.sharpest)} do
-      # Both to the one winner: one line, not the same name three times.
+      # Both to the one winner: one slip with their name on its tape and a
+      # row for each award, not the same name three times.
       {{_, _, _}, {_, _, _}} = both ->
         merged_awards(view, awards, both)
 
@@ -3295,9 +3316,15 @@ defmodule WhoseJamWeb.HostLive do
     case {winners, awards.best_bluff.bluffs, awards.sharpest.player_ids} do
       {[%{id: id}], [%{player_id: id, song_name: song}], [id]} ->
         [
-          {"Best bluff & sharpest ears",
-           "Fooled #{players(awards.best_bluff.fooled)} and guessed #{awards.sharpest.called} right",
-           played_song(view, id, song)}
+          {
+            "#{name_of(view, id)}’s awards",
+            # The bluff last, so its song's row follows it.
+            [
+              {"Sharpest ears", "guessed #{awards.sharpest.called} right"},
+              {"Best bluff", "fooled #{players(awards.best_bluff.fooled)} with"}
+            ],
+            played_song(view, id, song)
+          }
         ]
 
       _otherwise ->
@@ -3319,19 +3346,22 @@ defmodule WhoseJamWeb.HostLive do
   # One player's one song: the song gets its own row.
   defp bluff_award(view, fooled, [%{song_name: song}], [%{player_id: id}]),
     do:
-      {"Best bluff", "#{name_of(view, id)} fooled #{players(fooled)}",
+      {"Best bluff", [{nil, "#{name_of(view, id)} fooled #{players(fooled)}"}],
        played_song(view, id, song)}
 
   # One player, several songs that fooled as many.
   defp bluff_award(view, fooled, songs, [%{player_id: id}]),
     do:
       {"Best bluff",
-       "#{name_of(view, id)} fooled #{players(fooled)} with each of #{length(songs)} songs", nil}
+       [
+         {nil,
+          "#{name_of(view, id)} fooled #{players(fooled)} with each of #{length(songs)} songs"}
+       ], nil}
 
   # Several players level.
   defp bluff_award(view, fooled, _songs, holders) do
     names = holders |> Enum.map(&name_of(view, &1.player_id)) |> join_names()
-    {"Best bluff", "#{names} each fooled #{players(fooled)}", nil}
+    {"Best bluff", [{nil, "#{names} each fooled #{players(fooled)}"}], nil}
   end
 
   defp players(1), do: "1 player"
@@ -3349,7 +3379,7 @@ defmodule WhoseJamWeb.HostLive do
     if Awards.given?(award) do
       names = ids |> Enum.map(&name_of(view, &1)) |> join_names()
       each = if length(ids) > 1, do: " each", else: ""
-      {"Sharpest ears", "#{names}#{each} guessed #{called} right", nil}
+      {"Sharpest ears", [{nil, "#{names}#{each} guessed #{called} right"}], nil}
     end
   end
 
