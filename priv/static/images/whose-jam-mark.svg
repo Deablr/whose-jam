@@ -29,15 +29,9 @@
     </g>
   </g>
 
-  <!-- vinyl record in the "a" -->
+  <!-- the "a"'s record, simplified to its label, so it holds at header size -->
   <g transform="translate(281 343)">
     <circle r="21" fill="#171715"/>
-    <circle r="15" fill="none" stroke="#ff3fa8" stroke-opacity=".35" stroke-width="1.5"/>
-    <circle r="7" fill="#ff3fa8"/>
-    <circle r="2.2" fill="#171715"/>
-    <g fill="none" stroke="#171715" stroke-width="3.5" stroke-linecap="round">
-      <path d="M7.0 -26.1A27 27 0 0 1 26.1 -7.0"/>
-      <path d="M8.8 -32.8A34 34 0 0 1 32.8 -8.8"/>
-    </g>
+    <circle r="9" fill="#ff3fa8"/>
   </g>
 </svg>

@@ -130,11 +130,14 @@
 }
 
 @theme {
-  --font-display: "Lilita One", "Figtree", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  /* Each face has a Japanese partner of a matching weight, for the songs
+     and names written in it: Lilita's is Dela Gothic One, as heavy;
+     Figtree's and Shantell's, Noto Sans JP at the same weight. */
+  --font-display: "Lilita One", "Dela Gothic One", "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Figtree", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
   /* Marker: a player's name, as it is written on their `.jam-tape` strip
      (and on the vote tiles that name them). */
-  --font-marker: "Shantell Sans", "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-marker: "Shantell Sans", "Noto Sans JP", "Figtree", ui-sans-serif, system-ui, sans-serif;
 
   /* Greys, warm rather than blue, so the egg white sits with them. */
   --color-jam-ink: #171715;
@@ -323,11 +326,11 @@
   max-width: none;
   object-fit: cover;
   object-position: center;
-  filter: blur(90px) saturate(1.7) brightness(0.55);
+  filter: blur(80px) saturate(1.5) brightness(0.7);
   transform: scale(1.15);
-  /* A tint, not a wash: a warm cover over the charcoal would otherwise turn
-     the corners khaki, so it is kept rich and dark, and light. */
-  opacity: 0.35;
+  /* A tint, not a wash: enough of the cover to set the song's mood (about a
+     sixth of it shows through the charcoal), never enough to read. */
+  opacity: 0.6;
 }
 
 .jam-ambient::after {
@@ -335,8 +338,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at center, rgb(23 23 21 / 0.5) 0%, rgb(23 23 21 / 0.65) 75%),
-    linear-gradient(to bottom, rgb(23 23 21 / 0.15), rgb(23 23 21 / 0.6));
+    radial-gradient(ellipse at center, rgb(23 23 21 / 0.45) 0%, rgb(23 23 21 / 0.6) 75%),
+    linear-gradient(to bottom, rgb(23 23 21 / 0.1), rgb(23 23 21 / 0.5));
 }
 
 /* "Now playing": a small level meter, square bars in the accents, that
@@ -652,13 +655,21 @@
    applies.) */
 .jam-paper {
   background-color: var(--color-jam-paper);
+  /* A paper's tooth: the faintest grain, on paper props only. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.09 0 0 0 0 0.09 0 0 0 0 0.08 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
   border-radius: 0.125rem;
   box-shadow: 0 0.3rem 0.9rem rgb(0 0 0 / 0.3);
 }
 
-/* Tape stuck on paper lies flat on it: no shadow of its own. */
+/* Tape stuck on paper lies flat on it, a shade darker than the sheet with
+   a hairline at its edge, so it shows without a shadow of its own. */
 .jam-paper .jam-tape {
   filter: none;
+}
+
+.jam-paper .jam-tape:not(.jam-tape-orange)::before {
+  background: #d9d1bd;
+  box-shadow: inset 0 0 0 1px rgb(23 23 21 / 0.08);
 }
 
 .jam-paper:nth-child(3n + 1) { rotate: -0.7deg; }
@@ -761,6 +772,8 @@
 }
 }
 
+/* (In the components layer, so a utility can still restyle a ticket.) */
+@layer components {
 /* An admission ticket, for the room: egg-white card stock with a notch
    cut from either end, and a perforation (a dashed rule, inside it) between
    its stub and the rest. */
@@ -777,10 +790,33 @@
     radial-gradient(circle var(--jam-notch, 0.8rem) at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat,
     radial-gradient(circle var(--jam-notch, 0.8rem) at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
 }
+}
+
+/* The join form on a wide screen: the code and its Join stub are one
+   ticket. */
+@media (min-width: 64rem) {
+  .jam-ticket-wide {
+    background: var(--color-jam-cream);
+    border-radius: 0.25rem;
+    -webkit-mask:
+      radial-gradient(circle 0.55rem at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle 0.55rem at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+    mask:
+      radial-gradient(circle 0.55rem at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle 0.55rem at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+  }
+
+  .jam-ticket-wide:focus-within {
+    outline: 2px solid var(--color-jam-pink);
+    outline-offset: 3px;
+  }
+}
 
 /* A mask clips a box shadow, so a ticket is lifted from outside. */
-.jam-lift {
-  filter: drop-shadow(0 0.2rem 0 rgb(0 0 0 / 0.25)) drop-shadow(0 0.8rem 1.2rem rgb(0 0 0 / 0.35));
+@layer components {
+  .jam-lift {
+    filter: drop-shadow(0 0.2rem 0 rgb(0 0 0 / 0.25)) drop-shadow(0 0.8rem 1.2rem rgb(0 0 0 / 0.35));
+  }
 }
 
 /* A dialog's form on the TV (the host's settings) is read from the sofa
@@ -817,18 +853,19 @@
   outline-offset: 1px;
 }
 
-/* A switch: a filled track with the UI's corner; on is mint with an ink
-   knob, off a quiet grey with a grey knob, so it reads at a glance. */
+/* A switch: a filled track with the UI's corner and a square knob; on is a
+   lit track with an egg-white knob (mint is kept for "right"), off a quiet
+   track with a grey one, so it reads at a glance. */
 [data-theme="jam"] .modal-box .toggle {
-  --radius-selector: 0.375rem;
+  --radius-selector: 0.25rem;
   border: none;
-  background-color: #4a4843;
-  color: #c9c4b8;
+  background-color: #3a3935;
+  color: #8f8a7e;
 }
 
 [data-theme="jam"] .modal-box .toggle:checked {
-  background-color: var(--color-jam-mint);
-  color: var(--color-jam-ink);
+  background-color: #6b675e;
+  color: var(--color-jam-cream);
 }
 
 .jam-tv .modal-box :is(.checkbox, .toggle) {

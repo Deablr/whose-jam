@@ -84,9 +84,10 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # First place is held back for a couple of seconds, then the awards and
       # each phone's own result arrive; all of it needs long enough on film
       # to be read.
-      Stage.hold(to_timeout(second: 3))
+      # Once second place has landed, before the winner is named.
+      Stage.hold(4_000)
       Stage.snap(devices, [:host], "winner")
-      Stage.hold(to_timeout(second: 4))
+      Stage.hold(to_timeout(second: 3))
       Stage.snap(devices, [:host], "winner-card")
       Stage.hold(to_timeout(second: 6))
       everyone = Enum.map(@players, &elem(&1, 0))
@@ -293,7 +294,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # (everyone has something to lock in, so it gives nobody away): their
       # tape lands on their seat.
       devices.host
-      |> assert_has("#vote-progress", text: "#{length(@players)} of #{length(@players)}")
+      |> assert_has("#vote-progress", text: "#{length(@players)}/#{length(@players)}")
       |> assert_has("#score-strip li[data-in] .jam-tape", text: submitter_name, exact: true)
 
       devices.host

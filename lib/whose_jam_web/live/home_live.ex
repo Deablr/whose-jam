@@ -141,10 +141,14 @@ defmodule WhoseJamWeb.HomeLive do
             <form
               phx-submit="join"
               phx-change="validate_join"
-              class="flex flex-col sm:flex-row gap-4 lg:flex-1 lg:gap-3"
+              class="jam-ticket-wide flex flex-col gap-4 sm:flex-row lg:flex-1 lg:gap-0"
             >
-              <div class="jam-lift flex-1 min-w-0 rounded-sm focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-jam-pink">
-                <div class="jam-ticket [--jam-notch:0.55rem]">
+              <%!-- The code is typed onto a ticket, like the one the TV shows
+                   it on. On a TV the Join button is that ticket's stub, past
+                   a perforation; on a phone it is the screen's pink button,
+                   under it. --%>
+              <div class="jam-lift min-w-0 flex-1 rounded-sm focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-jam-pink lg:filter-none lg:focus-within:outline-none">
+                <div class="jam-ticket [--jam-notch:0.55rem] lg:bg-transparent lg:[mask:none]">
                   <input
                     type="text"
                     name="code"
@@ -158,9 +162,10 @@ defmodule WhoseJamWeb.HomeLive do
                   />
                 </div>
               </div>
-              <%!-- Pink where joining is the main thing (a phone); egg white
-                   where hosting is (a TV), so a screen has one pink button. --%>
-              <button type="submit" class="jam-btn lg:bg-jam-cream lg:hover:bg-white xl:text-xl">
+              <button
+                type="submit"
+                class="jam-btn lg:rounded-none lg:border-l-2 lg:border-dashed lg:border-jam-ink/25 lg:bg-transparent lg:px-8 lg:font-display lg:text-[1.75rem] lg:font-normal lg:text-jam-ink lg:hover:bg-jam-ink/5 xl:text-[2rem]"
+              >
                 Join
               </button>
             </form>
@@ -206,13 +211,15 @@ defmodule WhoseJamWeb.HomeLive do
       :if={@host_open?}
       id="host-game-modal"
       on_close="close_host"
-      class="max-w-3xl !border-0 !bg-transparent !p-0 !shadow-none"
+      class="max-w-3xl !border-0 !bg-transparent !p-0 !shadow-none lg:!max-w-[min(66vw,64rem)]"
       body_class="space-y-6"
     >
+      <%!-- Read from the sofa on a TV: two-thirds of the screen wide, and
+           set a size up there. --%>
       <div class="flex items-start justify-between gap-4">
         <div>
           <p class="jam-eyebrow">Host a game</p>
-          <h2 class="mt-0.5 text-3xl font-extrabold tracking-[-0.02em]">Pick a theme</h2>
+          <h2 class="mt-1 font-display text-3xl leading-none lg:text-[2.5rem]">Pick a theme</h2>
         </div>
         <button
           type="button"
@@ -233,7 +240,7 @@ defmodule WhoseJamWeb.HomeLive do
         >
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-3">
-              <h3 class="font-display text-[1.75rem] leading-none">{theme.name}</h3>
+              <h3 class="font-display text-[1.75rem] leading-none lg:text-[2rem]">{theme.name}</h3>
               <span
                 :if={multi_style?(theme.style_sequence)}
                 class="rounded-sm bg-jam-cream/10 px-2 py-0.5 text-xs font-bold text-jam-cream/75"
@@ -241,12 +248,12 @@ defmodule WhoseJamWeb.HomeLive do
                 {length(Enum.uniq(theme.style_sequence))} sub-rounds
               </span>
             </div>
-            <p class="mt-2 text-[1.0625rem] font-bold leading-snug text-jam-cream">
+            <p class="mt-2 text-[1.0625rem] font-bold leading-snug text-jam-cream lg:text-[1.4rem]">
               {how_it_plays(theme.style_sequence)}
             </p>
             <p
               :if={theme.examples != []}
-              class="jam-paper jam-lean mt-3.5 w-fit max-w-full px-3.5 py-2 font-display text-base leading-snug text-jam-ink"
+              class="jam-paper jam-lean mt-3.5 w-fit max-w-[34ch] px-4 py-2.5 font-display text-base leading-snug text-pretty text-jam-ink lg:text-[1.4rem]"
             >
               {hd(theme.examples).prompt}
             </p>
@@ -254,7 +261,7 @@ defmodule WhoseJamWeb.HomeLive do
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="jam-btn jam-btn-cream shrink-0 self-start sm:self-center"
+            class="jam-btn jam-btn-cream shrink-0 self-start sm:self-center lg:text-xl"
           >
             Host this
           </button>
