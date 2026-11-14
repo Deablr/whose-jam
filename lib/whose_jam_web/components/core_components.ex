@@ -487,8 +487,8 @@ defmodule WhoseJamWeb.CoreComponents do
   @doc """
   Renders a player's name written on a strip of tape (`.jam-tape` in
   `app.css`), the one prop a name wears on a game screen. The strip's tilt
-  comes from the player's id (`tilt_class/1`), so a name lies the same way
-  on every screen it appears on. Its size is its font size.
+  and cut come from the player's id (`tilt_class/1`), so a name looks the
+  same on every screen it appears on. Its size is its font size.
 
   ## Examples
 
@@ -510,11 +510,13 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
-  The tilt a player's props lie at (`.jam-tilt-0` to `.jam-tilt-4` in
-  `app.css`): the same for the same id, on every screen.
+  How a player's tape lies and how its strip was cut (`.jam-tilt-0` to
+  `.jam-tilt-4` and `.jam-cut-0` to `.jam-cut-2` in `app.css`): the same for
+  the same id, on every screen.
   """
   @spec tilt_class(term()) :: String.t()
-  def tilt_class(id), do: "jam-tilt-#{:erlang.phash2(id, 5)}"
+  def tilt_class(id),
+    do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 3)}"
 
   @doc """
   Renders an open modal dialog. Render it conditionally with `:if`; Escape and

@@ -129,44 +129,52 @@ defmodule WhoseJamWeb.HomeLive do
           >
             <span>Back to your game ({@seat})</span>
           </.link>
-          <section class="jam-panel order-1 p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5 lg:order-2">
-            <h2 class="text-2xl font-extrabold tracking-[-0.015em] xl:text-4xl">
+          <%!-- Joining: the room code is typed onto a ticket, like the one the
+               TV shows it on. The main thing on a phone; a slim row under
+               hosting on a TV. --%>
+          <section class="jam-panel order-1 p-6 sm:p-8 space-y-4 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:bg-transparent lg:p-0">
+            <h2 class="text-2xl font-extrabold tracking-[-0.015em] lg:shrink-0 lg:text-xl lg:font-bold lg:text-jam-cream/75 xl:text-2xl">
               {if @seat, do: "Join another game", else: "Join a game"}
             </h2>
-            <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                name="code"
-                value={@join_code}
-                autocomplete="off"
-                autocapitalize="characters"
-                placeholder="Room code"
-                maxlength="4"
-                aria-label="Room code"
-                class="flex-1 min-w-0 rounded-lg border-2 border-jam-cream/10 bg-jam-ink px-5 py-3 text-center lg:text-left text-3xl font-extrabold uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl xl:text-4xl xl:placeholder:text-2xl placeholder:text-jam-cream/35 focus:border-jam-pink focus:outline-none"
-              />
+            <form
+              phx-submit="join"
+              phx-change="validate_join"
+              class="flex flex-col sm:flex-row gap-3 lg:flex-1"
+            >
+              <div class="jam-lift flex-1 min-w-0 rounded-md focus-within:ring-2 focus-within:ring-jam-cream/70 focus-within:ring-offset-4 focus-within:ring-offset-jam-night lg:focus-within:ring-offset-jam-ink">
+                <div class="jam-ticket [--jam-notch:0.55rem]">
+                  <input
+                    type="text"
+                    name="code"
+                    value={@join_code}
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    placeholder="Room code"
+                    maxlength="4"
+                    aria-label="Room code"
+                    class="w-full bg-transparent px-7 py-2.5 text-center lg:text-left font-display text-[2.5rem] leading-tight uppercase tracking-[0.12em] text-jam-ink placeholder:font-body placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-ink/45 focus:outline-none lg:text-[2rem] lg:py-2"
+                  />
+                </div>
+              </div>
               <%!-- Pink where joining is the main thing (a phone); egg white
                    where hosting is (a TV), so a screen has one pink button. --%>
-              <button
-                type="submit"
-                class="jam-btn lg:bg-jam-cream lg:hover:bg-white xl:text-2xl xl:px-10"
-              >
+              <button type="submit" class="jam-btn lg:bg-jam-cream lg:hover:bg-white xl:text-xl">
                 Join
               </button>
             </form>
           </section>
 
-          <section class="jam-panel order-2 hidden p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5 lg:order-1 lg:block">
-            <div class="space-y-1">
-              <h2 class="text-2xl font-extrabold tracking-[-0.015em] xl:text-4xl">Host a game</h2>
-              <p class="font-medium text-balance text-jam-cream/65 xl:text-xl">
+          <section class="jam-panel order-2 hidden p-8 xl:p-11 space-y-5 lg:order-1 lg:block">
+            <div class="space-y-2">
+              <h2 class="font-display text-5xl xl:text-6xl">Host a game</h2>
+              <p class="font-medium text-balance text-jam-cream/70 xl:text-2xl">
                 Pick a theme here on the TV. Everyone joins on their phone.
               </p>
             </div>
             <button
               type="button"
               phx-click="open_host"
-              class="jam-btn w-full xl:text-2xl"
+              class="jam-btn w-full text-xl xl:text-3xl"
             >
               Choose a theme
             </button>
@@ -210,7 +218,7 @@ defmodule WhoseJamWeb.HomeLive do
           aria-label="Close"
           class="jam-chip !px-2.5 cursor-pointer"
         >
-          <.icon name="hero-x-mark-solid" class="size-5" />
+          <.icon name="hero-x-mark" class="size-5" />
         </button>
       </div>
 
@@ -223,7 +231,7 @@ defmodule WhoseJamWeb.HomeLive do
         >
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-3">
-              <h3 class="jam-tape jam-tape-orange -ml-1 text-[1.6rem]">{theme.name}</h3>
+              <h3 class="font-display text-[1.75rem] leading-none">{theme.name}</h3>
               <span
                 :if={multi_style?(theme.style_sequence)}
                 class="rounded-sm bg-jam-ink/[0.07] px-2 py-0.5 text-xs font-bold text-jam-ink/65"

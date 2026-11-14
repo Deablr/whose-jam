@@ -89,10 +89,10 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> within("#music-prompt-modal", &click_button(&1, nil, "Connect", exact: true))
     |> refute_has("#music-prompt-modal")
     |> click_button("Settings")
-    |> fill_in("Time to pick songs (s)", with: "120")
+    |> fill_in("Time to pick songs", with: "120")
     |> fill_in("Prompts per player", with: "1")
-    |> fill_in("Listen before voting opens (s)", with: "10")
-    |> fill_in("Voting time (s)", with: Integer.to_string(@vote_timer_s))
+    |> fill_in("Listen before voting opens", with: "10")
+    |> fill_in("Voting time", with: Integer.to_string(@vote_timer_s))
     # Votes can be changed until the clock runs out: a tap is the vote.
     |> check("Allow changing a vote")
     # This host likes every screen choice the other way: quick reveals,

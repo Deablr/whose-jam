@@ -146,6 +146,10 @@
   --color-jam-orange-hi: #ffb247;
   /* Egg white: every light thing on a game screen. */
   --color-jam-cream: #f2eee4;
+  /* Paper: a step down from egg white, so a sheet never glares in a dark
+     room. Tape is a touch lighter than the paper it is stuck on. */
+  --color-jam-paper: #e8e2d4;
+  --color-jam-tape: #f3eddf;
   --color-jam-mint: #4fe3bd;
   /* Mint dark enough to read on egg white. */
   --color-jam-mint-deep: #0b8f6d;
@@ -619,9 +623,10 @@
    table do. (`rotate`, not `transform`, so an entrance's movement still
    applies.) */
 .jam-paper {
+  background-color: var(--color-jam-paper);
   border-radius: 0.125rem;
   box-shadow:
-    0 0.2rem 0 rgb(0 0 0 / 0.22),
+    0 0.15rem 0.2rem rgb(0 0 0 / 0.2),
     0 0.9rem 1.8rem -0.6rem rgb(0 0 0 / 0.5);
 }
 
@@ -653,13 +658,13 @@
   align-items: center;
   justify-content: center;
   min-width: 0;
-  padding: 0.3em 0.9em 0.35em 0.75em;
+  padding: 0.3em 0.85em 0.35em;
   color: var(--color-jam-ink);
   font-family: var(--font-marker);
   font-weight: 650;
   font-variation-settings: "INFM" 50;
   line-height: 1.1;
-  filter: drop-shadow(0 0.08em 0 rgb(0 0 0 / 0.35));
+  filter: drop-shadow(0 0.05em 0.07em rgb(0 0 0 / 0.35));
 }
 
 .jam-tape::before {
@@ -667,15 +672,34 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: #ebe4d2;
-  clip-path: polygon(
+  background: var(--color-jam-tape);
+  clip-path: var(--jam-cut);
+}
+
+/* Three ways a strip comes off the roll, one per player (`.jam-cut-N`,
+   from their id, like the tilt): torn at the right end, torn at the left,
+   or snipped on the slant at both. Never the same zigzag twice in a row. */
+.jam-tape,
+.jam-cut-0 {
+  --jam-cut: polygon(
     0 0, calc(100% - 0.1em) 0, 100% 14%, calc(100% - 0.14em) 31%,
     calc(100% - 0.02em) 49%, calc(100% - 0.16em) 68%, 100% 84%,
     calc(100% - 0.08em) 100%, 0 100%
   );
 }
 
-/* Orange tape: a label stuck on a prize (an award's title). */
+.jam-cut-1 {
+  --jam-cut: polygon(
+    0.12em 0, 100% 0, 100% 100%, 0.06em 100%, 0 82%, 0.15em 61%,
+    0.03em 42%, 0.13em 22%, 0 9%
+  );
+}
+
+.jam-cut-2 {
+  --jam-cut: polygon(0.22em 0, 100% 0, calc(100% - 0.22em) 100%, 0 100%);
+}
+
+/* Orange tape: a label stuck on a prize (an award, the winner). */
 .jam-tape-orange::before {
   background: var(--color-jam-orange);
 }
@@ -685,6 +709,28 @@
 .jam-tilt-2 { rotate: 0.2deg; }
 .jam-tilt-3 { rotate: 0.6deg; }
 .jam-tilt-4 { rotate: 1deg; }
+
+/* A chosen vote tile becomes tape: the strip's colour and a torn end (a
+   class of the UI's, but drawn as the prop it stands for). */
+.jam-tile-chosen {
+  background: var(--color-jam-tape) !important;
+  border-radius: 0;
+  box-shadow: none;
+  clip-path: polygon(
+    0 0, calc(100% - 0.1em) 0, 100% 14%, calc(100% - 0.14em) 31%,
+    calc(100% - 0.02em) 49%, calc(100% - 0.16em) 68%, 100% 84%,
+    calc(100% - 0.08em) 100%, 0 100%
+  );
+}
+
+/* A sticker: a small square label stuck on at an angle (the points a
+   result won). */
+.jam-sticker {
+  display: inline-block;
+  border-radius: 0.1rem;
+  rotate: 6deg;
+  box-shadow: 0 0.12rem 0.18rem rgb(0 0 0 / 0.3);
+}
 
 /* An admission ticket, for the room: egg-white card stock with a notch
    cut from either end, and a perforation (a dashed rule, inside it) between
@@ -712,21 +758,48 @@
    too: its labels and fields a size up from daisyUI's defaults, and its
    labels in the body face's own weight. */
 .jam-tv .modal-box .fieldset {
-  font-size: 1.05rem;
+  font-size: 1rem;
+  padding-block: 0.15rem;
 }
 
 .jam-tv .modal-box .fieldset .label {
   font-weight: 600;
-  color: rgb(242 238 228 / 0.75);
+  white-space: normal;
+  color: rgb(242 238 228 / 0.78);
 }
 
 .jam-tv .modal-box :is(.input, .select) {
-  height: 2.9rem;
-  font-size: 1.15rem;
+  height: 2.6rem;
+  font-size: 1.1rem;
 }
 
 .jam-tv .modal-box :is(.checkbox, .toggle) {
   --size: 1.45rem;
+}
+
+/* A switch's row: its words on the left, the switch on the right. */
+.jam-tv .modal-box .fieldset .label:has(> .toggle) {
+  width: 100%;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  padding-block: 0.35rem;
+}
+
+/* A number with its unit written in the field (`data-unit`). */
+.jam-unit {
+  position: relative;
+}
+
+.jam-unit::after {
+  content: attr(data-unit);
+  position: absolute;
+  right: 1rem;
+  bottom: calc(0.5rem + 0.15rem + 1.3rem);
+  translate: 0 50%;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgb(242 238 228 / 0.5);
+  pointer-events: none;
 }
 
 /* --- Screen-size scaling ------------------------------------------------- */

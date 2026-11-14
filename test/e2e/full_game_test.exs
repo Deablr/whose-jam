@@ -122,12 +122,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> click_button("Settings")
     # The Mock player hook is running in this browser.
     |> assert_has("p", text: "This screen is ready to play the music.")
-    |> fill_in("Time to pick songs (s)", with: "120")
+    |> fill_in("Time to pick songs", with: "120")
     |> fill_in("Prompts per player", with: "1")
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
-    |> fill_in("Listen before voting opens (s)", with: "10")
+    |> fill_in("Listen before voting opens", with: "10")
     |> Stage.then_snap(:host, "settings")
     |> click_button("Close settings")
 
@@ -265,7 +265,9 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         text: "Who’ll get the blame?",
         timeout: @wait
       )
-      |> assert_has("#vote-hint", text: "Pick who they’ll blame. +1 if most do.")
+      |> assert_has("#vote-hint",
+        text: "Predict the most popular wrong guess. +1 if you call it."
+      )
       |> assert_has("#round-prompt blockquote", text: prompt)
       |> refute_has("#phone-voting button", text: submitter_name, exact: true)
       |> snap_if(first?, submitter, "picker-vote")
@@ -283,11 +285,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       if first?, do: Stage.snap(devices, [:host], "tv-voting")
       in_parallel(rest, &cast_vote(devices, &1, false))
 
-      # The TV names who is in, the picker among them (everyone has
-      # something to lock in, so the list gives nobody away).
+      # The TV shows who is in on the score strip, the picker among them
+      # (everyone has something to lock in, so it gives nobody away): their
+      # tape lands on their seat.
       devices.host
       |> assert_has("#vote-progress", text: "#{length(@players)} of #{length(@players)}")
-      |> assert_has("#vote-chips li", text: submitter_name, exact: true)
+      |> assert_has("#score-strip li[data-in] .jam-tape", text: submitter_name, exact: true)
 
       devices.host
       |> assert_has("p", text: "It was", timeout: @wait)
