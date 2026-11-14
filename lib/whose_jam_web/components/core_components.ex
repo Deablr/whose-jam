@@ -532,6 +532,25 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
+  Sets a display headline's curly apostrophes in the body face (`.jam-apos`
+  in `app.css`): Lilita One draws its own as an upright tick that stands
+  apart from the letters, where the body face's curls into the word. Takes
+  plain text; returns it escaped, safe to interpolate.
+  """
+  @spec curly(String.t()) :: Phoenix.HTML.safe()
+  def curly(text) when is_binary(text) do
+    parts =
+      text
+      |> String.split("\u2019")
+      |> Enum.map(fn part ->
+        part |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      end)
+      |> Enum.intersperse(~s(<span class="jam-apos">\u2019</span>))
+
+    {:safe, parts}
+  end
+
+  @doc """
   Renders the "now playing" level meter (`.jam-meter` in `app.css`): five
   square bars that move while a song plays. Its size is its font size.
   """

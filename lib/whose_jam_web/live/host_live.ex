@@ -287,7 +287,13 @@ defmodule WhoseJamWeb.HostLive do
         winners -> winners
       end
 
-    %{winners: winners}
+    # The night's songs, as a row of small prints, each with whose it was.
+    songs =
+      for song <- Enum.take(view[:playlist] || [], 8) do
+        Map.put(song, :owner, name_of(view, song.player_id))
+      end
+
+    %{winners: winners, songs: songs}
   end
 
   defp ended_message(:host_ended), do: "Thanks for playing."
@@ -559,6 +565,39 @@ defmodule WhoseJamWeb.HostLive do
             {if hd(@closing.winners).score == 1, do: "point", else: "points"}
           </span>
         </p>
+        <%!-- The night's songs, as a row of small prints laid on the table,
+             each with whose it was on their tape: the album art says
+             goodnight. --%>
+        <ul
+          :if={@closing.songs != []}
+          id="closing-songs"
+          class="mt-2 flex flex-wrap justify-center gap-x-6 gap-y-8"
+        >
+          <li
+            :for={song <- @closing.songs}
+            class="jam-paper relative w-[8.5rem] p-1.5 pb-5 text-jam-ink"
+          >
+            <img
+              :if={song[:album_art_url]}
+              src={song.album_art_url}
+              alt=""
+              class="aspect-square w-full object-cover"
+            />
+            <div
+              :if={!song[:album_art_url]}
+              class="grid aspect-square w-full place-items-center bg-jam-ink/10"
+              aria-hidden="true"
+            >
+              <.icon name="hero-musical-note-solid" class="size-10 text-jam-ink/40" />
+            </div>
+            <.name_tape
+              :if={song.owner}
+              player_id={song.player_id}
+              name={song.owner}
+              class="absolute -bottom-4 left-1/2 max-w-[8rem] -translate-x-1/2 text-[1.15rem]"
+            />
+          </li>
+        </ul>
         <.link
           id="host-another"
           navigate={~p"/?host"}
@@ -1071,7 +1110,7 @@ defmodule WhoseJamWeb.HostLive do
                 </div>
                 <%!-- A count steps one at a time, its number in the scores'
                      lettering between a − and a +. --%>
-                <div class="jam-stepper sm:col-span-3">
+                <div class="jam-stepper sm:col-span-2">
                   <.input
                     type="number"
                     id="questions_per_player"
@@ -1109,7 +1148,7 @@ defmodule WhoseJamWeb.HostLive do
                   </button>
                 </div>
                 <%!-- Players needed, as the row of numbers it is. --%>
-                <div class="fieldset mb-2 sm:col-span-3">
+                <div class="fieldset mb-2 sm:col-span-4">
                   <%!-- (No gap under the label: the field beside it carries the
                        inline gap of its own label, and the two must sit on one
                        line.) --%>
@@ -1329,7 +1368,7 @@ defmodule WhoseJamWeb.HostLive do
            the names, so no gap opens between them. --%>
       <div class="flex flex-col gap-7 xl:pt-1">
         <div class="flex items-baseline justify-between border-b-2 border-jam-cream/10 pb-3">
-          <p class="text-[1.75rem] font-extrabold tracking-[-0.01em]">Players</p>
+          <p class="jam-eyebrow">Players</p>
           <p id="player-count" class="font-display text-4xl tabular-nums">
             {@player_count}<span class="text-jam-cream/55">/{@max_players}</span>
           </p>
@@ -1463,7 +1502,7 @@ defmodule WhoseJamWeb.HostLive do
           id="all-in"
           class="jam-pop origin-left font-display text-[4.5rem] leading-none text-jam-mint"
         >
-          Everyone’s in
+          {curly("Everyone’s in")}
         </h1>
         <p :if={@all_in?} class="jam-rise text-2xl xl:text-3xl text-jam-cream/70">
           Eyes up. Here comes the music.
@@ -1474,7 +1513,7 @@ defmodule WhoseJamWeb.HostLive do
            themselves. Its heading level with the headline's. --%>
       <div :if={@view.answering} class="space-y-8 xl:pt-1.5">
         <div class="flex items-baseline justify-between">
-          <p class="text-[1.75rem] font-extrabold tracking-[-0.01em]">Songs picked</p>
+          <p class="jam-eyebrow">Songs picked</p>
           <p id="locked-in-count" class="font-display text-4xl tabular-nums">
             {@done}<span class="text-jam-cream/55">/{length(@seats)}</span>
           </p>
@@ -2199,7 +2238,7 @@ defmodule WhoseJamWeb.HostLive do
           <li
             :for={guess <- @guesses}
             id={"said-#{guess.id}"}
-            class="max-w-full flex-[0_1_auto] border-jam-cream/12 pr-10 [&:not(:first-child)]:border-l-2 [&:not(:first-child)]:pl-10"
+            class="max-w-full flex-[0_1_auto] pr-16"
           >
             <%!-- The group's heading is a count, in the body face: the names
                  under it are what the room reads. --%>
@@ -2492,7 +2531,7 @@ defmodule WhoseJamWeb.HostLive do
           :if={@in?}
           player_id={@player_id}
           name={@name}
-          class={["jam-bump max-w-full", @locked? && "gap-1.5", @away? && "opacity-50"]}
+          class={["jam-bump jam-tape-paper max-w-full", @locked? && "gap-1.5", @away? && "opacity-50"]}
         >
           <.icon
             :if={@locked?}
@@ -3192,10 +3231,10 @@ defmodule WhoseJamWeb.HostLive do
   # them at a size to read from the sofa; a room that scattered needs two rows,
   # so each card is smaller and the reveal still fits above the scores.
   defp guess_size(count) when count <= 2,
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.4rem]"}
+    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.55rem]"}
 
   defp guess_size(3),
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.25rem]"}
+    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.35rem]"}
 
   defp guess_size(_count),
     do: %{card: "px-5 pb-4 pt-3", said: "text-[1.5rem]", voters: "text-[1.15rem]"}

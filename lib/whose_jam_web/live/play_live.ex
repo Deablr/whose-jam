@@ -825,7 +825,7 @@ defmodule WhoseJamWeb.PlayLive do
         <div>
           <%!-- Their name is in the header and, ringed, among the players
                below; the headline needn't say it a third time. --%>
-          <h1 class="font-display text-[2rem] leading-tight">You’re in</h1>
+          <h1 class="font-display text-[2rem] leading-tight">{curly("You’re in")}</h1>
           <p :if={@promoted?} id="promoted" class="mt-1 font-bold text-jam-mint">
             A seat opened up. You’re playing this time.
           </p>
@@ -952,7 +952,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <div class="flex flex-1 flex-col items-center justify-center gap-4 text-center">
       <h1 class="font-display text-[1.75rem] leading-tight">
-        {if @ready?, do: "Everyone’s ready", else: "You’re in the audience"}
+        {curly(if @ready?, do: "Everyone’s ready", else: "You’re in the audience")}
       </h1>
       <div :if={!@ready?} class="space-y-1">
         <p class="font-medium text-jam-cream">Guess who picked each song. +1 for each you call.</p>
@@ -1121,7 +1121,7 @@ defmodule WhoseJamWeb.PlayLive do
              under it. --%>
         <div class="self-stretch text-left">
           <h2 class="font-display text-[1.75rem] leading-tight">
-            {if @answered == @total, do: "You’re done", else: "Song picked"}
+            {curly(if @answered == @total, do: "You’re done", else: "Song picked")}
           </h2>
           <p
             :if={@answered == @total}
@@ -1739,9 +1739,11 @@ defmodule WhoseJamWeb.PlayLive do
              too), so the names below sit in the same place on every
              screen. The clock is up by the song. --%>
         <h1 class="font-display text-[2rem] leading-tight short:text-2xl">
-          {if @change? and @round.all_in?,
-            do: "Final changes",
-            else: vote_question(@round, @own?)}
+          {curly(
+            if @change? and @round.all_in?,
+              do: "Final changes",
+              else: vote_question(@round, @own?)
+          )}
         </h1>
 
         <%!-- What to do stays on screen for the picker after a tap, so the
@@ -2071,7 +2073,18 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # No countdown until most voters are in; show nothing rather than "--".
-  defp vote_timer(%{round: %{deadline_ms: nil}} = assigns), do: ~H""
+  # Before the clock starts, its place says when it will, as the TV does
+  # (the same words on every phone, the picker's included).
+  defp vote_timer(%{round: %{deadline_ms: nil}} = assigns) do
+    ~H"""
+    <p
+      id="phone-clock-note"
+      class="max-w-[6.5rem] text-right text-xs font-medium leading-tight text-jam-cream/60"
+    >
+      Clock starts when most lock in
+    </p>
+    """
+  end
 
   # A small pill beside the song while the vote is open: the clock, and once
   # everyone is in, what it now counts down to. It turns orange for the last

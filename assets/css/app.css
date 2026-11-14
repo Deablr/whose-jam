@@ -816,20 +816,21 @@
 
 /* Three ways a strip comes off the roll, one per player (`.jam-cut-N`,
    from their id, like the tilt): torn at the right end, torn at the left,
-   or snipped on the slant at both. Never the same zigzag twice in a row. */
+   or snipped on the slant at both. A tear's nicks are shallow and unevenly
+   spaced, as paper tears, never an even zigzag. */
 .jam-tape,
 .jam-cut-0 {
   --jam-cut: polygon(
-    0 0, calc(100% - 0.06em) 0, 100% 14%, calc(100% - 0.08em) 31%,
-    calc(100% - 0.01em) 49%, calc(100% - 0.09em) 68%, 100% 84%,
-    calc(100% - 0.05em) 100%, 0 100%
+    0 0, calc(100% - 0.05em) 0, 100% 9%, calc(100% - 0.07em) 21%,
+    calc(100% - 0.03em) 27%, calc(100% - 0.1em) 46%, calc(100% - 0.02em) 58%,
+    calc(100% - 0.06em) 74%, 100% 88%, calc(100% - 0.04em) 100%, 0 100%
   );
 }
 
 .jam-cut-1 {
   --jam-cut: polygon(
-    0.07em 0, 100% 0, 100% 100%, 0.04em 100%, 0 82%, 0.09em 61%,
-    0.02em 42%, 0.08em 22%, 0 9%
+    0.06em 0, 100% 0, 100% 100%, 0.03em 100%, 0 91%, 0.08em 77%,
+    0.04em 70%, 0.11em 49%, 0.01em 33%, 0.06em 18%, 0 7%
   );
 }
 
@@ -1022,6 +1023,14 @@
   font-weight: 600;
   color: rgb(242 238 228 / 0.6);
   pointer-events: none;
+}
+
+/* An apostrophe in a display headline (`curly/1`): the body face's curl,
+   at the headline's weight, tucked into the word. */
+.jam-apos {
+  font-family: var(--font-body);
+  font-weight: 800;
+  margin-inline: -0.02em;
 }
 
 /* A theme to pick, as a sheet of paper (`.jam-theme-card`): it lifts under
