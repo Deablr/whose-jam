@@ -1023,6 +1023,11 @@
   transition: translate 150ms ease, box-shadow 150ms ease;
 }
 
+/* Laid side by side, the sheets lie only a touch askew, so their "Host
+   this" buttons stay level across the pair. */
+.jam-theme-card:nth-child(odd) { rotate: -0.35deg; }
+.jam-theme-card:nth-child(even) { rotate: 0.3deg; }
+
 .jam-theme-card:hover {
   translate: 0 -0.25rem;
   box-shadow:

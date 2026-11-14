@@ -1013,22 +1013,19 @@ defmodule WhoseJamWeb.HostLive do
           aria-label="Close settings"
           class="grid size-11 cursor-pointer place-items-center rounded-md text-jam-cream/75 transition-colors hover:bg-jam-cream/10 hover:text-jam-cream focus-visible:bg-jam-cream/10"
         >
-          <.icon name="hero-x-mark" class="size-7" />
+          <%!-- A heavier cross than the outline icon's hairline, to find
+               from the sofa. --%>
+          <.icon name="hero-x-mark-solid" class="size-7" />
         </button>
       </div>
 
       <%!-- Two columns on a wide screen, so the whole sheet is in view at
-           once: what plays and how long things take on the left, the
-           switches on the right. --%>
-      <div class="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <div class="space-y-5">
+           once: the game's times, counts and rules on the left; what plays
+           the music and how the screens tell the game on the right. --%>
+      <div class="grid gap-x-12 gap-y-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div class="space-y-6">
           <section class="space-y-3">
-            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">Music service</h3>
-            {music_service_list(assigns)}
-          </section>
-
-          <section class="space-y-3">
-            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">Game</h3>
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Game</h3>
 
             <p :if={@view.phase != :lobby} class="text-sm text-base-content/60">
               Game settings are locked once the game starts.
@@ -1115,7 +1112,10 @@ defmodule WhoseJamWeb.HostLive do
                   <%!-- (No gap under the label: the field beside it carries the
                        inline gap of its own label, and the two must sit on one
                        line.) --%>
-                  <span id="min-players-label" class="label mb-0 w-full justify-start text-left">
+                  <span
+                    id="min-players-label"
+                    class="label relative top-[0.18rem] mb-0 w-full justify-start text-left"
+                  >
                     Players needed to start
                   </span>
                   <div
@@ -1177,11 +1177,16 @@ defmodule WhoseJamWeb.HostLive do
             </form>
           </section>
         </div>
-        <div class="space-y-5">
+        <div class="space-y-6">
+          <section class="space-y-3">
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Music service</h3>
+            {music_service_list(assigns)}
+          </section>
+
           <%!-- How the screens tell the game, for rooms that like it another
                way. None of these change the scoring or the timers. --%>
           <section class="space-y-3">
-            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">On the screens</h3>
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">On the screens</h3>
             <form phx-change="set_config" id="presentation-settings" class="grid gap-1">
               <fieldset disabled={@view.phase != :lobby} class="contents">
                 <.input
@@ -1438,54 +1443,30 @@ defmodule WhoseJamWeb.HostLive do
       assign(assigns, seats: seats, done: done, all_in?: seats != [] and done == length(seats))
 
     ~H"""
-    <div class="min-h-screen grid content-center gap-12 px-12 lg:px-20 pt-28 pb-12 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:items-start xl:gap-20">
-      <div class="space-y-12">
-        <div class="space-y-3">
-          <p :if={@view.subround_total > 1} class="jam-eyebrow">
-            Sub-round {@view.subround_index + 1} of {@view.subround_total}
-          </p>
-          <%!-- The last pick landing is a moment of its own (the server holds
-               this screen briefly once everyone is in). --%>
-          <%!-- A step down from the clock, which is what the room reads. --%>
-          <h1 :if={!@all_in?} class="font-display text-[4.5rem] leading-none">Heads down</h1>
-          <p :if={!@all_in?} class="text-2xl xl:text-3xl text-jam-cream/70">
-            Everyone’s picking songs on their own screens.
-          </p>
-          <h1
-            :if={@all_in?}
-            id="all-in"
-            class="jam-pop origin-left font-display text-[4.5rem] leading-none text-jam-mint"
-          >
-            Everyone’s in
-          </h1>
-          <p :if={@all_in?} class="jam-rise text-2xl xl:text-3xl text-jam-cream/70">
-            Eyes up. Here comes the music.
-          </p>
-        </div>
-
-        <div :if={@view.answering && !@all_in?} class="space-y-1">
-          <p class="jam-eyebrow">Time left</p>
-          <p
-            id="answer-countdown"
-            phx-hook="Countdown"
-            data-deadline={@view.answering.deadline_ms}
-            class="font-display text-9xl leading-none tabular-nums text-jam-orange"
-          >
-          </p>
-          <%!-- Its length is known: a bar, as every such countdown has. --%>
-          <div
-            :if={@view.answering.deadline_ms}
-            id={"answer-bar-#{@view.answering.deadline_ms}"}
-            phx-hook="Progress"
-            phx-update="ignore"
-            data-deadline={@view.answering.deadline_ms}
-            data-duration={@view.config.answer_timer_s * 1000}
-            class="jam-bar mt-5 h-2 w-full overflow-hidden bg-jam-cream/12"
-            aria-hidden="true"
-          >
-            <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
-          </div>
-        </div>
+    <%!-- The headline and the room's names side by side, their tops level;
+         the clock under both, its bar the full width of the screen. --%>
+    <div class="min-h-screen grid content-center gap-x-20 gap-y-12 px-12 lg:px-20 pt-28 pb-12 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:items-start">
+      <div class="space-y-3">
+        <p :if={@view.subround_total > 1} class="jam-eyebrow">
+          Sub-round {@view.subround_index + 1} of {@view.subround_total}
+        </p>
+        <%!-- The last pick landing is a moment of its own (the server holds
+             this screen briefly once everyone is in). --%>
+        <%!-- A step down from the clock, which is what the room reads. --%>
+        <h1 :if={!@all_in?} class="font-display text-[4.5rem] leading-none">Heads down</h1>
+        <p :if={!@all_in?} class="text-2xl xl:text-3xl text-jam-cream/70">
+          Everyone’s picking songs on their own screens.
+        </p>
+        <h1
+          :if={@all_in?}
+          id="all-in"
+          class="jam-pop origin-left font-display text-[4.5rem] leading-none text-jam-mint"
+        >
+          Everyone’s in
+        </h1>
+        <p :if={@all_in?} class="jam-rise text-2xl xl:text-3xl text-jam-cream/70">
+          Eyes up. Here comes the music.
+        </p>
       </div>
 
       <%!-- Straight on the stage, as the lobby's names are: the tapes group
@@ -1502,23 +1483,22 @@ defmodule WhoseJamWeb.HostLive do
              side, as a cluster): each pencilled into its slot, and taped
              down where it was as its player locks in their songs. --%>
         <%!-- A fixed grid, four to a row: every name keeps its place as the
-             tapes land, and the check sits on the tape's corner (taking no
-             room from the name), so nothing reflows when one turns into a
-             tape. --%>
+             tapes land, so nothing reflows when one turns into a tape; the
+             check is written on the tape after the name, as the score
+             strip's and the phones' are. --%>
         <ul id="answering-players" class="grid grid-cols-4 gap-x-4 gap-y-5">
           <li :for={seat <- @seats} id={"picking-#{seat.id}"} class="relative flex min-w-0">
             <.name_tape
               :if={seat.done?}
               player_id={seat.id}
               name={seat.name}
-              class="jam-bump w-full py-3 px-3 text-[2.1rem]"
-            />
-            <span
-              :if={seat.done?}
-              class="absolute -right-2 -top-2.5 z-10 grid size-8 place-items-center rounded-full bg-jam-ink"
+              class="jam-bump w-full gap-2 py-3 px-3 text-[2.1rem]"
             >
-              <.icon name="hero-check-circle-solid" class="size-8 text-jam-mint" />
-            </span>
+              <.icon
+                name="hero-check-circle-solid"
+                class="size-[0.75em] shrink-0 text-jam-mint-deep"
+              />
+            </.name_tape>
             <%!-- Pencilled into the tape's slot until their tape lands. --%>
             <div
               :if={!seat.done?}
@@ -1545,6 +1525,30 @@ defmodule WhoseJamWeb.HostLive do
             </div>
           </li>
         </ul>
+      </div>
+
+      <div :if={@view.answering && !@all_in?} class="space-y-1 xl:col-span-2 xl:row-start-2">
+        <p class="jam-eyebrow">Time left</p>
+        <p
+          id="answer-countdown"
+          phx-hook="Countdown"
+          data-deadline={@view.answering.deadline_ms}
+          class="font-display text-9xl leading-none tabular-nums text-jam-orange"
+        >
+        </p>
+        <%!-- Its length is known: a bar, as every such countdown has. --%>
+        <div
+          :if={@view.answering.deadline_ms}
+          id={"answer-bar-#{@view.answering.deadline_ms}"}
+          phx-hook="Progress"
+          phx-update="ignore"
+          data-deadline={@view.answering.deadline_ms}
+          data-duration={@view.config.answer_timer_s * 1000}
+          class="jam-bar mt-5 h-2 w-full overflow-hidden bg-jam-cream/12"
+          aria-hidden="true"
+        >
+          <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
+        </div>
       </div>
     </div>
     """
@@ -2589,7 +2593,7 @@ defmodule WhoseJamWeb.HostLive do
       <div class={[
         "flex items-center",
         if(length(@winner_songs) == 1,
-          do: "gap-14 text-left",
+          do: "gap-20 text-left",
           else: "flex-col gap-10 text-center"
         )
       ]}>
@@ -2616,16 +2620,18 @@ defmodule WhoseJamWeb.HostLive do
           </div>
         </div>
         <div class="min-w-0 space-y-4">
-          <%!-- The winner's name, with a crown drawn on its first letter in
-               orange marker, worn: sitting on the letter's top, overlapping
-               it a little. --%>
+          <%!-- The winner's name in egg white, with a crown drawn on its
+               first letter in orange marker, worn: sitting on the letter's
+               top, overlapping it a little. The orange is the prize's (the
+               crown, the tapes) and the points', so the name stands clear of
+               it. --%>
           <p class={[
-            "jam-pop jam-finale-win relative font-display leading-none text-balance text-jam-orange",
+            "jam-pop jam-finale-win relative font-display leading-none text-balance text-jam-cream",
             winner_card_size(@winners, @board)
           ]}>
             <.marker_stroke
               kind={:crown}
-              class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] [--jam-stroke-w:0.6rem]"
+              class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.6rem]"
             />
             <.winner_names winners={@winners} board={@board} />
           </p>
@@ -2644,9 +2650,11 @@ defmodule WhoseJamWeb.HostLive do
       </div>
     </div>
     <div class="min-h-screen flex flex-col justify-center gap-7 px-12 lg:px-20 pt-24 pb-10">
-      <div class="grid gap-x-16 gap-y-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] lg:items-center">
-        <%!-- One left edge for the heading and the awards under it. --%>
-        <div class="space-y-8">
+      <div class="grid gap-x-16 gap-y-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] lg:items-stretch">
+        <%!-- One left edge for the heading and the awards under it; its top
+             level with the table's label, and its buttons' foot with the
+             table's. --%>
+        <div class="flex flex-col gap-8">
           <div>
             <div class="min-w-0 space-y-2">
               <%!-- The winner's line takes only its own height: what holds its
@@ -2670,7 +2678,7 @@ defmodule WhoseJamWeb.HostLive do
                 <h1
                   id="winner"
                   class={[
-                    "relative font-display leading-none text-balance text-jam-orange [grid-area:1/1]",
+                    "relative font-display leading-none text-balance text-jam-cream [grid-area:1/1]",
                     winner_size_class(length(@winners)),
                     @build? && "jam-pop jam-finale-win origin-left"
                   ]}
@@ -2679,7 +2687,7 @@ defmodule WhoseJamWeb.HostLive do
                   <.marker_stroke
                     :if={length(@winners) == 1}
                     kind={:crown}
-                    class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] [--jam-stroke-w:0.4rem]"
+                    class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.4rem]"
                   />
                   <.winner_names winners={@winners} board={@board} />
                 </h1>
@@ -2737,7 +2745,7 @@ defmodule WhoseJamWeb.HostLive do
 
           <%!-- The host's buttons, in the left column under what the game is
                remembered for (never under the table). --%>
-          <div class={["space-y-3", @build? && "jam-rise jam-finale-after-3"]}>
+          <div class={["space-y-3 lg:mt-auto", @build? && "jam-rise jam-finale-after-3"]}>
             <div class="flex flex-wrap items-center gap-3">
               <button phx-click="play_again" class="jam-btn min-w-[12rem] text-[1.4rem]">
                 Play again
@@ -2798,7 +2806,7 @@ defmodule WhoseJamWeb.HostLive do
                   if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                 ]}>
                   {Standings.ordinal(row.rank)}
-                  <span :if={row.tied?} class="text-[1.15rem] opacity-75">tied</span>
+                  <span :if={row.tied?} class="text-[1.25rem] opacity-75">tied</span>
                 </span>
                 <%!-- A blank the width of a name, turned over with the rest. --%>
                 <span class={[
@@ -2823,7 +2831,7 @@ defmodule WhoseJamWeb.HostLive do
                     {Standings.ordinal(row.rank)}
                     <%!-- A shared place says so, beside the place, a step
                          smaller (as the phones' tables have it). --%>
-                    <span :if={row.tied?} class="font-body text-[1.15rem] font-semibold opacity-75">
+                    <span :if={row.tied?} class="font-body text-[1.25rem] font-semibold opacity-75">
                       tied
                     </span>
                   </span>

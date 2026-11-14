@@ -575,7 +575,6 @@ defmodule WhoseJamWeb.PlayLive do
 
   # "you", in marker, with an arrow to the name on its left.
   attr :class, :any, default: nil
-  attr :up?, :boolean, default: false, doc: "the arrow points up, at a name above it"
 
   defp you_mark(assigns) do
     ~H"""
@@ -585,16 +584,10 @@ defmodule WhoseJamWeb.PlayLive do
     ]}>
       <.marker_stroke
         kind={:arrow}
-        class={["h-[0.95em] w-[1.6em] [--jam-stroke-w:0.13rem]", @up? && "rotate-45"]}
+        class="h-[0.95em] w-[1.6em] [--jam-stroke-w:0.13rem]"
       /> you
     </span>
     """
-  end
-
-  # The players with this one first.
-  defp mine_first(players, id) do
-    {mine, others} = Enum.split_with(players, &(&1.id == id))
-    mine ++ others
   end
 
   # --- top bar --------------------------------------------------------------
@@ -751,9 +744,8 @@ defmodule WhoseJamWeb.PlayLive do
     {top_bar(assigns)}
     <div class={["flex flex-1 flex-col pt-[12vh] short:pt-6", @narrow]}>
       <h1 class="font-display text-4xl leading-tight">Pick a name</h1>
-      <p class="mt-2 text-jam-cream/65">
-        You’re joining room <span class="font-extrabold tracking-[0.12em] text-jam-cream">{@code}</span>.
-      </p>
+      <%!-- (The room is on the ticket in the header.) --%>
+      <p class="mt-2 text-jam-cream/65">The room will see it on every screen.</p>
       <%!-- Said before the name goes in, not after: who this makes you. --%>
       <p
         :if={@joins_audience?}
@@ -763,17 +755,22 @@ defmodule WhoseJamWeb.PlayLive do
         This game has started, so you’ll join the audience: guess every song, +1 for each one you call.
       </p>
 
-      <form phx-submit="join" class="mt-6 space-y-3">
-        <input
-          type="text"
-          name="name"
-          autocomplete="off"
-          autofocus
-          maxlength="24"
-          placeholder="Your name"
-          aria-label="Your name"
-          class="w-full rounded-full border-2 border-transparent bg-[#2b2a26] px-6 py-3.5 text-lg font-semibold text-jam-cream placeholder:font-medium placeholder-jam-cream/55 focus:border-jam-pink focus:outline-none"
-        />
+      <form phx-submit="join" class="mt-6 space-y-4">
+        <%!-- The name is written straight onto the blank strip of tape it
+             will be worn on, in marker; the placeholder is in the body face,
+             and focus is a pink ring round the strip. --%>
+        <div class="jam-tape jam-cut-0 flex w-full -rotate-[0.6deg] !justify-start !p-0 focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-jam-pink">
+          <input
+            type="text"
+            name="name"
+            autocomplete="off"
+            autofocus
+            maxlength="24"
+            placeholder="Your name"
+            aria-label="Your name"
+            class="h-[3.75rem] w-full min-w-0 bg-transparent px-5 font-marker text-[1.625rem] font-bold leading-none text-jam-ink caret-jam-pink [font-variation-settings:'INFM'_50] placeholder:font-body placeholder:text-lg placeholder:font-semibold placeholder:text-jam-ink/55 focus:outline-none"
+          />
+        </div>
         <p :if={@join_error} class="text-sm text-jam-red">{@join_error}</p>
         <button
           type="submit"
@@ -871,13 +868,25 @@ defmodule WhoseJamWeb.PlayLive do
           {players_heading(length(@view.players))}
         </h2>
         <%!-- Everyone's name on its strip of tape, as the TV has them. --%>
-        <%!-- Their own first, pointed out in marker under it: the mark takes
-             no room in the row, so the names wrap as they would without it. --%>
+        <%!-- Their own on a line of its own, pointed out in marker beside it
+             as the final scores do; everyone else's under it, in even rows. --%>
+        <div
+          :for={p <- Enum.filter(@view.players, &(&1.id == @player_id))}
+          class="mb-3.5 flex items-center gap-3"
+        >
+          <.name_tape
+            id={"player-#{p.id}"}
+            player_id={p.id}
+            name={p.name}
+            class="jam-pop max-w-full text-xl"
+          />
+          <.you_mark />
+        </div>
         <%!-- (On a tablet, four to a row, as the TV seats them, each seat as
              wide as its name needs; a laptop's narrower column wraps them.) --%>
-        <div class="flex flex-wrap gap-x-2.5 gap-y-7 md:grid md:grid-cols-[repeat(4,max-content)] md:justify-between lg:flex lg:justify-start">
+        <div class="flex flex-wrap gap-x-2.5 gap-y-3 md:grid md:grid-cols-[repeat(4,max-content)] md:justify-between md:gap-y-3.5 lg:flex lg:justify-start">
           <span
-            :for={p <- mine_first(@view.players, @player_id)}
+            :for={p <- Enum.reject(@view.players, &(&1.id == @player_id))}
             class="relative flex max-w-full items-center"
           >
             <.name_tape
@@ -886,7 +895,6 @@ defmodule WhoseJamWeb.PlayLive do
               name={p.name}
               class="jam-pop max-w-full text-xl"
             />
-            <.you_mark :if={p.id == @player_id} class="absolute left-1 top-full mt-0.5" up?={true} />
           </span>
         </div>
 
@@ -2578,7 +2586,7 @@ defmodule WhoseJamWeb.PlayLive do
                    paper (none, a quiet grey, as on every table). --%>
               <dd class={[
                 "font-display leading-none tabular-nums",
-                if(value == 0, do: "text-jam-ink/40", else: "text-jam-orange-deep"),
+                if(value == 0, do: "text-jam-ink/55", else: "text-jam-orange-deep"),
                 if(i == 0, do: "text-[1.625rem]", else: "text-lg")
               ]}>
                 {value}
@@ -2645,7 +2653,7 @@ defmodule WhoseJamWeb.PlayLive do
                   "flex break-inside-avoid items-center justify-between gap-3 rounded-md px-3 leading-tight",
                   if(list_id == "final-scores" and row.rank == 1,
                     do: "min-h-10 py-1 short:min-h-9",
-                    else: "min-h-9 py-0.5 short:min-h-8"
+                    else: "min-h-8 py-0.5"
                   ),
                   row.id == @player_id && "bg-jam-cream/[0.08]"
                 ]}
@@ -2671,7 +2679,7 @@ defmodule WhoseJamWeb.PlayLive do
                       "max-w-[10rem]",
                       if(list_id == "final-scores" and row.rank == 1,
                         do: "jam-tape-orange text-lg",
-                        else: "text-[0.9375rem]"
+                        else: "py-[0.22em] text-[0.9375rem]"
                       )
                     ]}
                   />
