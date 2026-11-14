@@ -1650,14 +1650,10 @@ defmodule WhoseJamWeb.HostLive do
         :if={@view.round.prompt}
         class="jam-paper jam-lean w-full max-w-[44rem] px-6 py-4 text-jam-ink"
       >
-        <%!-- Quieter once the answer is out: the name leads the reveal. --%>
-        <blockquote class={[
-          "text-pretty",
-          if(@view.round_state == :results,
-            do: "text-[1.5rem] font-semibold leading-[1.3]",
-            else: "font-display text-[2rem] leading-[1.15]"
-          )
-        ]}>
+        <%!-- The round card gave the prompt its moment in large type; from
+           the first note it is context, in the body face, so the song and
+           the screen's one headline lead. --%>
+        <blockquote class="text-[1.5rem] font-semibold leading-[1.3] text-pretty">
           {@view.round.prompt}
         </blockquote>
       </div>
@@ -2572,7 +2568,7 @@ defmodule WhoseJamWeb.HostLive do
                 >
                   <%!-- The only unknown on screen is the table's orange "?"
                        tape: the headline says what it is waiting for. --%>
-                  <p class="font-display text-6xl leading-tight text-jam-cream">
+                  <p class="font-display text-[6.5rem] leading-[1.02] text-balance text-jam-cream">
                     And the winner is…
                   </p>
                 </div>
@@ -2618,12 +2614,12 @@ defmodule WhoseJamWeb.HostLive do
                  and the song it was won with on a row of its own. --%>
             <div
               :for={{title, line, song} <- @awards}
-              class="jam-paper relative w-full max-w-[32rem] px-7 pb-4 pt-6 text-jam-ink odd:!rotate-[-1.5deg] even:!rotate-[1.3deg]"
+              class="jam-paper relative w-full max-w-[34rem] px-6 pb-6 pt-7 text-jam-ink odd:!rotate-[-1.5deg] even:!rotate-[1.3deg]"
             >
               <dt class="jam-tape jam-tape-orange absolute -top-4 left-5 whitespace-nowrap text-[1.4rem]">
                 {title}
               </dt>
-              <dd class="text-[1.75rem] font-bold leading-tight text-pretty">{line}</dd>
+              <dd class="text-[1.75rem] font-bold leading-tight text-balance">{line}</dd>
               <dd :if={song} class="mt-2.5 flex items-center gap-3">
                 <img
                   :if={song[:album_art_url]}

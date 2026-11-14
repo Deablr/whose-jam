@@ -968,8 +968,9 @@ defmodule WhoseJamWeb.PlayLive do
     >
       <div>
         <%!-- A fixed height, so on a laptop the search box beside it can
-             line up with the slip. --%>
-        <div class="mb-4 flex h-8 items-center justify-between gap-3">
+             line up with the slip: the words and the clock on a line, the
+             clock's bar the line's full width under them. --%>
+        <div class="relative mb-4 flex h-8 items-center justify-between gap-3">
           <div class="text-sm font-semibold text-jam-cream/65">
             <%= if @total > 1 do %>
               Prompt {@index + 1} of {@total}, {@answered} picked
@@ -979,11 +980,7 @@ defmodule WhoseJamWeb.PlayLive do
                 else: "Pick a song for this prompt"}
             <% end %>
           </div>
-          <%!-- The clock, with its bar under it (its length is known). --%>
-          <div
-            :if={!all_picked?(@view)}
-            class="flex flex-col items-end gap-1 px-1"
-          >
+          <div :if={!all_picked?(@view)} class="px-1">
             <span
               id="countdown-answer"
               phx-hook="Countdown"
@@ -999,7 +996,7 @@ defmodule WhoseJamWeb.PlayLive do
               phx-update="ignore"
               data-deadline={@view.answering.deadline_ms}
               data-duration={@view.config.answer_timer_s * 1000}
-              class="jam-bar h-1 w-[3.25rem] overflow-hidden bg-jam-cream/15"
+              class="jam-bar absolute inset-x-0 -bottom-1.5 h-1 overflow-hidden bg-jam-cream/15"
               aria-hidden="true"
             >
               <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
@@ -1395,17 +1392,10 @@ defmodule WhoseJamWeb.PlayLive do
           class="jam-paper jam-lean mt-3.5 w-full px-4 py-2.5 text-jam-ink short:mt-2"
         >
           <%!-- A strip the width of the screen, under the song: what it was
-               picked for. While the song plays it is read, so it is in the
-               prompt's lettering; once the room is voting or hearing the
-               answer it is context, said quietly in the body face, so the
+               picked for. The round card gave it its moment in large type;
+               here it is context, said quietly in the body face, so the
                task under it leads. --%>
-          <blockquote class={[
-            "text-pretty",
-            if(@round_state in [:voting, :results],
-              do: "text-[1.0625rem] font-semibold leading-[1.3]",
-              else: "font-display text-[1.15rem] leading-[1.2] tracking-[0.01em]"
-            )
-          ]}>
+          <blockquote class="text-[1.0625rem] font-semibold leading-[1.3] text-pretty">
             {@round.prompt}
           </blockquote>
         </figure>
@@ -1565,8 +1555,19 @@ defmodule WhoseJamWeb.PlayLive do
             else: "It’s playing on the TV."}
         </p>
       </div>
-      <%!-- The TV's bar, draining as voting gets nearer. --%>
+      <%!-- The TV's countdown, in the one form every countdown takes: its
+           words and orange numerals on a line, and the square bar under
+           them, draining as voting gets nearer. --%>
       <div class="w-full space-y-2">
+        <p class="text-sm font-medium text-jam-cream/70">
+          {if own_round?(assigns), do: "Your prediction opens in", else: "Voting opens in"}
+          <span
+            id="countdown-votes-open"
+            phx-hook="Countdown"
+            data-deadline={@round.votes_open_ms}
+            class="ml-1 font-display text-lg tabular-nums text-jam-orange"
+          ></span>
+        </p>
         <div
           id={"phone-listen-progress-#{@view.subround_index}-#{@round.index}"}
           phx-hook="Progress"
@@ -1578,15 +1579,6 @@ defmodule WhoseJamWeb.PlayLive do
         >
           <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
         </div>
-        <p class="text-sm font-medium text-jam-cream/70">
-          {if own_round?(assigns), do: "Your prediction opens in", else: "Voting opens in"}
-          <span
-            id="countdown-votes-open"
-            phx-hook="Countdown"
-            data-deadline={@round.votes_open_ms}
-            class="ml-1 font-display text-lg tabular-nums text-jam-orange"
-          ></span>
-        </p>
       </div>
     </div>
     """
@@ -2150,8 +2142,10 @@ defmodule WhoseJamWeb.PlayLive do
              worth. --%>
         <%!-- Called it: the headline in a deep mint (mint is "right"); a
              fooling or a miss in ink. The words carry it either way. --%>
+        <%!-- In the body face: the revealed name above is the screen's one
+             display headline. --%>
         <p class={[
-          "font-display text-2xl leading-tight text-balance",
+          "text-[1.375rem] font-extrabold leading-tight tracking-[-0.01em] text-balance",
           (@outcome.win? and !@outcome[:bluff?]) && "text-jam-mint-deep"
         ]}>
           {@outcome.headline}
@@ -2160,14 +2154,14 @@ defmodule WhoseJamWeb.PlayLive do
           :if={@outcome.detail}
           class="mt-1.5 text-base font-medium leading-[1.4] text-balance text-jam-ink/75"
         >
-          {@outcome.detail}
+          <.points_line text={@outcome.detail} />
         </p>
         <p
           :if={@outcome[:blame]}
           id="my-blame"
           class="mt-0.5 text-base font-medium leading-[1.4] text-balance text-jam-ink/75"
         >
-          {@outcome[:blame]}
+          <.points_line text={@outcome[:blame]} />
         </p>
         <%!-- Where this leaves them: news, so on the result itself. --%>
         <p
@@ -2179,6 +2173,22 @@ defmodule WhoseJamWeb.PlayLive do
         </p>
       </div>
     </div>
+    """
+  end
+
+  attr :text, :string, required: true
+
+  # A result line, its points (a leading "+N") in orange as every point in the
+  # game is, set in the scores' lettering.
+  defp points_line(assigns) do
+    assigns =
+      case Regex.run(~r/\A(\+\d+)( .*)\z/s, assigns.text) do
+        [_, points, rest] -> assign(assigns, points: points, rest: rest)
+        _ -> assign(assigns, points: nil, rest: assigns.text)
+      end
+
+    ~H"""
+    <span :if={@points} class="font-display text-jam-orange-deep">{@points}</span>{@rest}
     """
   end
 
@@ -2480,7 +2490,7 @@ defmodule WhoseJamWeb.PlayLive do
           <dl
             :if={recap_stats(@me, @role, @mine) != []}
             id="my-recap"
-            class="mt-2 space-y-0.5 border-t-2 border-dashed border-jam-ink/20 pt-2 leading-[1.25]"
+            class="mt-1.5 space-y-0 border-t-2 border-dashed border-jam-ink/20 pt-1.5 leading-[1.3]"
           >
             <%!-- The total first and largest; how it came, smaller under it. --%>
             <div
@@ -2565,8 +2575,8 @@ defmodule WhoseJamWeb.PlayLive do
                 class={[
                   "flex break-inside-avoid items-center justify-between gap-3 rounded-md px-3 leading-tight",
                   if(list_id == "final-scores" and row.rank == 1,
-                    do: "min-h-12 py-1",
-                    else: "min-h-11 py-0.5"
+                    do: "min-h-11 py-1",
+                    else: "min-h-10 py-0.5"
                   ),
                   row.id == @player_id && "bg-jam-cream/[0.08]"
                 ]}
@@ -2678,7 +2688,7 @@ defmodule WhoseJamWeb.PlayLive do
       {score, "Points"},
       {recap.called, "Correct guesses"},
       {recap.fooled, "Players fooled"},
-      {Map.get(recap, :blamed, 0), "Predictions right"}
+      {Map.get(recap, :blamed, 0), "Correct predictions"}
     ]
   end
 
@@ -2743,10 +2753,17 @@ defmodule WhoseJamWeb.PlayLive do
   defp my_awards(_view, _player_id), do: []
 
   defp my_bluff([], _fooled), do: []
-  defp my_bluff([song], fooled), do: [{"Best bluff", "#{song} fooled #{fooled}"}]
+
+  defp my_bluff([song], fooled),
+    do: [{"Best bluff", "Fooled #{fooled} #{players(fooled)} with #{song}"}]
 
   defp my_bluff(songs, fooled),
-    do: [{"Best bluff", "#{length(songs)} songs each fooled #{fooled}"}]
+    do: [
+      {"Best bluff", "Fooled #{fooled} #{players(fooled)} with each of #{length(songs)} songs"}
+    ]
+
+  defp players(1), do: "player"
+  defp players(_n), do: "players"
 
   # --- game ended -----------------------------------------------------------
 

@@ -168,7 +168,7 @@ defmodule WhoseJamWeb.HomeLive do
               </div>
               <button
                 type="submit"
-                class="jam-btn lg:rounded-none lg:border-l-2 lg:border-dashed lg:border-jam-ink/25 lg:bg-transparent lg:px-8 lg:font-display lg:text-[1.75rem] lg:font-normal lg:text-jam-ink lg:hover:bg-jam-ink/5 xl:text-[2rem]"
+                class="jam-btn lg:rounded-none lg:border-l-2 lg:border-dashed lg:border-jam-ink/25 lg:bg-transparent lg:px-8 lg:text-[1.5rem] lg:font-extrabold lg:text-jam-ink lg:hover:bg-jam-ink/5 xl:text-[1.6rem]"
               >
                 Join
               </button>
@@ -254,7 +254,7 @@ defmodule WhoseJamWeb.HomeLive do
                receipt's lines are. --%>
           <p
             :if={theme.examples != []}
-            class="border-t-2 border-dashed border-jam-ink/15 pt-4 font-display text-[1.125rem] leading-[1.2] text-pretty text-jam-ink/85 lg:text-[1.5rem]"
+            class="border-t-2 border-dashed border-jam-ink/15 pt-4 text-[1.0625rem] font-semibold leading-[1.3] text-pretty text-jam-ink/85 lg:text-[1.35rem]"
           >
             “{hd(theme.examples).prompt}”
           </p>
