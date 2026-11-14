@@ -721,9 +721,9 @@ defmodule WhoseJamWeb.HostLive do
       </div>
 
       <div class="flex items-center gap-3 shrink-0">
-        <%!-- The host's controls, quiet until wanted. --%>
-        <%!-- Out of the room's way while a game plays: there until pointed
-             at (or tabbed to), and in the lobby, where they are needed. --%>
+        <%!-- The host's controls, out of the room's way while a game plays:
+             there until pointed at (or tabbed to), and in the lobby, where
+             they are needed. --%>
         <div class={[
           "flex items-center gap-1.5 transition-opacity duration-300 hover:opacity-100 focus-within:opacity-100",
           if(@view.phase == :lobby or is_nil(@active_service), do: "opacity-90", else: "opacity-0")
@@ -928,7 +928,7 @@ defmodule WhoseJamWeb.HostLive do
             </p>
           </div>
           <a
-            :if={service.connect_href && service.status != :unconfigured}
+            :if={service.connect_href}
             href={service.connect_href}
             class={[
               "jam-btn",
@@ -939,7 +939,7 @@ defmodule WhoseJamWeb.HostLive do
             {service_action(service.status)}
           </a>
           <button
-            :if={is_nil(service.connect_href) && service.status != :unconfigured}
+            :if={is_nil(service.connect_href)}
             type="button"
             phx-click="connect_music"
             phx-value-provider={service.id}
@@ -982,8 +982,6 @@ defmodule WhoseJamWeb.HostLive do
         </p>
       </li>
     </ul>
-    <%!-- What this server can't offer, in one quiet line rather than a row
-         each. --%>
     <%!-- The services this server can't offer, and (in the prompt) the way
          out, on one line: no band of its own under the list. --%>
     <div
@@ -1012,9 +1010,6 @@ defmodule WhoseJamWeb.HostLive do
   defp service_status_text(%{status: :connected}), do: "Connected"
 
   defp service_status_text(%{status: :ineligible, ineligible_message: message}), do: message
-
-  defp service_status_text(%{status: :unconfigured}),
-    do: "Not set up on this server yet."
 
   defp service_status_text(%{requirement: requirement}), do: requirement
 
@@ -1597,7 +1592,7 @@ defmodule WhoseJamWeb.HostLive do
           phx-hook="Progress"
           phx-update="ignore"
           data-deadline={@view.answering.deadline_ms}
-          data-duration={@view.config.answer_timer_s * 1000}
+          data-duration={@view.answering.duration_ms}
           class="jam-bar mt-5 h-2 w-full overflow-hidden bg-jam-cream/12"
           aria-hidden="true"
         >
@@ -1862,7 +1857,7 @@ defmodule WhoseJamWeb.HostLive do
       <%!-- The words sit at the foot of the sheet, as a print's do. --%>
       <figcaption class="mt-3.5 min-w-0 px-0.5">
         <h1 class={[
-          "font-display leading-[1.02] line-clamp-2 text-balance break-keep [line-break:strict]",
+          "font-display leading-[1.02] line-clamp-2 text-balance break-words break-keep [line-break:strict]",
           if(@size == :reveal, do: "text-[2.4rem]", else: "text-[3rem]")
         ]}>
           {poster_title(@song.name)}
@@ -2399,7 +2394,6 @@ defmodule WhoseJamWeb.HostLive do
             player_id={cell.id}
             name={cell.name}
             seat={cell.was}
-            tag?={false}
             name_class={@name_class}
             away?={cell.away?}
             class="jam-out jam-beat-3"
@@ -2474,16 +2468,15 @@ defmodule WhoseJamWeb.HostLive do
   # seats say what each player won this round, and the totals (and who
   # leads) are the final board's to tell.
   defp round_only(players),
-    do: Map.new(players, &{&1.id, %{score: nil, leader?: false, ring?: false}})
+    do: Map.new(players, &{&1.id, %{score: nil, ring?: false}})
 
   # What each player's seat says for a set of scores: the score, and whether
   # they lead. By default places are the final board's to give (a strip of
   # "1st 1st 1st 2nd…" is noise from across a room) and only the lead is
   # marked, every tied leader alike; a host who wants every place on the
-  # strip can have it (`show_places?`), once anyone has scored. The leader is
-  # outlined, never filled, so the brightest thing in the strip is never a
-  # name while the room is guessing one; a lead shared by half the room isn't
-  # one worth pointing at.
+  # strip can have it (`show_places?`), once anyone has scored. The leader's
+  # name is on the prize's orange tape (`ring?`); a lead shared by half the
+  # room or more isn't one worth pointing at, so then nobody's is.
   defp seats(view, scores) do
     board = Standings.rank(view.players, scores)
     top = for row <- board, row.rank == 1 and row.score > 0, do: row.id
@@ -2491,8 +2484,7 @@ defmodule WhoseJamWeb.HostLive do
     places? = view.config[:show_places?] == true and Enum.any?(board, &(&1.score > 0))
 
     Map.new(board, fn row ->
-      {row.id,
-       %{score: row.score, rank: places? && row.rank, leader?: false, ring?: row.id in leaders}}
+      {row.id, %{score: row.score, rank: places? && row.rank, ring?: row.id in leaders}}
     end)
   end
 
@@ -2505,7 +2497,6 @@ defmodule WhoseJamWeb.HostLive do
   attr :gain, :integer, default: 0
   attr :name_class, :string, default: "text-[1.7rem]"
   attr :away?, :boolean, default: false
-  attr :tag?, :boolean, default: true
   attr :class, :any, default: nil
   attr :rest, :global
 
@@ -2516,11 +2507,14 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <div
       id={@id}
-      class={[
-        "relative flex h-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-1.5 [grid-area:1/1]",
-        @seat.leader? && "bg-jam-cream text-jam-ink",
-        @class
-      ]}
+      class={
+        [
+          # Opaque, as the strip's panel is, so at a reveal the new seat covers
+          # the old one under it whole, never a total drawn over another.
+          "relative flex h-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl bg-jam-night px-1.5 [grid-area:1/1]",
+          @class
+        ]
+      }
       {@rest}
     >
       <%!-- Who leads wears the prize's orange tape (no label of its own); a
@@ -2556,7 +2550,7 @@ defmodule WhoseJamWeb.HostLive do
           name={@name}
           class={[
             "jam-bump max-w-full",
-            if(@seat.ring? and @tag? and !@away?, do: "jam-tape-orange", else: "jam-tape-paper"),
+            if(@seat.ring? and !@away?, do: "jam-tape-orange", else: "jam-tape-paper"),
             @locked? && "gap-1.5",
             @away? && "opacity-50"
           ]}
@@ -2596,11 +2590,7 @@ defmodule WhoseJamWeb.HostLive do
         <span class={[
           "font-display leading-none tabular-nums",
           if(@seat[:rank], do: "text-[2rem]", else: "text-[2.2rem]"),
-          cond do
-            @seat.leader? -> "text-jam-ink"
-            @seat.score > 0 -> "text-jam-orange"
-            true -> "text-jam-cream/50"
-          end
+          if(@seat.score > 0, do: "text-jam-orange", else: "text-jam-cream/50")
         ]}>
           {@seat.score}
         </span>
@@ -2635,8 +2625,9 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <%!-- The ending is one screen: the winner and what the game is
          remembered for on the left, the whole table on the right, read top to
-         bottom. The table fills from the bottom (everyone below third at once,
-         then third, then a held breath with the top two face down), and the
+         bottom. The table fills from the bottom (the places below third one
+         at a time, then third, then a held breath with the top two face
+         down), and the
          winner arrives last, the top two turned over and the headline at once
          (`.jam-count-*` and `.jam-finale-*` in app.css); no row stands empty
          waiting for them. The host's buttons follow. Phones wait for the
@@ -2904,7 +2895,7 @@ defmodule WhoseJamWeb.HostLive do
               >
                 <span class={[
                   "flex w-[7.5rem] shrink-0 items-baseline gap-2 self-stretch text-[1.6rem] font-semibold leading-none",
-                  row.tied? && tie_bracket(@board, row),
+                  row.tied? && tie_bracket(@board, row, :tv),
                   if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/70")
                 ]}>
                   <span class={[
@@ -2936,7 +2927,7 @@ defmodule WhoseJamWeb.HostLive do
                        one place (no order among them). --%>
                   <span class={[
                     "flex w-[7.5rem] shrink-0 items-baseline gap-2 self-stretch text-[1.6rem] font-semibold leading-none tabular-nums",
-                    row.tied? && tie_bracket(@board, row),
+                    row.tied? && tie_bracket(@board, row, :tv),
                     if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/70")
                   ]}>
                     <%!-- (Said on every row for a screen reader; shown at the head
@@ -3198,7 +3189,7 @@ defmodule WhoseJamWeb.HostLive do
         {"Predicted #{choice_name(view, round, choice)}, but nobody was fooled", false}
 
       took ->
-        {prediction(choice_name(view, round, choice), took, right?, round.style), right?}
+        {prediction(choice_name(view, round, choice), took, right?), right?}
     end
   end
 
@@ -3209,10 +3200,10 @@ defmodule WhoseJamWeb.HostLive do
   # "the room"), and one for the picker's part in it, predict ("called it"
   # is the right guessers'). A miss is said as clearly
   # as a hit, with no points to it.
-  defp prediction(guess, _took, true, _style),
+  defp prediction(guess, _took, true),
     do: "Predicted the blame on #{guess}"
 
-  defp prediction(guess, took, false, _style),
+  defp prediction(guess, took, false),
     do: "Predicted #{guess}, but #{join_names(took)} took the blame"
 
   attr :line, :any, required: true
@@ -3288,18 +3279,18 @@ defmodule WhoseJamWeb.HostLive do
   defp card_heading(%{none?: true, count: count}), do: "#{count} didn’t vote"
   defp card_heading(guess), do: "#{length(guess.voters)} said #{guess.name}"
 
-  # How large the room's guesses are set: as large as the number of cards
+  # How large the room's guesses are set: as large as the number of groups
   # leaves room for. A room that agreed (one to three suspects, one row) gets
   # them at a size to read from the sofa; a room that scattered needs two rows,
-  # so each card is smaller and the reveal still fits above the scores.
+  # so each group is smaller and the reveal still fits above the scores.
   defp guess_size(count) when count <= 2,
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.65rem]"}
+    do: %{said: "text-[1.85rem]", voters: "text-[1.65rem]"}
 
   defp guess_size(3),
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.35rem]"}
+    do: %{said: "text-[1.7rem]", voters: "text-[1.35rem]"}
 
   defp guess_size(_count),
-    do: %{card: "px-5 pb-4 pt-3", said: "text-[1.5rem]", voters: "text-[1.15rem]"}
+    do: %{said: "text-[1.5rem]", voters: "text-[1.15rem]"}
 
   # A group's name tapes in rows that come out even (six as two rows of
   # three, not five and one). A group on its own has the panel's width, so up
@@ -3487,29 +3478,10 @@ defmodule WhoseJamWeb.HostLive do
 
   defp winner_rows(board), do: Enum.filter(board, &(&1.rank == 1))
 
-  # The line down a run of tied rows starts inside the run's first row and
-  # ends inside its last, so two runs that meet (3rd tied, then 5th tied)
-  # never join into one.
-  defp tie_bracket(rows, row) do
-    "relative before:absolute before:-left-4 before:w-[3px] " <>
-      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_50%,var(--color-jam-night))] " <>
-      "before:content-[''] " <>
-      case tie_part(rows, row) do
-        :first -> "before:top-2 before:-bottom-3"
-        :middle -> "before:-inset-y-3"
-        :last -> "before:-top-3 before:bottom-2"
-      end
-  end
-
+  # The headline when there are no names to set (`winner_names/1` sets them
+  # otherwise): nobody won, or everyone tied.
   defp winner_headline([], _board), do: "Game over"
-  defp winner_headline([winner], _board), do: "#{winner.name} wins"
-
-  defp winner_headline(winners, board)
-       when length(winners) == length(board) and length(board) > 2,
-       do: "Everyone tied"
-
-  defp winner_headline(winners, _board),
-    do: "#{join_names(Enum.map(winners, & &1.name))} share the win"
+  defp winner_headline(_winners, _board), do: "Everyone tied"
 
   attr :winners, :list, required: true
   attr :board, :list, required: true
@@ -3539,9 +3511,9 @@ defmodule WhoseJamWeb.HostLive do
     """
   end
 
-  # When a row of the final table arrives: second and third each get a beat
-  # of their own, everyone below them comes in together.
-  defp count_class(2, _steps), do: "jam-count-second"
+  # When a row of the final table arrives: from last place up, one place at
+  # a time, then third on a beat of its own (the top two are held face down
+  # and turn over with the winner).
   defp count_class(3, _steps), do: "jam-count-third"
   defp count_class(rank, steps), do: "jam-count-step-#{Map.get(steps, rank, 0)}"
 

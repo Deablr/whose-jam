@@ -358,6 +358,8 @@ defmodule WhoseJam.Game.ServerTest do
       view = Game.get_state(code)
       assert view.phase == :answering
       assert is_integer(view.answering.deadline_ms)
+      # The window's length, for the screens' draining bars.
+      assert view.answering.duration_ms == view.config.answer_timer_s * 1000
       # Progress counts are exposed; the songs themselves are not.
       assert view.answering.progress[p1] == %{submitted: 0, total: 1}
 
@@ -1593,6 +1595,8 @@ defmodule WhoseJam.Game.ServerTest do
       span = view.answering.deadline_ms - before_ms
       assert span > 8_000
       assert span <= 10_500
+      # ...and the view says how long the window is, for the screens' bars.
+      assert view.answering.duration_ms == 10_000
     end
   end
 

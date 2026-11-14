@@ -454,37 +454,6 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
-  Renders a status mark: a solid Heroicon in its tone's colour, on nothing
-  (`.jam-badge` in `app.css`). Game screens use this instead of emoji, so a
-  state is drawn the same way on every device. Its size is its font size;
-  keep it small, beside the words it marks.
-
-  ## Examples
-
-      <.jam_badge icon="hero-lock-closed-solid" class="text-xl" />
-      <.jam_badge icon="hero-check-circle-solid" tone="mint" class="text-2xl" />
-  """
-  attr :icon, :string, required: true
-  attr :tone, :string, default: "brand", values: ~w(brand mint quiet)
-  attr :class, :any, default: nil
-
-  def jam_badge(assigns) do
-    ~H"""
-    <span
-      class={[
-        "jam-badge",
-        @tone == "mint" && "jam-badge-mint",
-        @tone == "quiet" && "jam-badge-quiet",
-        @class
-      ]}
-      aria-hidden="true"
-    >
-      <.icon name={@icon} class="size-[1em]" />
-    </span>
-    """
-  end
-
-  @doc """
   Renders a player's name written on a strip of tape (`.jam-tape` in
   `app.css`), the one prop a name wears on a game screen. The strip's tilt
   and cut come from the player's id (`tilt_class/1`), so a name looks the
@@ -548,6 +517,40 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
+  The classes for the line down a run of tied rows in a ranked table
+  (`tie_part/2`), drawn in the gutter left of the place: it starts inside
+  the run's first row and ends inside its last, so two runs that meet (3rd
+  tied, then 5th tied) never join into one. `size` is `:tv` (a heavier line
+  further out) or `:phone`.
+  """
+  @spec tie_bracket(
+          [%{id: term(), rank: pos_integer()}],
+          %{id: term(), rank: pos_integer()},
+          :tv | :phone
+        ) :: [String.t()]
+  def tie_bracket(rows, row, :tv) do
+    [
+      "relative before:absolute before:-left-4 before:w-[3px] before:content-[''] before:bg-[color-mix(in_srgb,var(--color-jam-cream)_50%,var(--color-jam-night))]",
+      case tie_part(rows, row) do
+        :first -> "before:top-2 before:-bottom-3"
+        :middle -> "before:-inset-y-3"
+        :last -> "before:-top-3 before:bottom-2"
+      end
+    ]
+  end
+
+  def tie_bracket(rows, row, :phone) do
+    [
+      "relative before:absolute before:-left-2 before:w-0.5 before:content-[''] before:bg-[color-mix(in_srgb,var(--color-jam-cream)_50%,var(--color-jam-night))]",
+      case tie_part(rows, row) do
+        :first -> "before:top-1.5 before:-bottom-1.5"
+        :middle -> "before:-inset-y-1.5"
+        :last -> "before:-top-1.5 before:bottom-1.5"
+      end
+    ]
+  end
+
+  @doc """
   The corners of the faint band a run of tied rows shares in a ranked table
   (`tie_part/2`): rounded at the run's two ends only, so the run reads as one
   group.
@@ -576,14 +579,17 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
-  Readies a song's title for a poster: a short closing parenthetical ("(if
-  i don't mean it)") is kept whole, so a title breaks before it, never
-  inside it, and the last line is never one word alone (`no_widow/1`).
+  Readies a song's title for a poster: a short closing parenthetical ("(Live)",
+  "(Re:Verse)", up to 14 characters with its brackets, short enough for the
+  narrowest poster's line) is kept whole, so a title breaks before it, never
+  inside it, and the last line is never one word alone (`no_widow/1`). A
+  longer one ("(feat. Kendrick Lamar)") may break inside, rather than run
+  past the poster's edge.
   """
   @spec poster_title(String.t()) :: String.t()
   def poster_title(title) when is_binary(title) do
     title =
-      Regex.replace(~r/\(([^()]{1,24})\)\s*\z/u, title, fn whole, _inner ->
+      Regex.replace(~r/\(([^()]{1,12})\)\s*\z/u, title, fn whole, _inner ->
         String.replace(whole, " ", "\u00A0")
       end)
 

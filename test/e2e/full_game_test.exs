@@ -290,6 +290,13 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       |> hold_if(first?, 500)
       |> snap_if(first?, submitter, "picker-locked")
 
+      # The TV shows who is in on the score strip, the picker among them
+      # (everyone has something to lock in, so it gives nobody away): with
+      # only the picker in, theirs is the one tape down.
+      devices.host
+      |> assert_has("#score-strip li[data-in] .jam-tape", text: submitter_name, exact: true)
+      |> assert_has("#score-strip li[data-in]", count: 1)
+
       # In the first round one voter goes first, alone, for the stills.
       {lead, rest} = if first?, do: Enum.split(votes, 1), else: {[], votes}
       Enum.each(lead, &cast_vote(devices, &1, true))
@@ -300,12 +307,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       if first?, do: Stage.snap(devices, [:host | small], "tv-voting")
       in_parallel(rest, &cast_vote(devices, &1, false))
 
-      # The TV shows who is in on the score strip, the picker among them
-      # (everyone has something to lock in, so it gives nobody away): their
-      # tape lands on their seat.
       devices.host
       |> assert_has("#vote-progress", text: "#{length(@players)}/#{length(@players)}")
-      |> assert_has("#score-strip li[data-in] .jam-tape", text: submitter_name, exact: true)
 
       devices.host
       |> assert_has("p", text: "It was", timeout: @wait)
@@ -400,7 +403,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   end
 
   # A prediction that missed is said only when somebody got a wrong guess.
-  defp assert_missed_guess(_host, _phone, _guess, []), do: :ok
+  # Nobody was fooled, so nobody took the blame: both screens say so, in the
+  # same words.
+  defp assert_missed_guess(host, phone, guess, []) do
+    assert_has(host, "#forecast", text: "Predicted #{guess}, but nobody was fooled")
+    assert_has(phone, "#my-blame", text: "Predicted #{guess}, but nobody was fooled")
+  end
 
   defp assert_missed_guess(host, phone, guess, _fooled) do
     # A miss is said plainly, with no points to it.

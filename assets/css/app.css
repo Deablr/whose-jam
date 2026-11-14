@@ -269,15 +269,6 @@
   cursor: not-allowed;
 }
 
-.jam-btn-orange {
-  background: var(--color-jam-orange);
-  color: var(--color-jam-ink);
-}
-
-.jam-btn-orange:hover:not(:disabled) {
-  background: var(--color-jam-orange-hi);
-}
-
 /* The quieter primary: egg white, for the main action of a screen that
    already has a pink one. */
 .jam-btn-cream {
@@ -395,28 +386,6 @@
   to { height: 100%; }
 }
 
-/* --- Icon badge -------------------------------------------------------- */
-
-/* A status mark: a solid icon in its colour, on nothing. Sized by the font
-   size of whoever uses it, and kept small: it marks a state, it isn't the
-   state's picture. */
-.jam-badge {
-  display: inline-grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 1em;
-  height: 1em;
-  color: var(--color-jam-pink);
-}
-
-.jam-badge-mint {
-  color: var(--color-jam-mint);
-}
-
-.jam-badge-quiet {
-  color: rgb(242 238 228 / 0.6);
-}
-
 /* --- Entrances --------------------------------------------------------- */
 
 /* Content that arrives with a phase change eases in rather than cutting.
@@ -443,6 +412,16 @@
 }
 
 /* Leaves as its replacement arrives (an old score giving way to a new one). */
+/* A sticker that gets its colour on a later beat (with `.jam-beat-N`):
+   paper until then, then its own fill. */
+.jam-paint-in {
+  animation: jam-paint-in 220ms ease-out both;
+}
+
+@keyframes jam-paint-in {
+  from { background-color: var(--color-jam-paper); }
+}
+
 .jam-out {
   animation: jam-out 200ms ease both;
 }
@@ -450,22 +429,6 @@
 @keyframes jam-out {
   from { opacity: 1; }
   to { opacity: 0; }
-}
-
-/* One guess at a reveal: a suspect and who named them. The row that named
-   the right player says so. */
-.jam-guess {
-  display: flex;
-  align-items: baseline;
-  gap: 1.25rem;
-  padding: 0.6rem 1.25rem;
-  border-radius: var(--radius-2xl);
-  background: rgb(242 238 228 / 0.07);
-}
-
-.jam-guess-right {
-  background: var(--color-jam-mint);
-  color: var(--color-jam-ink);
 }
 
 /* The card that opens a round: holds, then clears for the song. Its words
@@ -571,9 +534,10 @@
 .jam-beat-3.jam-after { animation-delay: 3800ms; }
 
 /* The ending. The TV's table fills from the bottom: the lower places one at
-   a time, then third, then second (`.jam-count-*`), while "And the winner is…"
-   holds the headline for a breath; then it leaves (`.jam-finale-wait`) and the winner
-   lands in first place and the headline together (`.jam-finale-win`),
+   a time, then third (`.jam-count-*`), with the top two held face down,
+   while "And the winner is…" holds the headline for a breath; then it leaves
+   (`.jam-finale-wait`) and the top two turn over as the winner lands in
+   first place and the headline together (`.jam-finale-win`),
    followed by how they won it, the awards and the host's buttons
    (`.jam-finale-after-N`). Phones wait for the winner to be named
    (`.jam-until-winner`, then `.jam-after-winner`). */
@@ -586,7 +550,6 @@
 .jam-count-step-4 { animation-delay: 1550ms; }
 .jam-count-step-5 { animation-delay: 1900ms; }
 .jam-count-third { animation-delay: 2400ms; }
-.jam-count-second { animation-delay: 3100ms; }
 
 .jam-out.jam-finale-wait { animation-delay: 4600ms; }
 .jam-finale-win { animation-delay: 4800ms; }
@@ -639,8 +602,7 @@
 .jam-quick .jam-beat-3.jam-after { animation-delay: 850ms; }
 
 .jam-quick [class*="jam-count-step-"],
-.jam-quick .jam-count-third,
-.jam-quick .jam-count-second { animation-delay: 150ms; }
+.jam-quick .jam-count-third { animation-delay: 150ms; }
 .jam-quick .jam-out.jam-finale-wait { animation-delay: 900ms; }
 .jam-quick .jam-finale-win { animation-delay: 1050ms; }
 .jam-quick .jam-winner-card,

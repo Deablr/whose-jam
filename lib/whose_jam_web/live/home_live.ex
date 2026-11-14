@@ -172,7 +172,14 @@ defmodule WhoseJamWeb.HomeLive do
               </div>
               <button
                 type="submit"
-                class="jam-btn lg:rounded-none lg:border-l-2 lg:border-dashed lg:border-jam-ink/25 lg:bg-transparent lg:px-8 lg:text-[1.5rem] lg:font-extrabold lg:text-jam-ink lg:hover:bg-jam-ink/5 xl:text-[1.6rem]"
+                class={
+                  [
+                    "jam-btn lg:rounded-none lg:border-l-2 lg:border-dashed lg:border-jam-ink/25 lg:bg-transparent lg:px-8 lg:text-[1.5rem] lg:font-extrabold lg:text-jam-ink lg:hover:bg-jam-ink/5 xl:text-[1.6rem]",
+                    # One pink button a screen: with the way back to a game
+                    # above it, joining another is the quieter primary.
+                    @seat && "jam-btn-cream"
+                  ]
+                }
               >
                 Join
               </button>

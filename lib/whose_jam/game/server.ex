@@ -133,6 +133,9 @@ defmodule WhoseJam.Game.Server do
             # answering scope
             submissions: %{},
             answer_deadline_ms: nil,
+            # how long the answer window that ends at answer_deadline_ms is
+            # (for the screens' draining bars)
+            answer_window_ms: nil,
             answer_ref: nil,
             # playing scope
             rounds: [],
@@ -621,6 +624,7 @@ defmodule WhoseJam.Game.Server do
         subround_index: index,
         submissions: %{},
         answer_deadline_ms: now_ms() + ms,
+        answer_window_ms: ms,
         answer_ref: ref,
         rounds: [],
         round_index: 0,
@@ -652,7 +656,7 @@ defmodule WhoseJam.Game.Server do
     state = cancel_timer(state, :answer_ref)
     ms = all_in_pause_ms()
     ref = schedule({:answer_timeout, state.subround_index}, ms)
-    %{state | answer_ref: ref, answer_deadline_ms: now_ms() + ms}
+    %{state | answer_ref: ref, answer_deadline_ms: now_ms() + ms, answer_window_ms: ms}
   end
 
   # Only connected players can still block early completion. A disconnected
@@ -976,6 +980,7 @@ defmodule WhoseJam.Game.Server do
         subround_index: 0,
         submissions: %{},
         answer_deadline_ms: nil,
+        answer_window_ms: nil,
         rounds: [],
         round_index: 0,
         round: nil,
@@ -1232,7 +1237,11 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp answering_view(%{phase: :answering} = state) do
-    %{deadline_ms: state.answer_deadline_ms, progress: answering_progress(state)}
+    %{
+      deadline_ms: state.answer_deadline_ms,
+      duration_ms: state.answer_window_ms,
+      progress: answering_progress(state)
+    }
   end
 
   defp answering_view(_state), do: nil
