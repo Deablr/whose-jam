@@ -950,7 +950,7 @@ defmodule WhoseJamWeb.HostLive do
     >
       <p
         :if={@unconfigured != []}
-        class={["font-medium text-jam-cream/60", if(@big?, do: "text-[1.2rem]", else: "text-base")]}
+        class={["font-medium text-jam-cream/60", if(@big?, do: "text-[1.2rem]", else: "text-lg")]}
       >
         {join_names(Enum.map(@unconfigured, & &1.name))}
         {if length(@unconfigured) == 1, do: "isn’t", else: "aren’t"} set up on this server.
@@ -1020,8 +1020,9 @@ defmodule WhoseJamWeb.HostLive do
       </div>
 
       <%!-- Two columns on a wide screen, so the whole sheet is in view at
-           once: the game's times, counts and rules on the left; what plays
-           the music and how the screens tell the game on the right. --%>
+           once and the two end level: the game's times and counts, and what
+           plays the music, on the left; every switch on the right, the
+           rules' and the screens'. --%>
       <div class="grid gap-x-12 gap-y-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div class="space-y-6">
           <section class="space-y-3">
@@ -1146,13 +1147,19 @@ defmodule WhoseJamWeb.HostLive do
                 </div>
               </fieldset>
             </form>
-            <%!-- The rules' switches, a row each under the times and counts,
-                 label left and switch right. --%>
-            <form
-              phx-change="set_config"
-              id="rule-settings"
-              class="mt-2 grid gap-1 border-t border-jam-cream/10 pt-2"
-            >
+          </section>
+
+          <section class="space-y-3">
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Music service</h3>
+            {music_service_list(assigns)}
+          </section>
+        </div>
+        <div class="space-y-6">
+          <section class="space-y-3">
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Rules</h3>
+            <%!-- The rules' switches, a row each, label left and switch
+                 right, as the screens' are under them. --%>
+            <form phx-change="set_config" id="rule-settings" class="grid gap-1">
               <fieldset disabled={@view.phase != :lobby} class="contents">
                 <%!-- Said as the order it plays in; a theme of one style has
                      nothing to split. --%>
@@ -1175,12 +1182,6 @@ defmodule WhoseJamWeb.HostLive do
                 />
               </fieldset>
             </form>
-          </section>
-        </div>
-        <div class="space-y-6">
-          <section class="space-y-3">
-            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Music service</h3>
-            {music_service_list(assigns)}
           </section>
 
           <%!-- How the screens tell the game, for rooms that like it another
@@ -1776,7 +1777,7 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <figure class={[
       "jam-paper jam-poster bg-jam-cream text-jam-ink transition-[width] duration-500",
-      if(@size == :reveal, do: "w-[21rem] p-3.5 pb-4", else: "w-[26rem] p-4 pb-5")
+      if(@size == :reveal, do: "w-[18rem] p-3 pb-3.5", else: "w-[26rem] p-4 pb-5")
     ]}>
       <%!-- While it plays, the meter on a dark tab at the art's corner, as
            the phones have it. --%>
@@ -1797,7 +1798,7 @@ defmodule WhoseJamWeb.HostLive do
         </div>
         <span
           :if={@playing?}
-          class="absolute bottom-3 left-3 flex rounded-sm bg-jam-ink/80 px-3 py-2.5"
+          class="absolute bottom-3 left-3 flex bg-jam-ink/80 px-3 py-2.5"
         >
           <.now_playing_meter class="text-[2.3rem]" />
         </span>
@@ -2515,10 +2516,10 @@ defmodule WhoseJamWeb.HostLive do
       >
         {if @gain > 0, do: "+#{@gain}", else: "–"}
       </span>
-      <%!-- The total, alone on its line; what this round added rides on a
-           small orange sticker set off above its right shoulder, as a
-           phone's result wears its points, so "1" and "+1" never read as a
-           sum. (On the total, not on the name's tape.) --%>
+      <%!-- The total, centred under the name; what this round added rides
+           on a small orange sticker beside it, on its line and clear of the
+           tape, as a phone's result wears its points (a sticker, so "1" and
+           "+1" never read as a sum). --%>
       <span :if={@seat.score} class={["relative flex justify-center", @away? && "opacity-50"]}>
         <span class={[
           "font-display leading-none tabular-nums",
@@ -2532,7 +2533,7 @@ defmodule WhoseJamWeb.HostLive do
           {@seat.score}
           <span
             :if={@gain > 0}
-            class="jam-sticker absolute left-[calc(50%+1.7rem)] top-[-0.7rem] rotate-[5deg] bg-jam-orange px-[0.4rem] py-[0.15rem] font-display text-[1.35rem] leading-none text-jam-ink"
+            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-[4deg] bg-jam-orange px-[0.3rem] py-[0.12rem] font-display text-[0.95rem] leading-none text-jam-ink"
           >
             +{@gain}
           </span>
@@ -3003,10 +3004,10 @@ defmodule WhoseJamWeb.HostLive do
   # to 24 characters.
   defp reveal_name_size(name) do
     case String.length(name) do
-      n when n <= 8 -> "text-[7.5rem]"
-      n when n <= 12 -> "text-[6rem]"
-      n when n <= 17 -> "text-[5rem]"
-      _ -> "text-[3.75rem]"
+      n when n <= 8 -> "text-[9.5rem]"
+      n when n <= 12 -> "text-[7.5rem]"
+      n when n <= 17 -> "text-[6rem]"
+      _ -> "text-[4.25rem]"
     end
   end
 
@@ -3171,13 +3172,13 @@ defmodule WhoseJamWeb.HostLive do
   # them at a size to read from the sofa; a room that scattered needs two rows,
   # so each card is smaller and the reveal still fits above the scores.
   defp guess_size(count) when count <= 2,
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.6rem]"}
+    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.4rem]"}
 
   defp guess_size(3),
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.4rem]"}
+    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.25rem]"}
 
   defp guess_size(_count),
-    do: %{card: "px-5 pb-4 pt-3", said: "text-[1.5rem]", voters: "text-[1.25rem]"}
+    do: %{card: "px-5 pb-4 pt-3", said: "text-[1.5rem]", voters: "text-[1.15rem]"}
 
   # Columns for a group's name tapes, so its rows come out even. A group on
   # its own has the panel's width, so up to seven names make one row.

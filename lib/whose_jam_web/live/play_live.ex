@@ -654,7 +654,7 @@ defmodule WhoseJamWeb.PlayLive do
                 {@my_score}
               </span>
             </span>
-            <span class="text-[0.625rem] font-bold" aria-hidden="true">
+            <span class="text-[0.75rem] font-bold" aria-hidden="true">
               {cond do
                 @role == :audience -> "right"
                 @my_score == 1 -> "pt"
@@ -726,7 +726,7 @@ defmodule WhoseJamWeb.PlayLive do
           value={@code}
           placeholder="Room code"
           aria-label="Room code"
-          class="rounded-full border-2 border-transparent bg-[#2b2a26] px-6 py-3.5 text-center text-3xl font-extrabold uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-cream/55 focus:border-jam-pink focus:outline-none"
+          class="rounded-full bg-[#2b2a26] px-6 py-4 text-center text-3xl font-extrabold uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-cream/55 focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] focus:outline-none"
         />
         <button type="submit" class="jam-btn">Try code</button>
       </form>
@@ -758,8 +758,9 @@ defmodule WhoseJamWeb.PlayLive do
       <form phx-submit="join" class="mt-6 space-y-4">
         <%!-- The name is written straight onto the blank strip of tape it
              will be worn on, in marker; the placeholder is in the body face,
-             and focus is a pink ring round the strip. --%>
-        <div class="jam-tape jam-cut-0 flex w-full -rotate-[0.6deg] !justify-start !p-0 focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-jam-pink">
+             and focus is a pink line along the strip's foot, inside it, as
+             every text field has it. --%>
+        <div class="jam-tape jam-cut-0 flex w-full -rotate-[0.6deg] !justify-start !p-0">
           <input
             type="text"
             name="name"
@@ -768,7 +769,7 @@ defmodule WhoseJamWeb.PlayLive do
             maxlength="24"
             placeholder="Your name"
             aria-label="Your name"
-            class="h-[3.75rem] w-full min-w-0 bg-transparent px-5 font-marker text-[1.625rem] font-bold leading-none text-jam-ink caret-jam-pink [font-variation-settings:'INFM'_50] placeholder:font-body placeholder:text-lg placeholder:font-semibold placeholder:text-jam-ink/55 focus:outline-none"
+            class="h-[3.75rem] w-full min-w-0 bg-transparent px-5 font-marker text-[1.625rem] font-bold leading-none text-jam-ink caret-jam-pink [font-variation-settings:'INFM'_50] placeholder:font-body placeholder:text-lg placeholder:font-semibold placeholder:text-jam-ink/55 focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] focus:outline-none"
           />
         </div>
         <p :if={@join_error} class="text-sm text-jam-red">{@join_error}</p>
@@ -1208,7 +1209,7 @@ defmodule WhoseJamWeb.PlayLive do
             phx-debounce={search_debounce(@view)}
             placeholder={search_placeholder(@view)}
             aria-label="Search for a song"
-            class="peer w-full rounded-full border-2 border-transparent bg-[#2b2a26] py-3.5 pl-12 pr-5 font-medium text-jam-cream placeholder-jam-cream/70 focus:border-jam-pink focus:outline-none"
+            class="peer w-full rounded-full bg-[#2b2a26] py-4 pl-12 pr-5 font-medium text-jam-cream placeholder-jam-cream/70 focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] focus:outline-none"
           />
           <%!-- From the first letter typed: the search is on its way (the
                server waits for typing to pause before it searches). --%>
@@ -1448,7 +1449,7 @@ defmodule WhoseJamWeb.PlayLive do
             </div>
             <span
               :if={@round_state in [:revealing, :voting]}
-              class="absolute bottom-2 left-2 flex rounded-sm bg-jam-ink/80 px-1.5 py-1"
+              class="absolute bottom-2 left-2 flex bg-jam-ink/80 px-1.5 py-1"
             >
               <.now_playing_meter class="text-xs" />
             </span>
@@ -1504,10 +1505,9 @@ defmodule WhoseJamWeb.PlayLive do
     <%!-- At least the height of the listening line it follows, so the slip
          under it never moves. --%>
     <div id="now-playing" class="flex min-h-12 items-center gap-3 short:min-h-10">
-      <%!-- The cover, with the meter on a tab at its corner while the song
-           plays, as the posters have it. Keyed by round, so a new round
-           never shows the last one's cover. (On a laptop the poster beside
-           it says all this, so the row keeps only the round and the clock.) --%>
+      <%!-- The cover, keyed by round, so a new round never shows the last
+           one's cover. (On a laptop the poster beside it says all this, so
+           the row keeps only the round and the clock.) --%>
       <div class="relative shrink-0 lg:hidden">
         <img
           :if={@round.song.album_art_url}
@@ -1522,12 +1522,6 @@ defmodule WhoseJamWeb.PlayLive do
         >
           <.icon name="hero-musical-note-solid" class="size-6 text-jam-cream/60" />
         </div>
-        <span
-          :if={@round_state == :voting}
-          class="absolute bottom-1 right-1 flex rounded-sm bg-jam-ink/85 px-1 py-[0.2rem]"
-        >
-          <.now_playing_meter class="text-[0.6rem]" />
-        </span>
       </div>
       <div class="min-w-0 flex-1">
         <div class="text-xs font-semibold text-jam-cream/65">
@@ -1537,8 +1531,11 @@ defmodule WhoseJamWeb.PlayLive do
         <div class="line-clamp-2 text-base font-extrabold leading-tight short:text-sm lg:hidden">
           {@round.song.name}
         </div>
-        <div class="truncate text-sm text-jam-cream/60 short:text-xs lg:hidden">
-          {@round.song.artist}
+        <%!-- While it plays, the meter beside the artist, off the small
+             cover (a poster has the room for it on its art). --%>
+        <div class="flex min-w-0 items-center gap-2 text-sm text-jam-cream/60 short:text-xs lg:hidden">
+          <span class="truncate">{@round.song.artist}</span>
+          <.now_playing_meter :if={@round_state == :voting} class="shrink-0 text-[0.7rem]" />
         </div>
       </div>
       <%!-- While the vote is open its clock sits here, out of the way of the
@@ -1573,44 +1570,10 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <div
       id="phone-listening"
-      class="jam-rise flex flex-col items-start gap-5 pt-8 text-left short:gap-3 short:pt-3"
+      class="jam-rise flex flex-col items-start gap-5 pt-5 text-left short:gap-3 short:pt-3 lg:pt-0"
     >
-      <%!-- The song the TV is playing, as the TV has it: a poster, its cover
-           printed on a sheet of paper with its name under it, large enough
-           to see at arm's length (`.jam-poster` in app.css). --%>
-      <%!-- Centred in the column (the slip above and the clock below run its
-           full width), the song as the screen's object. (A laptop has it in
-           the left column already, in the same place all round.) --%>
-      <figure class="jam-paper jam-poster w-[78%] max-w-[17rem] self-center p-3 pb-3.5 text-left text-jam-ink short:max-w-[12rem] short:p-2.5 md:max-w-[19rem] lg:hidden">
-        <%!-- The meter on the art's corner, so the artist has the line. --%>
-        <div class="relative">
-          <img
-            :if={@round.song.album_art_url}
-            id={"listen-art-#{@round.index}-#{@view.subround_index}"}
-            src={@round.song.album_art_url}
-            alt=""
-            class="aspect-square w-full object-cover"
-          />
-          <div
-            :if={!@round.song.album_art_url}
-            class="grid aspect-square w-full place-items-center bg-jam-ink/10"
-            aria-hidden="true"
-          >
-            <.icon name="hero-musical-note-solid" class="size-12 text-jam-ink/40" />
-          </div>
-          <span class="absolute bottom-2 left-2 flex rounded-sm bg-jam-ink/80 px-1.5 py-1">
-            <.now_playing_meter class="text-xs" />
-          </span>
-        </div>
-        <figcaption class="mt-2.5 px-0.5">
-          <p class="line-clamp-2 break-words break-keep font-display text-xl leading-tight">
-            {@round.song.name}
-          </p>
-          <p class="mt-0.5 line-clamp-2 text-base font-medium leading-[1.2] text-balance text-jam-ink/70 short:text-[0.9375rem]">
-            {@round.song.artist}
-          </p>
-        </figcaption>
-      </figure>
+      <%!-- What to do first, in the headline's place (where "Whose jam is
+           this?" will be), and how long until voting, then the song. --%>
       <div>
         <h1 class="font-display text-[2rem] leading-tight short:text-2xl">Listen up</h1>
         <p id="listen-note" class="mt-0.5 font-medium text-jam-cream/75">
@@ -1644,6 +1607,43 @@ defmodule WhoseJamWeb.PlayLive do
           <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
         </div>
       </div>
+      <%!-- The song the TV is playing, as the TV has it: a poster, its cover
+           printed on a sheet of paper with its name under it, large enough
+           to see at arm's length (`.jam-poster` in app.css). --%>
+      <%!-- Under what to do and how long until voting, centred in the column
+           (the slip above and the clock run its full width), the song as
+           the screen's object. (A laptop has it in the left column already,
+           in the same place all round.) --%>
+      <figure class="jam-paper jam-poster mt-2 w-[78%] max-w-[16rem] self-center p-3 pb-3.5 text-left text-jam-ink short:max-w-[12rem] short:p-2.5 md:max-w-[19rem] lg:hidden">
+        <%!-- The meter on the art's corner, so the artist has the line. --%>
+        <div class="relative">
+          <img
+            :if={@round.song.album_art_url}
+            id={"listen-art-#{@round.index}-#{@view.subround_index}"}
+            src={@round.song.album_art_url}
+            alt=""
+            class="aspect-square w-full object-cover"
+          />
+          <div
+            :if={!@round.song.album_art_url}
+            class="grid aspect-square w-full place-items-center bg-jam-ink/10"
+            aria-hidden="true"
+          >
+            <.icon name="hero-musical-note-solid" class="size-12 text-jam-ink/40" />
+          </div>
+          <span class="absolute bottom-2 left-2 flex bg-jam-ink/80 px-1.5 py-1">
+            <.now_playing_meter class="text-xs" />
+          </span>
+        </div>
+        <figcaption class="mt-2.5 px-0.5">
+          <p class="line-clamp-2 break-words break-keep font-display text-xl leading-tight">
+            {@round.song.name}
+          </p>
+          <p class="mt-0.5 line-clamp-2 text-base font-medium leading-[1.2] text-balance text-jam-ink/70 short:text-[0.9375rem]">
+            {@round.song.artist}
+          </p>
+        </figcaption>
+      </figure>
     </div>
     """
   end
@@ -2360,7 +2360,7 @@ defmodule WhoseJamWeb.PlayLive do
     do: "for predicting #{join_names(took)}"
 
   defp prediction(choice, took, false, round),
-    do: "Predicted #{guess_name(round, choice)}, but #{join_names(took)} took the blame"
+    do: "Predicted #{guess_name(round, choice)}, but #{join_names(took)} took the blame."
 
   # A name as it is, a prompt in quotes, as the TV words them.
   defp guess_name(%{style: :guess_who} = round, choice), do: choice_label(round, choice)
@@ -2459,7 +2459,7 @@ defmodule WhoseJamWeb.PlayLive do
 
       row ->
         among = if role == :audience, do: " in the audience", else: ""
-        "You’re " <> place_line(row, board) <> among
+        "You’re " <> place_line(row, board) <> among <> "."
     end
   end
 
@@ -2595,12 +2595,18 @@ defmodule WhoseJamWeb.PlayLive do
           </dl>
           <%!-- An award the TV gave this player is theirs to keep here, on
                its orange tape. --%>
-          <%!-- Every award the same way: its title on orange tape, what it
-               was for on the line under it. --%>
-          <dl :if={my_awards(@view, @player_id) != []} class="mt-3 space-y-2.5">
-            <div :for={{title, detail} <- my_awards(@view, @player_id)}>
+          <%!-- Every award the same way, a line each: its title on orange
+               tape, and the song it was won with beside it (the counts are
+               the receipt's, above). --%>
+          <dl :if={my_awards(@view, @player_id) != []} class="mt-3.5 space-y-2">
+            <div
+              :for={{title, detail} <- my_awards(@view, @player_id)}
+              class="flex flex-wrap items-center gap-x-3 gap-y-1"
+            >
               <dt class="jam-tape jam-tape-orange jam-tilt-3 text-sm">{title}</dt>
-              <dd class="mt-1 text-[0.9375rem] font-medium text-jam-ink/75">{detail}</dd>
+              <dd :if={detail} class="min-w-0 text-[0.9375rem] font-semibold text-jam-ink/80">
+                {detail}
+              </dd>
             </div>
           </dl>
         </div>
@@ -2816,10 +2822,10 @@ defmodule WhoseJamWeb.PlayLive do
       end
 
     sharpest =
-      with %{called: called, player_ids: ids} = award <- awards[:sharpest],
+      with %{player_ids: ids} = award <- awards[:sharpest],
            true <- Awards.given?(award),
            true <- player_id in ids do
-        [{"Sharpest ears", "#{called} correct guesses"}]
+        [{"Sharpest ears", nil}]
       else
         _ -> []
       end
@@ -2831,16 +2837,8 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp my_bluff([], _fooled), do: []
 
-  defp my_bluff([song], fooled),
-    do: [{"Best bluff", "Fooled #{fooled} #{players(fooled)} with #{song}"}]
-
-  defp my_bluff(songs, fooled),
-    do: [
-      {"Best bluff", "Fooled #{fooled} #{players(fooled)} with each of #{length(songs)} songs"}
-    ]
-
-  defp players(1), do: "player"
-  defp players(_n), do: "players"
+  defp my_bluff([song], _fooled), do: [{"Best bluff", song}]
+  defp my_bluff(songs, _fooled), do: [{"Best bluff", "#{length(songs)} songs"}]
 
   # --- game ended -----------------------------------------------------------
 

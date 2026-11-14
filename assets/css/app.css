@@ -333,9 +333,10 @@
   object-position: center;
   filter: blur(80px) saturate(1.3) brightness(0.7);
   transform: scale(1.15);
-  /* A tint, not a wash: enough of the cover to set the song's mood (about a
-     twentieth of it shows through the charcoal), never enough to read. */
-  opacity: 0.26;
+  /* A tint, not a wash: enough of the cover to set the song's mood (a
+     twentieth of it or less shows through the charcoal), never enough to
+     read, and never a haze over the room. */
+  opacity: 0.2;
 }
 
 /* The tint gathers where the art is (behind the TV's poster, on the left;
@@ -353,7 +354,7 @@
 
 /* At the end of the game the tint sits behind a table: softer still. */
 .jam-ambient-soft > img {
-  opacity: 0.2;
+  opacity: 0.15;
 }
 
 .jam-ambient::after {
@@ -940,8 +941,8 @@
 }
 
 /* A field in a game screen's form is filled, one step up from its panel,
-   with no outline until it has focus (then a pink ring), like every other
-   control. */
+   with no outline; focus is a pink line along its foot, inside it, as every
+   text field in the game has it. */
 [data-theme="jam"] .modal-box :is(.input, .select) {
   border: none;
   background-color: rgb(242 238 228 / 0.08);
@@ -950,8 +951,8 @@
 
 [data-theme="jam"] .modal-box :is(.input, .select):focus,
 [data-theme="jam"] .modal-box :is(.input, .select):focus-within {
-  outline: 2px solid var(--color-jam-pink);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: inset 0 -0.2rem 0 var(--color-jam-pink);
 }
 
 /* A switch reads at a glance: the knob is egg white either way; off, it sits
