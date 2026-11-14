@@ -519,6 +519,19 @@ defmodule WhoseJamWeb.CoreComponents do
     do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 3)}"
 
   @doc """
+  Joins a line of copy's last two words with a no-break space, so a prompt
+  that wraps never leaves one word alone on its last line. Copy of three
+  words or fewer is left as it is (it may need to break anywhere on a
+  narrow screen).
+  """
+  @spec no_widow(String.t()) :: String.t()
+  def no_widow(text) when is_binary(text) do
+    if length(String.split(text)) > 3,
+      do: String.replace(text, ~r/\s+(\S+)\s*\z/u, "\u00A0\\1"),
+      else: text
+  end
+
+  @doc """
   Renders the "now playing" level meter (`.jam-meter` in `app.css`): five
   square bars that move while a song plays. Its size is its font size.
   """
@@ -640,7 +653,7 @@ defmodule WhoseJamWeb.CoreComponents do
   def modal(assigns) do
     ~H"""
     <div
-      class="modal modal-open bg-jam-ink/[0.92] backdrop-blur-[10px]"
+      class="modal modal-open bg-jam-ink/[0.96] backdrop-blur-[10px]"
       phx-window-keydown={@on_close}
       phx-key="Escape"
     >

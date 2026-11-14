@@ -134,9 +134,9 @@ defmodule WhoseJamWeb.HomeLive do
           <%!-- Joining: the room code is typed onto a ticket, like the one the
                TV shows it on. The main thing on a phone; a slim row under
                hosting on a TV. --%>
-          <%!-- On a TV, straight on the stage under a hairline (no card): the
-               ticket is the prop. --%>
-          <section class="jam-panel order-1 p-6 sm:p-8 space-y-4 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:rounded-none lg:border-t lg:border-jam-cream/12 lg:!bg-transparent lg:px-0 lg:pb-0 lg:pt-10">
+          <%!-- Straight on the stage (no card: the ticket is the prop), and
+               on a TV under a hairline. --%>
+          <section class="order-1 space-y-4 pt-2 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:border-t lg:border-jam-cream/12 lg:pt-10">
             <h2 class="text-2xl font-extrabold tracking-[-0.015em] lg:shrink-0 lg:text-xl lg:font-bold lg:text-jam-cream/75 xl:text-2xl">
               {if @seat, do: "Join another game", else: "Join a game"}
             </h2>
@@ -150,7 +150,7 @@ defmodule WhoseJamWeb.HomeLive do
                    a perforation; on a phone it is the screen's pink button,
                    under it. --%>
               <%!-- Focus is a pink line under the code, inside the ticket,
-                   so it follows the ticket's cut ends. Flat on its panel:
+                   so it follows the ticket's cut ends. Flat on the stage:
                    a lifting shadow would fall into its notches (dark dots)
                    and onto the button under it. --%>
               <div class="min-w-0 flex-1">
