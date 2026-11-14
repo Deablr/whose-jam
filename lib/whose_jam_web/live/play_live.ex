@@ -504,7 +504,7 @@ defmodule WhoseJamWeb.PlayLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(str), do: str
 
-  defp ended_message(:host_ended), do: "That’s the night. Thanks for playing."
+  defp ended_message(:host_ended), do: "Room closed. Thanks for playing."
   defp ended_message(:host_left), do: "The host closed the game screen, so the game has ended."
   defp ended_message(:idle), do: "This game closed after sitting idle."
   defp ended_message(_reason), do: "This game has ended."
@@ -2597,48 +2597,49 @@ defmodule WhoseJamWeb.PlayLive do
               ]
             }
           >
-            <%!-- The total first and largest; how it came, smaller under it. --%>
-            <div
-              :for={{{value, label}, i} <- Enum.with_index(recap_stats(@me, @role, @mine))}
-              class={["flex items-baseline gap-2", i == 0 && "pb-1"]}
-            >
-              <dt class={[
-                if(i == 0,
-                  do: "text-base font-bold text-jam-ink",
-                  else: "text-[0.9375rem] font-medium text-jam-ink/70"
-                )
-              ]}>
-                {label}
-              </dt>
-              <span
-                class="min-w-4 flex-1 translate-y-[-0.25em] border-b border-dotted border-jam-ink/25"
-                aria-hidden="true"
-              ></span>
-              <%!-- Points are orange, the deeper orange that reads on
-                   paper (none, a quiet grey, as on every table). --%>
-              <dd class={[
-                "font-display leading-none tabular-nums",
-                if(value == 0, do: "text-jam-ink/55", else: "text-jam-orange-deep"),
-                if(i == 0, do: "text-[1.875rem]", else: "text-xl")
-              ]}>
-                {value}
-              </dd>
-            </div>
-          </dl>
-          <%!-- An award the TV gave this player is theirs to keep here, on
-               its orange tape. --%>
-          <%!-- Every award the same way, a line each: its title on orange
-               tape, and the song it was won with beside it (the counts are
-               the receipt's, above). --%>
-          <%!-- Each award the same way: its title on orange tape, and what
-               earned it in a sentence under it. --%>
-          <dl :if={my_awards(@view, @player_id) != []} class="mt-3 space-y-2.5">
-            <div :for={{title, detail} <- my_awards(@view, @player_id)}>
-              <dt class="jam-tape jam-tape-orange jam-tilt-3 text-sm">{title}</dt>
-              <dd class="mt-2 text-[0.9375rem] font-medium leading-snug text-pretty text-jam-ink/80">
-                {no_widow(detail)}
-              </dd>
-            </div>
+            <%!-- The total first and largest; how it came, smaller under it.
+                 An award this player holds is a tag on the line it was won
+                 on (its count is that line's), with what the line can't say
+                 (the song, who shares it) in a note under it. --%>
+            <%= for {{value, label}, i} <- Enum.with_index(recap_stats(@me, @role, @mine)) do %>
+              <% award = Map.get(my_awards(@view, @player_id), label) %>
+              <div class={["flex flex-wrap items-baseline gap-x-2", i == 0 && "pb-1"]}>
+                <dt class={[
+                  "flex items-center gap-2",
+                  if(i == 0,
+                    do: "text-base font-bold text-jam-ink",
+                    else: "text-[0.9375rem] font-medium text-jam-ink/70"
+                  )
+                ]}>
+                  {label}
+                  <span
+                    :if={award}
+                    class="jam-tape jam-tape-orange jam-tilt-3 shrink-0 !px-2 !py-0.5 text-xs text-jam-ink"
+                  >
+                    {elem(award, 0)}
+                  </span>
+                </dt>
+                <span
+                  class="min-w-4 flex-1 translate-y-[-0.25em] border-b border-dotted border-jam-ink/25"
+                  aria-hidden="true"
+                ></span>
+                <%!-- Points are orange, the deeper orange that reads on
+                     paper (none, a quiet grey, as on every table). --%>
+                <dd class={[
+                  "font-display leading-none tabular-nums",
+                  if(value == 0, do: "text-jam-ink/55", else: "text-jam-orange-deep"),
+                  if(i == 0, do: "text-[1.875rem]", else: "text-xl")
+                ]}>
+                  {value}
+                </dd>
+                <dd
+                  :if={award && elem(award, 1)}
+                  class="basis-full pb-1 text-[0.8125rem] font-medium leading-snug text-jam-ink/60"
+                >
+                  {no_widow(elem(award, 1))}
+                </dd>
+              </div>
+            <% end %>
           </dl>
         </div>
 
@@ -2860,56 +2861,55 @@ defmodule WhoseJamWeb.PlayLive do
   defp finish_line(%{tied?: true} = row, _role, _count), do: "You #{place(row)}"
   defp finish_line(row, _role, _count), do: "You finished #{place(row)}"
 
-  # The awards this player holds, worded as the TV words them, and only the
-  # ones the TV hands out (`Awards.given?/1`).
+  # The awards this player holds, and only the ones the TV hands out
+  # (`Awards.given?/1`), keyed by the receipt line each was won on: the
+  # award's name, and a note of what that line can't say (the song it was
+  # won with, who shares it), or nil.
   defp my_awards(%{awards: %{} = awards} = view, player_id) do
     bluff =
-      with %{fooled: fooled, bluffs: bluffs} = award <- awards[:best_bluff],
-           true <- Awards.given?(award) do
-        bluff_shared_with = for(%{player_id: id} <- bluffs, id != player_id, uniq: true, do: id)
+      with %{bluffs: bluffs} = award <- awards[:best_bluff],
+           true <- Awards.given?(award),
+           [_ | _] = songs <- for(%{player_id: ^player_id, song_name: s} <- bluffs, do: s) do
+        shared = for(%{player_id: id} <- bluffs, id != player_id, uniq: true, do: id)
 
-        my_bluff(
-          for(%{player_id: ^player_id, song_name: song} <- bluffs, do: song),
-          fooled,
-          shared_note(view, bluff_shared_with)
-        )
+        %{
+          "Players fooled" =>
+            {"Best bluff", award_note(bluff_note(songs), shared_note(view, shared))}
+        }
       else
-        _ -> []
+        _ -> %{}
       end
 
     sharpest =
-      with %{called: called, player_ids: ids} = award <- awards[:sharpest],
+      with %{player_ids: ids} = award <- awards[:sharpest],
            true <- Awards.given?(award),
            true <- player_id in ids do
-        [{"Sharpest ears", "#{called} correct guesses." <> shared_note(view, ids -- [player_id])}]
+        %{
+          "Correct guesses" =>
+            {"Sharpest ears", award_note(nil, shared_note(view, ids -- [player_id]))}
+        }
       else
-        _ -> []
+        _ -> %{}
       end
 
-    bluff ++ sharpest
+    Map.merge(bluff, sharpest)
   end
 
-  defp my_awards(_view, _player_id), do: []
+  defp my_awards(_view, _player_id), do: %{}
 
-  defp my_bluff([], _fooled, _shared), do: []
+  defp bluff_note([song]), do: "With #{song}."
+  defp bluff_note(songs), do: "With each of #{length(songs)} songs."
 
-  defp my_bluff([song], fooled, shared),
-    do: [{"Best bluff", "#{song} fooled #{fooled} #{players(fooled)}." <> shared}]
-
-  defp my_bluff(songs, fooled, shared),
-    do: [
-      {"Best bluff", "#{length(songs)} songs each fooled #{fooled} #{players(fooled)}." <> shared}
-    ]
-
-  defp players(1), do: "player"
-  defp players(_n), do: "players"
+  defp award_note(nil, ""), do: nil
+  defp award_note(nil, shared), do: String.trim_leading(shared)
+  defp award_note(note, shared), do: note <> shared
 
   # The line down a run of tied rows starts inside the run's first row and
   # ends inside its last, so two runs that meet (3rd tied, then 5th tied)
   # never join into one.
   defp tie_bracket(rows, row) do
     "relative before:absolute before:-left-2 before:w-0.5 " <>
-      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_32%,var(--color-jam-night))] " <>
+      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_50%,var(--color-jam-night))] " <>
       "before:content-[''] " <>
       case tie_part(rows, row) do
         :first -> "before:top-1.5 before:-bottom-1.5"

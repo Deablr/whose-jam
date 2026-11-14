@@ -579,7 +579,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     in_parallel(@players, fn {key, _name, _device, _search, _song} ->
       devices
       |> Map.fetch!(key)
-      |> assert_has("#game-ended", text: "That’s the night.", timeout: @wait)
+      |> assert_has("#game-ended", text: "Room closed.", timeout: @wait)
       # The final scores stay on screen.
       |> assert_has("h1#my-place")
       |> assert_has("#final-scores li", count: length(@players))

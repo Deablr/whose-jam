@@ -826,7 +826,7 @@ defmodule WhoseJamWeb.HostLive do
            service, and the way out as a quiet link. --%>
       <div class="space-y-3">
         <h2 class="font-display text-[2.5rem] leading-none lg:text-[3.25rem]">Connect your music</h2>
-        <p class="text-lg text-pretty text-base-content/75 lg:text-[1.4rem] lg:leading-snug">
+        <p class="text-lg text-balance text-base-content/75 lg:text-[1.4rem] lg:leading-snug">
           This screen plays every song the players pick. Connect a music service before you start.
         </p>
       </div>
@@ -3383,9 +3383,19 @@ defmodule WhoseJamWeb.HostLive do
   defp award_lines(%{awards: awards} = view) when is_map(awards) do
     # A slip per award, its own title on its own tape, even when one player
     # holds both: two slips read as two prizes, where one slip of
-    # "label: value" rows read as a form.
+    # "label: value" rows read as a form. An award held by the game's one
+    # winner leaves their name out: it is the headline right above.
+    crowned =
+      case view.players |> Standings.rank(view.scores) |> winner_rows() do
+        [%{id: id}] -> id
+        _ -> nil
+      end
+
     Enum.reject(
-      [bluff_line(view, awards.best_bluff), sharpest_line(view, awards.sharpest)],
+      [
+        bluff_line(view, awards.best_bluff, crowned),
+        sharpest_line(view, awards.sharpest, crowned)
+      ],
       &is_nil/1
     )
   end
@@ -3395,28 +3405,33 @@ defmodule WhoseJamWeb.HostLive do
   # An award is only handed out when it singles somebody out
   # (`Awards.given?/1`). Tied bluffs can be one player's songs, or two
   # players'.
-  defp bluff_line(view, %{fooled: fooled, bluffs: bluffs} = award) do
+  defp bluff_line(view, %{fooled: fooled, bluffs: bluffs} = award, crowned) do
     if Awards.given?(award) do
-      bluff_award(view, fooled, bluffs, Enum.uniq_by(bluffs, & &1.player_id))
+      bluff_award(view, fooled, bluffs, Enum.uniq_by(bluffs, & &1.player_id), crowned)
     end
   end
 
-  defp bluff_line(_view, nil), do: nil
+  defp bluff_line(_view, nil, _crowned), do: nil
 
   # One player's one song: the song gets its own row.
-  defp bluff_award(view, fooled, [%{song_name: song}], [%{player_id: id}]),
+  defp bluff_award(view, fooled, [%{song_name: song}], [%{player_id: id}], crowned),
     do:
-      {"Best bluff", "#{name_of(view, id)} fooled #{players(fooled)}",
+      {"Best bluff", held_by(view, id, crowned, "fooled #{players(fooled)}"),
        played_song(view, id, song)}
 
   # One player, several songs that fooled as many.
-  defp bluff_award(view, fooled, songs, [%{player_id: id}]),
+  defp bluff_award(view, fooled, songs, [%{player_id: id}], crowned),
     do:
       {"Best bluff",
-       "#{name_of(view, id)} fooled #{players(fooled)} with each of #{length(songs)} songs", nil}
+       held_by(
+         view,
+         id,
+         crowned,
+         "fooled #{players(fooled)} with each of #{length(songs)} songs"
+       ), nil}
 
   # Several players level.
-  defp bluff_award(view, fooled, _songs, holders) do
+  defp bluff_award(view, fooled, _songs, holders, _crowned) do
     names = holders |> Enum.map(&name_of(view, &1.player_id)) |> join_names()
     {"Best bluff", "#{names} each fooled #{players(fooled)}", nil}
   end
@@ -3432,15 +3447,24 @@ defmodule WhoseJamWeb.HostLive do
 
   defp played_song(_view, _player_id, song_name), do: %{song_name: song_name, album_art_url: nil}
 
-  defp sharpest_line(view, %{called: called, player_ids: ids} = award) do
-    if Awards.given?(award) do
-      names = ids |> Enum.map(&name_of(view, &1)) |> join_names()
-      each = if length(ids) > 1, do: " each", else: ""
-      {"Sharpest ears", "#{names}#{each} guessed #{called} right", nil}
-    end
+  defp sharpest_line(view, %{called: called, player_ids: ids} = award, crowned) do
+    if Awards.given?(award), do: {"Sharpest ears", sharpest_text(view, ids, called, crowned), nil}
   end
 
-  defp sharpest_line(_view, nil), do: nil
+  defp sharpest_line(_view, nil, _crowned), do: nil
+
+  defp sharpest_text(view, [id], called, crowned),
+    do: held_by(view, id, crowned, "guessed #{called} right")
+
+  defp sharpest_text(view, ids, called, _crowned) do
+    names = ids |> Enum.map(&name_of(view, &1)) |> join_names()
+    "#{names} each guessed #{called} right"
+  end
+
+  # What one player did to win an award, said with their name, or without it
+  # when they are the game's winner (named in the headline above).
+  defp held_by(_view, id, id, what), do: String.capitalize(what)
+  defp held_by(view, id, _crowned, what), do: "#{name_of(view, id)} #{what}"
 
   defp winner_rows(board), do: Enum.filter(board, &(&1.rank == 1))
 
@@ -3449,7 +3473,7 @@ defmodule WhoseJamWeb.HostLive do
   # never join into one.
   defp tie_bracket(rows, row) do
     "relative before:absolute before:-left-4 before:w-[3px] " <>
-      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_32%,var(--color-jam-night))] " <>
+      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_50%,var(--color-jam-night))] " <>
       "before:content-[''] " <>
       case tie_part(rows, row) do
         :first -> "before:top-2 before:-bottom-3"
