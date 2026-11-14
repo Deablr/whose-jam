@@ -1050,9 +1050,14 @@
 }
 
 /* The display face sets its words close; a touch more space between them
-   keeps "Whose jam" from running together. */
+   keeps "Whose jam" from running together. Lilita has one weight, so the
+   display face asks for 800 with no faux bold: Lilita is drawn as it is,
+   and its Japanese partner (M PLUS Rounded 1c) comes in at 800, as heavy
+   as the letters around it, not at the 400 a plain request would get. */
 .font-display {
   word-spacing: 0.06em;
+  font-weight: 800;
+  font-synthesis-weight: none;
 }
 
 /* An apostrophe in a display headline (`curly/1`): the body face's curl,

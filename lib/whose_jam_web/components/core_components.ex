@@ -718,7 +718,7 @@ defmodule WhoseJamWeb.CoreComponents do
   def modal(assigns) do
     ~H"""
     <div
-      class="modal modal-open bg-jam-ink/[0.96] backdrop-blur-[10px]"
+      class="modal modal-open bg-jam-ink/[0.96] backdrop-blur-[24px]"
       phx-window-keydown={@on_close}
       phx-key="Escape"
     >

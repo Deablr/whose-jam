@@ -1194,7 +1194,12 @@ defmodule WhoseJamWeb.PlayLive do
         </div>
         <%!-- phx-submit too: without it, Enter submits the form natively and
              reloads the page. --%>
-        <form id="song-search-form" phx-change="search" phx-submit="search" class="relative mt-1">
+        <form
+          id="song-search-form"
+          phx-change="search"
+          phx-submit="search"
+          class="relative mt-1 lg:mt-0"
+        >
           <.icon
             name="hero-magnifying-glass-mini"
             class="pointer-events-none absolute left-4 top-[0.95rem] size-6 text-jam-cream/60"
@@ -2598,26 +2603,20 @@ defmodule WhoseJamWeb.PlayLive do
             }
           >
             <%!-- The total first and largest; how it came, smaller under it.
-                 An award this player holds is a tag on the line it was won
-                 on (its count is that line's), with what the line can't say
-                 (the song, who shares it) in a note under it. --%>
+                 An award this player holds goes under the line it was won
+                 on (its count is that line's, which runs on unbroken): its
+                 tag, and what the line can't say, the song it was won with
+                 (cover and title) or who shares it. --%>
             <%= for {{value, label}, i} <- Enum.with_index(recap_stats(@me, @role, @mine)) do %>
               <% award = Map.get(my_awards(@view, @player_id), label) %>
               <div class={["flex flex-wrap items-baseline gap-x-2", i == 0 && "pb-1"]}>
                 <dt class={[
-                  "flex items-center gap-2",
                   if(i == 0,
                     do: "text-base font-bold text-jam-ink",
                     else: "text-[0.9375rem] font-medium text-jam-ink/70"
                   )
                 ]}>
                   {label}
-                  <span
-                    :if={award}
-                    class="jam-tape jam-tape-orange jam-tilt-3 shrink-0 !px-2 !py-0.5 text-xs text-jam-ink"
-                  >
-                    {elem(award, 0)}
-                  </span>
                 </dt>
                 <span
                   class="min-w-4 flex-1 translate-y-[-0.25em] border-b border-dotted border-jam-ink/25"
@@ -2633,10 +2632,22 @@ defmodule WhoseJamWeb.PlayLive do
                   {value}
                 </dd>
                 <dd
-                  :if={award && elem(award, 1)}
-                  class="basis-full pb-1 text-[0.8125rem] font-medium leading-snug text-jam-ink/60"
+                  :if={award}
+                  class="flex basis-full flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pt-1 text-[0.8125rem] font-medium leading-snug text-jam-ink/65"
                 >
-                  {no_widow(elem(award, 1))}
+                  <span class="jam-tape jam-tape-orange jam-tilt-3 shrink-0 !px-2 !py-0.5 text-xs text-jam-ink">
+                    {award.title}
+                  </span>
+                  <span :if={award.song} class="flex min-w-0 items-center gap-1.5">
+                    <img
+                      :if={award.song.album_art_url}
+                      src={award.song.album_art_url}
+                      alt=""
+                      class="size-5 shrink-0 rounded-[0.125rem] object-cover"
+                    />
+                    <span class="min-w-0 truncate">{award.song.song_name}</span>
+                  </span>
+                  <span :if={award.text}>{award.text}</span>
                 </dd>
               </div>
             <% end %>
@@ -2863,8 +2874,8 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The awards this player holds, and only the ones the TV hands out
   # (`Awards.given?/1`), keyed by the receipt line each was won on: the
-  # award's name, and a note of what that line can't say (the song it was
-  # won with, who shares it), or nil.
+  # award's name, the song it was won with (one song; nil otherwise) and a
+  # note of what else the line can't say (several songs, who shares it).
   defp my_awards(%{awards: %{} = awards} = view, player_id) do
     bluff =
       with %{bluffs: bluffs} = award <- awards[:best_bluff],
@@ -2873,8 +2884,11 @@ defmodule WhoseJamWeb.PlayLive do
         shared = for(%{player_id: id} <- bluffs, id != player_id, uniq: true, do: id)
 
         %{
-          "Players fooled" =>
-            {"Best bluff", award_note(bluff_note(songs), shared_note(view, shared))}
+          "Players fooled" => %{
+            title: "Best bluff",
+            song: bluff_song(view, player_id, songs),
+            text: award_note(bluff_note(songs), shared_note(view, shared))
+          }
         }
       else
         _ -> %{}
@@ -2885,8 +2899,11 @@ defmodule WhoseJamWeb.PlayLive do
            true <- Awards.given?(award),
            true <- player_id in ids do
         %{
-          "Correct guesses" =>
-            {"Sharpest ears", award_note(nil, shared_note(view, ids -- [player_id]))}
+          "Correct guesses" => %{
+            title: "Sharpest ears",
+            song: nil,
+            text: award_note(nil, shared_note(view, ids -- [player_id]))
+          }
         }
       else
         _ -> %{}
@@ -2897,7 +2914,16 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp my_awards(_view, _player_id), do: %{}
 
-  defp bluff_note([song]), do: "With #{song}."
+  # The one song an award was won with, as the night's playlist has it (for
+  # its cover).
+  defp bluff_song(view, player_id, [song]) do
+    Enum.find(view[:playlist] || [], &(&1.player_id == player_id and &1.song_name == song)) ||
+      %{song_name: song, album_art_url: nil}
+  end
+
+  defp bluff_song(_view, _player_id, _songs), do: nil
+
+  defp bluff_note([_song]), do: nil
   defp bluff_note(songs), do: "With each of #{length(songs)} songs."
 
   defp award_note(nil, ""), do: nil
