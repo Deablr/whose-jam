@@ -653,9 +653,12 @@
 .jam-paper {
   background-color: var(--color-jam-paper);
   border-radius: 0.125rem;
-  box-shadow:
-    0 0.15rem 0.2rem rgb(0 0 0 / 0.2),
-    0 0.9rem 1.8rem -0.6rem rgb(0 0 0 / 0.5);
+  box-shadow: 0 0.3rem 0.9rem rgb(0 0 0 / 0.3);
+}
+
+/* Tape stuck on paper lies flat on it: no shadow of its own. */
+.jam-paper .jam-tape {
+  filter: none;
 }
 
 .jam-paper:nth-child(3n + 1) { rotate: -0.7deg; }
@@ -672,6 +675,9 @@
   rotate: 0.7deg;
 }
 
+/* (In the components layer, so a utility on a strip, such as `absolute`
+   for a label stuck on a corner, still has its say.) */
+@layer components {
 /* A name written in marker on a strip of white tape, the way a sound desk
    labels its channels: the one prop a name wears. The strip is cut clean at
    one end and torn at the other, and lies a touch off true, lifted by a
@@ -742,13 +748,8 @@
    class of the UI's, but drawn as the prop it stands for). */
 .jam-tile-chosen {
   background: var(--color-jam-tape) !important;
-  border-radius: 0;
+  border-radius: 0.125rem;
   box-shadow: none;
-  clip-path: polygon(
-    0 0, calc(100% - 0.06em) 0, 100% 14%, calc(100% - 0.08em) 31%,
-    calc(100% - 0.01em) 49%, calc(100% - 0.09em) 68%, 100% 84%,
-    calc(100% - 0.05em) 100%, 0 100%
-  );
 }
 
 /* A sticker: a small square label stuck on at an angle (the points a
@@ -757,6 +758,7 @@
   border-radius: 0.1rem;
   rotate: 6deg;
   box-shadow: 0 0.12rem 0.18rem rgb(0 0 0 / 0.3);
+}
 }
 
 /* An admission ticket, for the room: egg-white card stock with a notch
@@ -820,8 +822,8 @@
 [data-theme="jam"] .modal-box .toggle {
   --radius-selector: 0.375rem;
   border: none;
-  background-color: #3a3835;
-  color: #9d988b;
+  background-color: #4a4843;
+  color: #c9c4b8;
 }
 
 [data-theme="jam"] .modal-box .toggle:checked {
@@ -895,7 +897,7 @@
 
 /* Only where there is the height for it: a short laptop keeps the smaller
    size so a round's choices and its button all stay on screen. */
-@media (min-width: 80rem) and (min-height: 50rem) {
+@media (min-width: 80rem) and (min-height: 60rem) {
   html:has(.jam-handheld) {
     font-size: 165%;
   }

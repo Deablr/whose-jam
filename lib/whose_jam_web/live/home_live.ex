@@ -134,16 +134,16 @@ defmodule WhoseJamWeb.HomeLive do
           <%!-- Joining: the room code is typed onto a ticket, like the one the
                TV shows it on. The main thing on a phone; a slim row under
                hosting on a TV. --%>
-          <section class="jam-panel order-1 p-6 sm:p-8 space-y-4 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:bg-transparent lg:p-0">
+          <section class="jam-panel order-1 p-6 sm:p-8 space-y-4 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:px-8 lg:py-5 xl:px-11">
             <h2 class="text-2xl font-extrabold tracking-[-0.015em] lg:shrink-0 lg:text-xl lg:font-bold lg:text-jam-cream/75 xl:text-2xl">
               {if @seat, do: "Join another game", else: "Join a game"}
             </h2>
             <form
               phx-submit="join"
               phx-change="validate_join"
-              class="flex flex-col sm:flex-row gap-3 lg:flex-1"
+              class="flex flex-col sm:flex-row gap-4 lg:flex-1 lg:gap-3"
             >
-              <div class="jam-lift flex-1 min-w-0 rounded-md focus-within:ring-2 focus-within:ring-jam-cream/70 focus-within:ring-offset-4 focus-within:ring-offset-jam-night lg:focus-within:ring-offset-jam-ink">
+              <div class="jam-lift flex-1 min-w-0 rounded-sm focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-jam-pink">
                 <div class="jam-ticket [--jam-notch:0.55rem]">
                   <input
                     type="text"
@@ -154,7 +154,7 @@ defmodule WhoseJamWeb.HomeLive do
                     placeholder="Room code"
                     maxlength="4"
                     aria-label="Room code"
-                    class="w-full bg-transparent px-7 py-2.5 text-center lg:text-left font-display text-[2.5rem] leading-tight uppercase tracking-[0.12em] text-jam-ink placeholder:font-body placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-ink/45 focus:outline-none lg:text-[2rem] lg:py-2"
+                    class="w-full bg-transparent px-7 py-2.5 text-center lg:text-left font-display text-[2.5rem] leading-tight uppercase tracking-[0.12em] text-jam-ink placeholder:font-body placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-ink/45 focus:outline-none lg:text-[2.25rem] lg:py-3"
                   />
                 </div>
               </div>
@@ -202,13 +202,11 @@ defmodule WhoseJamWeb.HomeLive do
 
   defp host_picker(assigns) do
     ~H"""
-    <%!-- The theme cards lie straight on the dimmed room: no panel behind
-         them. --%>
     <.modal
       :if={@host_open?}
       id="host-game-modal"
       on_close="close_host"
-      class="max-w-3xl !border-0 !bg-transparent !shadow-none"
+      class="max-w-3xl !border-0 !bg-transparent !p-0 !shadow-none"
       body_class="space-y-6"
     >
       <div class="flex items-start justify-between gap-4">
@@ -226,39 +224,39 @@ defmodule WhoseJamWeb.HomeLive do
         </button>
       </div>
 
-      <%!-- Each theme a sheet of paper: its name on orange tape, what it is
-           in a line, and one of its prompts as the players will get it. --%>
-      <ul class="space-y-6 pt-2">
+      <%!-- Each theme a flat card: its name, how it plays in a line, and one
+           of its prompts on the slip the players will get. --%>
+      <ul class="space-y-4">
         <li
           :for={theme <- @themes}
-          class="jam-paper flex flex-col gap-5 bg-jam-cream px-6 pb-6 pt-7 text-jam-ink sm:flex-row sm:items-end"
+          class="flex flex-col gap-5 rounded-lg bg-[#2c2b28] px-6 py-5 sm:flex-row sm:items-center"
         >
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-3">
               <h3 class="font-display text-[1.75rem] leading-none">{theme.name}</h3>
               <span
                 :if={multi_style?(theme.style_sequence)}
-                class="rounded-sm bg-jam-ink/[0.07] px-2 py-0.5 text-xs font-bold text-jam-ink/65"
+                class="rounded-sm bg-jam-cream/10 px-2 py-0.5 text-xs font-bold text-jam-cream/75"
               >
                 {length(Enum.uniq(theme.style_sequence))} sub-rounds
               </span>
             </div>
-            <p class="mt-3 text-[0.9375rem] font-medium leading-snug text-jam-ink/70">
-              {theme.description}
+            <p class="mt-2 text-[1.0625rem] font-bold leading-snug text-jam-cream">
+              {how_it_plays(theme.style_sequence)}
             </p>
             <p
               :if={theme.examples != []}
-              class="mt-3 text-[1.25rem] font-bold leading-snug text-pretty"
+              class="jam-paper jam-lean mt-3.5 w-fit max-w-full px-3.5 py-2 font-display text-base leading-snug text-jam-ink"
             >
-              “{hd(theme.examples).prompt}”
+              {hd(theme.examples).prompt}
             </p>
           </div>
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="jam-btn shrink-0 self-start bg-jam-ink text-jam-cream hover:bg-black sm:self-end"
+            class="jam-btn jam-btn-cream shrink-0 self-start sm:self-center"
           >
-            Host this <.icon name="hero-arrow-right-mini" class="size-5" />
+            Host this
           </button>
         </li>
       </ul>
@@ -267,4 +265,15 @@ defmodule WhoseJamWeb.HomeLive do
   end
 
   defp multi_style?(styles), do: styles |> Enum.uniq() |> length() > 1
+
+  # How a theme plays, from the styles of its rounds, in the order they come.
+  defp how_it_plays(styles) do
+    case Enum.uniq(styles) do
+      [:guess_who] -> "Guess who picked each song."
+      [:guess_question] -> "Guess which prompt each song was picked for."
+      [:guess_question, :guess_who] -> "Guess the prompt, then the person."
+      [:guess_who, :guess_question] -> "Guess the person, then the prompt."
+      _ -> "Pick songs, then guess."
+    end
+  end
 end

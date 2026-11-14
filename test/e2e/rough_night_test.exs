@@ -354,7 +354,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> assert_has("#lobby-players li", text: "Dev")
 
     devices.dev
-    |> assert_has("h1", text: "You’re in, Dev", timeout: @wait)
+    |> assert_has("h1", text: "You’re in", timeout: @wait)
     |> assert_has("#promoted", text: "A seat opened up. You’re playing this time.")
 
     devices.ava

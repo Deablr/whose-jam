@@ -106,6 +106,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> Stage.then_snap(:host, "home")
     |> click_button("Choose a theme")
     |> assert_has("h2", text: "Pick a theme")
+    # Once the dialog has finished fading in.
+    |> Stage.then_hold(600)
     |> Stage.then_snap(:host, "themes")
     |> within("li:has(h3:text-is('#{@theme}'))", &click_button(&1, "Host this"))
     |> assert_has("p", text: "Room code")
@@ -165,7 +167,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       |> type("input[name=name]", name, delay: 90)
       |> snap_if(index == 0, key, "pick-name")
       |> click_button("Join game")
-      |> assert_has("h1", text: "You’re in, #{name}")
+      |> assert_has("h1", text: "You’re in")
       |> hold_if(index == 0, 500)
       |> snap_if(index == 0, key, "joined")
 
