@@ -162,7 +162,7 @@ defmodule WhoseJamWeb.HomeLive do
                     placeholder="Room code"
                     maxlength="4"
                     aria-label="Room code"
-                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/45 placeholder-shown:pt-[1.4rem] placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:text-xl"
+                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/60 placeholder-shown:pt-[1.4rem] placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:text-xl"
                   />
                 </div>
               </div>
@@ -224,13 +224,14 @@ defmodule WhoseJamWeb.HomeLive do
         <div>
           <h2 class="font-display text-3xl leading-none lg:text-[2.75rem]">Pick a theme</h2>
         </div>
+        <%!-- The same light close as the settings sheet's. --%>
         <button
           type="button"
           phx-click="close_host"
           aria-label="Close"
-          class="jam-chip !px-2.5 cursor-pointer lg:!p-3"
+          class="grid size-11 cursor-pointer place-items-center rounded-md text-jam-cream/75 transition-colors hover:bg-jam-cream/10 hover:text-jam-cream focus-visible:bg-jam-cream/10"
         >
-          <.icon name="hero-x-mark" class="size-5 lg:size-7" />
+          <.icon name="hero-x-mark" class="size-7" />
         </button>
       </div>
 
@@ -246,7 +247,7 @@ defmodule WhoseJamWeb.HomeLive do
         >
           <h3 class="font-display text-[2rem] leading-none lg:text-[2.6rem]">{theme.name}</h3>
           <%!-- Two lines kept for it on every card, so the prompts start level. --%>
-          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-jam-ink/70 lg:text-[1.35rem]">
+          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-pretty text-jam-ink/70 lg:text-[1.35rem]">
             {how_it_plays(theme.style_sequence)}
           </p>
           <%!-- One of its prompts, quoted, past a dashed rule as the

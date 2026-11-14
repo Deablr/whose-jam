@@ -91,7 +91,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> click_button("Settings")
     |> fill_in("Time to pick", with: "120")
     |> fill_in("Prompts per player", with: "1")
-    |> fill_in("Listening time", with: "10")
+    |> fill_in("Voting opens after", with: "10")
     |> fill_in("Voting time", with: Integer.to_string(@vote_timer_s))
     # Votes can be changed until the clock runs out: a tap is the vote.
     |> check("Allow changing a vote")

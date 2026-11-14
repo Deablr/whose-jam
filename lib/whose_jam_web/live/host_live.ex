@@ -1030,7 +1030,7 @@ defmodule WhoseJamWeb.HostLive do
                     type="number"
                     id="vote_delay_s"
                     name="vote_delay_s"
-                    label="Listening time"
+                    label="Voting opens after"
                     value={@view.config.vote_delay_s}
                     min={Config.range(:vote_delay_s).first}
                     max={Config.range(:vote_delay_s).last}
@@ -1678,7 +1678,13 @@ defmodule WhoseJamWeb.HostLive do
            in the same place through to the reveal. --%>
       <div
         :if={@view.round.prompt}
-        class="jam-paper jam-lean w-full px-6 py-4 text-jam-ink"
+        class={
+          [
+            "jam-paper jam-lean w-full text-jam-ink",
+            # Smaller at the reveal, so the answer under it leads.
+            if(@view.round_state == :results, do: "px-5 py-2.5", else: "px-6 py-4")
+          ]
+        }
       >
         <%!-- The round card gave the prompt its moment in large type; from
            the first note it is context, in the body face, so the song and
@@ -1686,7 +1692,10 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- The slip runs to the column's right edge, the screen's margin,
              as the header's ticket and the score strip do; its words keep a
              readable measure inside it. --%>
-        <blockquote class="max-w-[40rem] text-[1.75rem] font-semibold leading-[1.3] text-pretty">
+        <blockquote class={[
+          "max-w-[40rem] font-semibold leading-[1.3] text-pretty",
+          if(@view.round_state == :results, do: "text-[1.45rem]", else: "text-[1.75rem]")
+        ]}>
           {@view.round.prompt}
         </blockquote>
       </div>
@@ -1928,7 +1937,7 @@ defmodule WhoseJamWeb.HostLive do
         </p>
         <%!-- Where to vote, as the one instruction. --%>
         <p class="mt-3 text-[1.85rem] font-semibold text-jam-cream/80">
-          Vote on your own screen.
+          On your own screen.
         </p>
       </div>
       <%!-- The last few still choosing, by name: who the room is waiting
@@ -1973,9 +1982,9 @@ defmodule WhoseJamWeb.HostLive do
         <p
           :if={!@all_in? and !@view.round.deadline_ms}
           id="clock-note"
-          class="max-w-[20rem] text-[1.4rem] font-medium leading-snug text-jam-cream/60"
+          class="text-[1.6rem] font-medium leading-snug text-jam-cream/65"
         >
-          The clock starts once most of you are in.
+          The clock starts when most players lock in.
         </p>
       </div>
       <%!-- The vote's length is known once its clock runs: a bar, as the
@@ -2652,7 +2661,7 @@ defmodule WhoseJamWeb.HostLive do
           <dl
             :if={@awards != []}
             id="awards"
-            class={["space-y-6", @build? && "jam-rise jam-finale-after-2"]}
+            class={["space-y-7 pt-6", @build? && "jam-rise jam-finale-after-2"]}
           >
             <%!-- Each award a slip of paper, the two the same width and lying
                  opposite ways: its title on orange tape, what it was for,
@@ -2664,7 +2673,7 @@ defmodule WhoseJamWeb.HostLive do
               <dt class="jam-tape jam-tape-orange absolute -top-4 left-5 whitespace-nowrap text-[1.4rem]">
                 {title}
               </dt>
-              <dd class="text-[1.75rem] font-bold leading-tight text-balance">{line}</dd>
+              <dd class="text-[1.65rem] font-medium leading-snug text-balance">{line}</dd>
               <dd :if={song} class="mt-2.5 flex items-center gap-3">
                 <img
                   :if={song[:album_art_url]}
@@ -2683,7 +2692,9 @@ defmodule WhoseJamWeb.HostLive do
                remembered for (never under the table). --%>
           <div class={["space-y-3", @build? && "jam-rise jam-finale-after-3"]}>
             <div class="flex flex-wrap items-center gap-3">
-              <button phx-click="play_again" class="jam-btn text-[1.4rem]">Play again</button>
+              <button phx-click="play_again" class="jam-btn min-w-[12rem] text-[1.4rem]">
+                Play again
+              </button>
               <button
                 :if={@playlist != []}
                 id="toggle-playlist"
@@ -3102,7 +3113,7 @@ defmodule WhoseJamWeb.HostLive do
   # them at a size to read from the sofa; a room that scattered needs two rows,
   # so each card is smaller and the reveal still fits above the scores.
   defp guess_size(count) when count <= 2,
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.4rem]"}
+    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.6rem]"}
 
   defp guess_size(3),
     do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.4rem]"}

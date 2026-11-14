@@ -130,7 +130,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
-    |> fill_in("Listening time", with: "10")
+    |> fill_in("Voting opens after", with: "10")
     # Once the sheet has finished fading in.
     |> Stage.then_hold(600)
     |> Stage.then_snap(:host, "settings")
@@ -244,7 +244,9 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         Stage.snap(devices, [:host], "round-card")
         Stage.hold(2_900)
         listener = votes |> hd() |> elem(0)
-        Stage.snap(devices, [:host, listener, submitter], "listening")
+        # The laptop too, whoever's song it is: its two columns lay the
+        # round out differently from a phone's one.
+        Stage.snap(devices, Enum.uniq([:host, listener, submitter, :gus]), "listening")
       end
 
       if round == 1 do

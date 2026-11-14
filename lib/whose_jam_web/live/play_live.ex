@@ -1406,23 +1406,32 @@ defmodule WhoseJamWeb.PlayLive do
           </blockquote>
         </figure>
         <%!-- On a laptop the left column has the room for the song itself:
-             its poster, as the TV shows it, under the prompt. --%>
+             its poster, as the TV shows it, under the prompt, in the same
+             place for the whole round (listening included), with the meter
+             on its art while it plays. --%>
         <figure
-          :if={@round_state != :revealing}
           class="jam-paper jam-poster mt-6 hidden w-[13rem] p-2.5 pb-3 text-jam-ink lg:block"
           aria-hidden="true"
         >
-          <img
-            :if={@round.song.album_art_url}
-            src={@round.song.album_art_url}
-            alt=""
-            class="aspect-square w-full object-cover"
-          />
-          <div
-            :if={!@round.song.album_art_url}
-            class="grid aspect-square w-full place-items-center bg-jam-ink/10"
-          >
-            <.icon name="hero-musical-note-solid" class="size-12 text-jam-ink/40" />
+          <div class="relative">
+            <img
+              :if={@round.song.album_art_url}
+              src={@round.song.album_art_url}
+              alt=""
+              class="aspect-square w-full object-cover"
+            />
+            <div
+              :if={!@round.song.album_art_url}
+              class="grid aspect-square w-full place-items-center bg-jam-ink/10"
+            >
+              <.icon name="hero-musical-note-solid" class="size-12 text-jam-ink/40" />
+            </div>
+            <span
+              :if={@round_state in [:revealing, :voting]}
+              class="absolute bottom-2 left-2 flex rounded-sm bg-jam-ink/80 px-1.5 py-1"
+            >
+              <.now_playing_meter class="text-xs" />
+            </span>
           </div>
           <figcaption class="mt-2 px-0.5">
             <p class="line-clamp-2 font-display text-lg leading-tight">{@round.song.name}</p>
@@ -1469,11 +1478,14 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp now_playing(assigns) do
     ~H"""
-    <div id="now-playing" class="flex items-center gap-3">
+    <%!-- At least the height of the listening line it follows, so the slip
+         under it never moves. --%>
+    <div id="now-playing" class="flex min-h-12 items-center gap-3 short:min-h-10">
       <%!-- The cover, with the meter on a tab at its corner while the song
            plays, as the posters have it. Keyed by round, so a new round
-           never shows the last one's cover. --%>
-      <div class="relative shrink-0">
+           never shows the last one's cover. (On a laptop the poster beside
+           it says all this, so the row keeps only the round and the clock.) --%>
+      <div class="relative shrink-0 lg:hidden">
         <img
           :if={@round.song.album_art_url}
           id={"art-#{@round.index}-#{@view.subround_index}"}
@@ -1499,10 +1511,12 @@ defmodule WhoseJamWeb.PlayLive do
           Round {@round.index + 1} of {@round.total}
         </div>
         <%!-- The title whole, on two lines if it needs them. --%>
-        <div class="line-clamp-2 text-base font-extrabold leading-tight short:text-sm">
+        <div class="line-clamp-2 text-base font-extrabold leading-tight short:text-sm lg:hidden">
           {@round.song.name}
         </div>
-        <div class="truncate text-sm text-jam-cream/60 short:text-xs">{@round.song.artist}</div>
+        <div class="truncate text-sm text-jam-cream/60 short:text-xs lg:hidden">
+          {@round.song.artist}
+        </div>
       </div>
       <%!-- While the vote is open its clock sits here, out of the way of the
            question; its place is kept before the clock starts, so the
@@ -1524,8 +1538,9 @@ defmodule WhoseJamWeb.PlayLive do
            printed on a sheet of paper with its name under it, large enough
            to see at arm's length (`.jam-poster` in app.css). --%>
       <%!-- Centred in the column (the slip above and the clock below run its
-           full width), the song as the screen's object. --%>
-      <figure class="jam-paper jam-poster w-[78%] max-w-[17rem] self-center p-3 pb-3.5 text-left text-jam-ink short:max-w-[12rem] short:p-2.5 md:max-w-[19rem]">
+           full width), the song as the screen's object. (A laptop has it in
+           the left column already, in the same place all round.) --%>
+      <figure class="jam-paper jam-poster w-[78%] max-w-[17rem] self-center p-3 pb-3.5 text-left text-jam-ink short:max-w-[12rem] short:p-2.5 md:max-w-[19rem] lg:hidden">
         <%!-- The meter on the art's corner, so the artist has the line. --%>
         <div class="relative">
           <img
@@ -2540,13 +2555,12 @@ defmodule WhoseJamWeb.PlayLive do
           </dl>
           <%!-- An award the TV gave this player is theirs to keep here, on
                its orange tape. --%>
-          <dl :if={my_awards(@view, @player_id) != []} class="mt-3.5 space-y-2">
-            <div
-              :for={{title, detail} <- my_awards(@view, @player_id)}
-              class="flex flex-wrap items-center gap-x-2.5 gap-y-1"
-            >
+          <%!-- Every award the same way: its title on orange tape, what it
+               was for on the line under it. --%>
+          <dl :if={my_awards(@view, @player_id) != []} class="mt-3 space-y-2.5">
+            <div :for={{title, detail} <- my_awards(@view, @player_id)}>
               <dt class="jam-tape jam-tape-orange jam-tilt-3 text-sm">{title}</dt>
-              <dd class="text-sm font-medium text-jam-ink/75">{detail}</dd>
+              <dd class="mt-1 text-[0.9375rem] font-medium text-jam-ink/75">{detail}</dd>
             </div>
           </dl>
         </div>
