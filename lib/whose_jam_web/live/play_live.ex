@@ -504,13 +504,6 @@ defmodule WhoseJamWeb.PlayLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(str), do: str
 
-  # The current song's artwork tints the phone too while a round is on.
-  defp current_art(%{phase: :playing, round: %{song: %{album_art_url: url}}})
-       when is_binary(url) and url != "",
-       do: url
-
-  defp current_art(_view), do: nil
-
   defp ended_message(:host_ended), do: "That’s the night. Thanks for playing."
   defp ended_message(:host_left), do: "The host closed the game screen, so the game has ended."
   defp ended_message(:idle), do: "This game closed after sitting idle."
@@ -523,9 +516,6 @@ defmodule WhoseJamWeb.PlayLive do
   # A screen that stays one phone-width column however wide the device is.
   @narrow "lg:mx-auto lg:w-full lg:max-w-md"
 
-  # A small status pill: the vote clock and what stands in for it.
-  @pill "flex shrink-0 items-center gap-1.5 rounded-md px-1 py-1"
-
   # The same status as plain words across the foot of a waiting screen.
   @bar "flex items-center justify-center gap-1.5 py-3"
 
@@ -533,8 +523,7 @@ defmodule WhoseJamWeb.PlayLive do
   def render(assigns) do
     # Only a game in play tints the phone with its song: not one that has
     # ended mid-song, or gone.
-    art_url = if assigns.status == :joined, do: current_art(assigns.view)
-    assigns = assign(assigns, art_url: art_url, narrow: @narrow)
+    assigns = assign(assigns, narrow: @narrow)
 
     ~H"""
     <%!-- Inside the theme, so a notice wears the game's colours. --%>
@@ -549,9 +538,9 @@ defmodule WhoseJamWeb.PlayLive do
         ]
       }
     >
-      <div :if={@art_url} class="jam-ambient" aria-hidden="true">
-        <img src={@art_url} alt="" />
-      </div>
+      <%!-- (No tint from the song's cover here: in a hand, under the
+           slip and the poster, it only muddied the charcoal. The TV keeps
+           it, behind its poster.) --%>
       <%!-- A phone's column; a tablet's is the same column a size up (at
            the tablet's 125%, about 36 phone-rems: a bigger phone, never a
            stretched one). --%>
@@ -840,7 +829,9 @@ defmodule WhoseJamWeb.PlayLive do
           </p>
           <div class="mt-4 border-t border-jam-cream/10 pt-3">
             <p class="text-sm font-semibold text-jam-cream/65">Tonight’s theme</p>
-            <p id="lobby-vibe" class="font-display text-[1.5rem] leading-tight">
+            <%!-- A title, so Lilita, but well under "You're in": the screen
+                 has one headline. --%>
+            <p id="lobby-vibe" class="font-display text-[1.25rem] leading-tight">
               {@view.theme.name}
             </p>
           </div>
@@ -1410,7 +1401,7 @@ defmodule WhoseJamWeb.PlayLive do
         <p
           :if={@round_state == :revealing}
           id="song-line"
-          class="mb-[1.375rem] flex h-12 items-end text-sm font-semibold text-jam-cream/65 short:h-10"
+          class="flex h-12 items-end text-sm font-semibold text-jam-cream/65 short:h-10"
         >
           Round {@round.index + 1} of {@round.total}
         </p>
@@ -1552,40 +1543,6 @@ defmodule WhoseJamWeb.PlayLive do
           <.now_playing_meter :if={@round_state == :voting} class="shrink-0 text-[0.7rem]" />
         </div>
       </div>
-      <%!-- While the vote is open its clock sits here, out of the way of the
-           question; its place is kept before the clock starts, so the
-           song's name never reflows. --%>
-      <div :if={@round_state == :voting} class="flex min-w-[5.75rem] shrink-0 justify-end">
-        {vote_timer(assigns)}
-      </div>
-    </div>
-    <%!-- The clock's own row, under the song: before the clock starts it
-         says when it will (as the TV does); once it runs, its length is
-         known, so it is a bar the full width of the column, as the listening
-         clock's is (keyed by its deadline: the all-in countdown is a new
-         one). The row keeps one height all round (the listening line keeps
-         it too), the picker's phone's included, so the slip under it never
-         moves. --%>
-    <div class="mt-1.5 flex h-4 items-center">
-      <p
-        :if={@round_state == :voting and is_nil(@round.deadline_ms)}
-        id="phone-clock-note"
-        class="text-[0.8125rem] font-medium leading-none text-jam-cream/60"
-      >
-        The clock starts when most players lock in.
-      </p>
-      <div
-        :if={@round_state == :voting and @round.deadline_ms != nil and !@round.all_in?}
-        id={"vote-bar-#{@round.deadline_ms}"}
-        phx-hook="Progress"
-        phx-update="ignore"
-        data-deadline={@round.deadline_ms}
-        data-duration={@view.config.vote_timer_s * 1000}
-        class="jam-bar h-1 w-full overflow-hidden bg-jam-cream/15"
-        aria-hidden="true"
-      >
-        <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
-      </div>
     </div>
     """
   end
@@ -1701,11 +1658,12 @@ defmodule WhoseJamWeb.PlayLive do
         note="Eyes on the TV"
         class="flex-1"
       >
-        <%!-- How the room is getting on, right under where to look (the
-             clock is up by the song): the count, then everyone's name,
+        <%!-- The vote's clock, in the place it has on every phone, then how
+             the room is getting on: the count, then everyone's name,
              taped down once they are in, as the TV shows it. Who is in,
              never what they chose; the picker's phone shows the same. --%>
-        <p id="votes-in" class="text-[0.9375rem] font-semibold text-jam-cream/70">
+        {vote_clock(assigns)}
+        <p id="votes-in" class="mt-5 text-[0.9375rem] font-semibold text-jam-cream/70">
           {votes_in(@round)}
         </p>
         <ul class="mt-3 flex flex-wrap gap-x-2 gap-y-2.5">
@@ -1752,9 +1710,9 @@ defmodule WhoseJamWeb.PlayLive do
         class="mt-5 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-3 lg:mt-0 lg:after:hidden"
       >
         <%!-- The question is the screen's headline, its how-to right under
-             it in a space kept two lines tall on every phone (the picker's
-             too), so the names below sit in the same place on every
-             screen. The clock is up by the song. --%>
+             it in the same space on every phone (the picker's too), then the
+             vote's clock, so the names below sit in the same place on every
+             screen. --%>
         <h1 class="font-display text-[2rem] leading-tight short:text-2xl">
           {curly(
             if @change? and @round.all_in?,
@@ -1786,6 +1744,7 @@ defmodule WhoseJamWeb.PlayLive do
             end}
           </p>
           <p :if={@vote_error} class="text-sm text-jam-red">{@vote_error}</p>
+          <div class="pt-2">{vote_clock(assigns)}</div>
         </div>
 
         <%!-- Names are short, so they sit two to a row and all fit on a
@@ -2090,25 +2049,25 @@ defmodule WhoseJamWeb.PlayLive do
     end
   end
 
-  # No countdown until most voters are in; show nothing rather than "--".
-  # Before the clock starts it has no numerals (the row under the song says
-  # when it will start).
-  defp vote_timer(%{round: %{deadline_ms: nil}} = assigns), do: ~H""
-
-  # A small pill beside the song while the vote is open: the clock, and once
-  # everyone is in, what it now counts down to. It turns orange for the last
-  # five seconds.
-  defp vote_timer(assigns) do
-    assigns = assign(assigns, pill_class: @pill)
-
+  # The vote's clock, in a row of its own under the question, the same on every
+  # phone (the picker's included) and one height in every state, so nothing
+  # under it moves: before the clock starts it says when it will, over an empty
+  # track; once it runs, "Time left", its numerals and a bar that drains (its
+  # length is known; keyed by its deadline, as the all-in countdown is a new
+  # one); once everyone is in, what it now counts down to.
+  defp vote_clock(assigns) do
     ~H"""
-    <div class="flex flex-col items-end">
-      <div class={[
-        @pill_class,
-        "justify-center whitespace-nowrap transition-colors has-[[data-urgent]]:bg-jam-orange has-[[data-urgent]]:text-jam-ink has-[[data-urgent]]:[&_*]:!text-jam-ink"
-      ]}>
-        <span :if={@round.all_in?} class="text-sm font-bold text-jam-cream/80">Reveal</span>
+    <div id="vote-clock" class="space-y-1.5">
+      <p class="flex h-6 items-baseline justify-between gap-3 text-[0.8125rem] font-medium leading-none text-jam-cream/65">
+        <span>
+          {cond do
+            is_nil(@round.deadline_ms) -> "The clock starts when most players lock in."
+            @round.all_in? -> "Reveal in"
+            true -> "Time left"
+          end}
+        </span>
         <span
+          :if={@round.deadline_ms}
           id="countdown-vote"
           phx-hook="Countdown"
           data-deadline={@round.deadline_ms}
@@ -2117,6 +2076,24 @@ defmodule WhoseJamWeb.PlayLive do
         >
           --
         </span>
+      </p>
+      <div
+        :if={@round.deadline_ms && !@round.all_in?}
+        id={"vote-bar-#{@round.deadline_ms}"}
+        phx-hook="Progress"
+        phx-update="ignore"
+        data-deadline={@round.deadline_ms}
+        data-duration={@view.config.vote_timer_s * 1000}
+        class="jam-bar h-1 w-full overflow-hidden bg-jam-cream/15"
+        aria-hidden="true"
+      >
+        <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
+      </div>
+      <div
+        :if={!(@round.deadline_ms && !@round.all_in?)}
+        class="jam-bar h-1 w-full bg-jam-cream/10"
+        aria-hidden="true"
+      >
       </div>
     </div>
     """
@@ -2699,8 +2676,7 @@ defmodule WhoseJamWeb.PlayLive do
                     :if={list_id == "final-scores" or length(rows) > 1}
                     class={[
                       "flex w-[4.75rem] shrink-0 items-baseline gap-1.5 self-stretch text-[0.9375rem] font-semibold leading-none tabular-nums",
-                      row.tied? &&
-                        "relative before:absolute before:-inset-y-1.5 before:-left-2 before:w-0.5 before:bg-jam-cream/20 before:content-['']",
+                      row.tied? && tie_bracket(rows, row),
                       if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                     ]}
                   >
@@ -2710,7 +2686,7 @@ defmodule WhoseJamWeb.PlayLive do
                          of the run only.) --%>
                     <span class={[
                       "flex items-baseline gap-1.5 self-center",
-                      (row.tied? and not MapSet.member?(tie_heads(rows), row.id)) && "sr-only"
+                      (row.tied? and tie_part(rows, row) != :first) && "sr-only"
                     ]}>
                       {Standings.ordinal(row.rank)}
                       <span :if={row.tied?} class="font-body text-xs font-semibold">tied</span>
@@ -2892,8 +2868,19 @@ defmodule WhoseJamWeb.PlayLive do
   defp players(1), do: "player"
   defp players(_n), do: "players"
 
-  # The rows that open a run of equal places: a shared place is said once.
-  defp tie_heads(rows), do: rows |> Enum.chunk_by(& &1.rank) |> MapSet.new(&hd(&1).id)
+  # The line down a run of tied rows starts inside the run's first row and
+  # ends inside its last, so two runs that meet (3rd tied, then 5th tied)
+  # never join into one.
+  defp tie_bracket(rows, row) do
+    "relative before:absolute before:-left-2 before:w-0.5 " <>
+      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_32%,var(--color-jam-night))] " <>
+      "before:content-[''] " <>
+      case tie_part(rows, row) do
+        :first -> "before:top-1.5 before:-bottom-1.5"
+        :middle -> "before:-inset-y-1.5"
+        :last -> "before:-top-1.5 before:bottom-1.5"
+      end
+  end
 
   # An award held with others says whom with, as the TV does.
   defp shared_note(view, ids) do

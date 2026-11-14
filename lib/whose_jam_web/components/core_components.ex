@@ -519,6 +519,26 @@ defmodule WhoseJamWeb.CoreComponents do
     do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 3)}"
 
   @doc """
+  Where a row sits in its run of equal places in a ranked table (rows as
+  `WhoseJam.Game.Standings.rank/2` returns them): `:first`, `:middle` or
+  `:last`. A shared place is said once, at the run's first row, and the line
+  bracketing the run starts in its first row and ends in its last, so two
+  runs that meet never read as one. A row with a place of its own is
+  `:first`.
+  """
+  @spec tie_part([%{id: term(), rank: pos_integer()}], %{id: term(), rank: pos_integer()}) ::
+          :first | :middle | :last
+  def tie_part(rows, row) do
+    run = Enum.filter(rows, &(&1.rank == row.rank))
+
+    cond do
+      hd(run).id == row.id -> :first
+      List.last(run).id == row.id -> :last
+      true -> :middle
+    end
+  end
+
+  @doc """
   Joins a line of copy's last two words with a no-break space, so a prompt
   that wraps never leaves one word alone on its last line. Copy of three
   words or fewer is left as it is (it may need to break anywhere on a

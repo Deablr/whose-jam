@@ -2876,11 +2876,17 @@ defmodule WhoseJamWeb.HostLive do
                 aria-hidden="true"
               >
                 <span class={[
-                  "flex w-[7.5rem] shrink-0 items-baseline gap-2 text-[1.6rem] font-semibold leading-none",
+                  "flex w-[7.5rem] shrink-0 items-baseline gap-2 self-stretch text-[1.6rem] font-semibold leading-none",
+                  row.tied? && tie_bracket(@board, row),
                   if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                 ]}>
-                  {Standings.ordinal(row.rank)}
-                  <span :if={row.tied?} class="text-[1.25rem] opacity-75">tied</span>
+                  <span class={[
+                    "flex items-baseline gap-2 self-center",
+                    (row.tied? and tie_part(@board, row) != :first) && "sr-only"
+                  ]}>
+                    {Standings.ordinal(row.rank)}
+                    <span :if={row.tied?} class="text-[1.25rem] opacity-75">tied</span>
+                  </span>
                 </span>
                 <%!-- A blank the width of a name, turned over with the rest. --%>
                 <span class={[
@@ -2903,15 +2909,14 @@ defmodule WhoseJamWeb.HostLive do
                        one place (no order among them). --%>
                   <span class={[
                     "flex w-[7.5rem] shrink-0 items-baseline gap-2 self-stretch text-[1.6rem] font-semibold leading-none tabular-nums",
-                    row.tied? &&
-                      "relative before:absolute before:-inset-y-3 before:-left-4 before:w-0.5 before:bg-jam-cream/20 before:content-['']",
+                    row.tied? && tie_bracket(@board, row),
                     if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                   ]}>
                     <%!-- (Said on every row for a screen reader; shown at the head
                          of the run only.) --%>
                     <span class={[
                       "flex items-baseline gap-2 self-center",
-                      (row.tied? and not MapSet.member?(tie_heads(@board), row.id)) && "sr-only"
+                      (row.tied? and tie_part(@board, row) != :first) && "sr-only"
                     ]}>
                       {Standings.ordinal(row.rank)}
                       <span :if={row.tied?} class="font-body text-[1.25rem] font-semibold opacity-75">
@@ -3452,8 +3457,19 @@ defmodule WhoseJamWeb.HostLive do
 
   defp winner_rows(board), do: Enum.filter(board, &(&1.rank == 1))
 
-  # The rows that open a run of equal places: a shared place is said once.
-  defp tie_heads(rows), do: rows |> Enum.chunk_by(& &1.rank) |> MapSet.new(&hd(&1).id)
+  # The line down a run of tied rows starts inside the run's first row and
+  # ends inside its last, so two runs that meet (3rd tied, then 5th tied)
+  # never join into one.
+  defp tie_bracket(rows, row) do
+    "relative before:absolute before:-left-4 before:w-[3px] " <>
+      "before:bg-[color-mix(in_srgb,var(--color-jam-cream)_32%,var(--color-jam-night))] " <>
+      "before:content-[''] " <>
+      case tie_part(rows, row) do
+        :first -> "before:top-2 before:-bottom-3"
+        :middle -> "before:-inset-y-3"
+        :last -> "before:-top-3 before:bottom-2"
+      end
+  end
 
   defp winner_headline([], _board), do: "Game over"
   defp winner_headline([winner], _board), do: "#{winner.name} wins"
