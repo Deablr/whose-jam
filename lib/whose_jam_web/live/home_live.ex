@@ -164,7 +164,7 @@ defmodule WhoseJamWeb.HomeLive do
                     placeholder="Room code"
                     maxlength="4"
                     aria-label="Room code"
-                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/60 placeholder-shown:pt-[1.4rem] placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:text-xl"
+                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/60 placeholder-shown:pt-[1.4rem] placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:pt-[0.35rem] lg:placeholder-shown:text-xl"
                   />
                 </div>
               </div>

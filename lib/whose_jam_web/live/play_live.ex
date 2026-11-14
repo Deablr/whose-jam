@@ -854,7 +854,7 @@ defmodule WhoseJamWeb.PlayLive do
           </li>
           <li :if={@role == :player} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
-            <span class="text-balance">for predicting the most popular wrong answer to your song</span>
+            <span class="text-balance">for predicting the most common wrong guess</span>
           </li>
         </ul>
       </div>
@@ -1296,7 +1296,7 @@ defmodule WhoseJamWeb.PlayLive do
       id="own-song-explainer"
       class="mt-3 text-base leading-[1.4] text-jam-cream/85"
     >
-      <.inline_points text="When your song plays, predict the most popular wrong answer. +1 if you’re right." />
+      <.inline_points text="When your song plays, predict the most common wrong guess. +1 if you’re right." />
     </p>
     """
   end
@@ -1422,8 +1422,9 @@ defmodule WhoseJamWeb.PlayLive do
           <%!-- A strip the width of the screen, under the song: what it was
                picked for. The round card gave it its moment in large type;
                here it is context, said quietly in the body face, so the
-               task under it leads. --%>
-          <blockquote class="text-base font-semibold leading-[1.25] text-pretty">
+               task under it leads. Plain wrapping, so the words run the
+               slip's full width (a "pretty" wrap shortens the first line). --%>
+          <blockquote class="text-base font-semibold leading-[1.25]">
             {no_widow(@round.prompt)}
           </blockquote>
         </figure>
@@ -2074,7 +2075,7 @@ defmodule WhoseJamWeb.PlayLive do
         <span
           :if={is_nil(@round.deadline_ms)}
           id="vote-clock-length"
-          class="font-display text-[1.375rem] leading-none tabular-nums text-jam-cream/40"
+          class="font-display text-[1.375rem] leading-none tabular-nums text-jam-cream/60"
         >
           {clock_length(@view.config.vote_timer_s)}
         </span>
@@ -2381,7 +2382,7 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The TV's words: who took the blame (most of the wrong guesses).
   defp prediction(_choice, took, true, _round),
-    do: "for calling the blame on #{join_names(took)}"
+    do: "for predicting the blame on #{join_names(took)}"
 
   defp prediction(choice, took, false, round),
     do: "Predicted #{guess_name(round, choice)}, but #{join_names(took)} took the blame."

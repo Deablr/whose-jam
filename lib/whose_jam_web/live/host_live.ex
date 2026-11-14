@@ -826,7 +826,7 @@ defmodule WhoseJamWeb.HostLive do
            service, and the way out as a quiet link. --%>
       <div class="space-y-3">
         <h2 class="font-display text-[2.5rem] leading-none lg:text-[3.25rem]">Connect your music</h2>
-        <p class="text-lg text-base-content/75 lg:text-[1.4rem] lg:leading-snug">
+        <p class="text-lg text-pretty text-base-content/75 lg:text-[1.4rem] lg:leading-snug">
           This screen plays every song the players pick. Connect a music service before you start.
         </p>
       </div>
@@ -1341,7 +1341,7 @@ defmodule WhoseJamWeb.HostLive do
             </li>
             <li class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
-              <span class="text-balance">for predicting the most popular wrong answer to your song</span>
+              <span class="text-balance">for predicting the most common wrong guess</span>
             </li>
           </ul>
         </div>
@@ -2083,7 +2083,7 @@ defmodule WhoseJamWeb.HostLive do
           <p class="text-[1.75rem] font-semibold text-jam-cream/70">
             Starts when most players lock in
           </p>
-          <p class="font-display text-[3.5rem] leading-none tabular-nums text-jam-cream/40">
+          <p class="font-display text-[3.5rem] leading-none tabular-nums text-jam-cream/60">
             {clock_length(@view.config.vote_timer_s)}
           </p>
         </div>
@@ -2230,12 +2230,13 @@ defmodule WhoseJamWeb.HostLive do
           </p>
         </div>
 
-        <%!-- What it was worth to the picker, as aligned rows at one size
-           under the name: the fooling, then the prediction, each led by its
-           points on an orange sticker. --%>
+        <%!-- What it was worth to the picker, in one row under the name (it
+             wraps only when it must), so the voters under it have room above
+             the score strip: the fooling, then the prediction, each led by
+             its points on an orange sticker. --%>
         <%!-- Set a step quieter than the name: the body face at 500–600, so
              the answer stays the loudest thing on the screen. --%>
-        <div class="jam-rise jam-beat-2 space-y-2.5 text-[1.55rem] font-medium leading-snug">
+        <div class="jam-rise jam-beat-2 flex flex-wrap items-center gap-x-10 gap-y-2.5 text-[1.55rem] font-medium leading-snug">
           <p id="reveal-summary" class="flex items-center gap-4 font-semibold text-jam-cream">
             <span
               :if={@summary.points}
@@ -2246,7 +2247,7 @@ defmodule WhoseJamWeb.HostLive do
             <span>{@summary.text}</span>
           </p>
           <%!-- The picker's prediction, right or not, in the same form. --%>
-          <.forecast :if={@forecast_line} line={@forecast_line} pad?={!!@summary.points} />
+          <.forecast :if={@forecast_line} line={@forecast_line} pad?={false} />
         </div>
       </div>
 
@@ -3199,7 +3200,7 @@ defmodule WhoseJamWeb.HostLive do
   # is the right guessers'). A miss is said as clearly
   # as a hit, with no points to it.
   defp prediction(guess, _took, true, _style),
-    do: "Called the blame on #{guess}"
+    do: "Predicted the blame on #{guess}"
 
   defp prediction(guess, took, false, _style),
     do: "Predicted #{guess}, but #{join_names(took)} took the blame"
