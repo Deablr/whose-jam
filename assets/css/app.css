@@ -1037,7 +1037,7 @@
 }
 
 /* A count with a − and a + set into its field (`.jam-stepper`), the number
-   between them in the scores' lettering. The buttons sit over the field's
+   between them in the fields' own face, as every value in the sheet is. The buttons sit over the field's
    ends, level with it (the field ends 0.65rem above its wrapper's foot). */
 .jam-stepper {
   position: relative;
@@ -1046,7 +1046,8 @@
 .jam-stepper .input {
   padding-inline: 3.25rem;
   text-align: center;
-  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   appearance: textfield;
 }
 
