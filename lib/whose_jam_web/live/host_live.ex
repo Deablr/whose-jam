@@ -1693,7 +1693,13 @@ defmodule WhoseJamWeb.HostLive do
           [
             "flex-1 min-h-0 overflow-hidden flex flex-col gap-10 lg:flex-row lg:gap-16",
             # Centred, but never pushed up under the header when it runs tall.
-            "lg:items-center-safe"
+            # The reveal, which runs tallest, starts at the top instead (the
+            # poster's top in line with the slip's), so all its spare room
+            # falls between the voters and the score strip.
+            if(@view.round_state == :results,
+              do: "lg:items-start",
+              else: "lg:items-center-safe"
+            )
           ]
         }>
           <%!-- The song is a poster: a sheet of egg-white paper laid on the
@@ -1920,7 +1926,7 @@ defmodule WhoseJamWeb.HostLive do
 
   defp listening(assigns) do
     ~H"""
-    <div id="tv-listening" class="jam-rise space-y-5 px-2">
+    <div id="tv-listening" class="jam-rise space-y-5">
       <%!-- The song has the room: the clock is a quiet line under the
            headline, not a headline of its own; what it counts down to on
            the left, its numerals over the end of its bar, as every clock

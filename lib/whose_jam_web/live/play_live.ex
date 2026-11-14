@@ -1424,7 +1424,7 @@ defmodule WhoseJamWeb.PlayLive do
                here it is context, said quietly in the body face, so the
                task under it leads. Plain wrapping, so the words run the
                slip's full width (a "pretty" wrap shortens the first line). --%>
-          <blockquote class="text-base font-semibold leading-[1.25]">
+          <blockquote class="text-[0.9375rem] font-semibold leading-[1.3]">
             {no_widow(@round.prompt)}
           </blockquote>
         </figure>
@@ -2538,7 +2538,7 @@ defmodule WhoseJamWeb.PlayLive do
       <div
         id="final-result"
         class={[
-          "flex flex-1 flex-col lg:grid lg:flex-none lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start lg:gap-x-12 [&>*]:lg:col-start-1",
+          "flex flex-1 flex-col lg:grid lg:flex-none lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-start lg:gap-x-12 [&>*]:lg:col-start-1",
           @status == :joined && "jam-rise jam-after-winner"
         ]}
       >
@@ -2555,13 +2555,16 @@ defmodule WhoseJamWeb.PlayLive do
         <div class="jam-paper relative mt-1 !rotate-[0.3deg] px-4 pb-2.5 pt-2.5 text-jam-ink short:pb-2 short:pt-2">
           <div class="flex items-start gap-4">
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-jam-ink/65">
-                {if @won?, do: "That’s the game", else: winner_line(@players_board)}
+              <%!-- Who won, over everyone else's own line; the winner's
+                   phone needs no line over "You won" (only room for its
+                   crown). --%>
+              <p :if={!@won?} class="text-sm font-semibold text-jam-ink/65">
+                {winner_line(@players_board)}
               </p>
               <%!-- The winner's line wears its prize: an orange "1st" tape. --%>
               <div class={[
                 "flex flex-wrap items-center gap-x-3 gap-y-1",
-                if(@won?, do: "mt-8", else: "mt-1")
+                if(@won?, do: "mt-7", else: "mt-1")
               ]}>
                 <%!-- The winner's phone has its moment: the line larger, and
                      wearing the crown the TV drew on the winner's name, in
@@ -2663,7 +2666,7 @@ defmodule WhoseJamWeb.PlayLive do
           :if={@playlist != []}
           id="to-playlist"
           href="#my-playlist"
-          class="mt-2 flex min-h-11 items-center gap-1.5 px-1 text-sm font-semibold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
+          class="mt-0.5 flex min-h-11 items-center gap-1.5 px-1 text-sm font-semibold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
         >
           Tonight’s playlist ({songs(length(@playlist))})
           <.icon name="hero-arrow-down-mini" class="size-4" />
@@ -2674,14 +2677,15 @@ defmodule WhoseJamWeb.PlayLive do
              (this player's included) is in view without scrolling. On a
              tablet or laptop the tables keep to a reading width (their root
              is scaled up, so the width is set per size), so a name and its
-             score stay close; on a laptop, at their column's right edge, in
-             line with the name tape in the header above. --%>
+             score stay close; on a laptop their column is that width, its
+             right edge in line with the name tape in the header above and
+             a short gap from the receipt. --%>
         <div
           id="final-lists"
-          class="w-full md:max-w-[26rem] lg:!col-start-2 lg:row-span-6 lg:row-start-1 lg:ml-auto lg:max-w-[20rem]"
+          class="w-full md:max-w-[26rem] lg:!col-start-2 lg:row-span-6 lg:row-start-1 lg:max-w-none"
         >
           <%= for {title, rows, list_id} <- score_lists(@role, @players_board, @board) do %>
-            <h2 class="mb-2 mt-6 px-1 text-sm font-semibold text-jam-cream/65 short:mb-1.5 short:mt-4 lg:mt-0">
+            <h2 class="mb-2 mt-5 px-1 text-sm font-semibold text-jam-cream/65 short:mb-1.5 short:mt-4 lg:mt-0">
               {title}
             </h2>
             <%!-- The audience's table in the TV's words ("4 correct"), with no
