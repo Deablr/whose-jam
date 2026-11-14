@@ -834,10 +834,15 @@ defmodule WhoseJamWeb.HostLive do
       )
 
     ~H"""
-    <ul class="space-y-2.5">
+    <%!-- One row a service, on the sheet itself (no panel within the
+         panel), ruled off from the next. --%>
+    <ul>
       <li
         :for={service <- @available}
-        class={["space-y-3 rounded-xl bg-jam-cream/[0.05]", if(@big?, do: "px-7 py-6", else: "p-4")]}
+        class={[
+          "space-y-3 border-jam-cream/12 [&:not(:first-child)]:border-t",
+          if(@big?, do: "py-5", else: "py-3")
+        ]}
       >
         <div class="flex items-center gap-4">
           <div class="flex-1 min-w-0">
@@ -1122,13 +1127,13 @@ defmodule WhoseJamWeb.HostLive do
                 </div>
               </fieldset>
             </form>
-          </section>
-        </div>
-        <div class="space-y-5">
-          <section class="space-y-3">
-            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">Rules</h3>
-            <%!-- A switch a row, label left and switch right. --%>
-            <form phx-change="set_config" id="rule-settings" class="grid gap-1">
+            <%!-- The rules' switches, a row each under the times and counts,
+                 label left and switch right. --%>
+            <form
+              phx-change="set_config"
+              id="rule-settings"
+              class="mt-2 grid gap-1 border-t border-jam-cream/10 pt-2"
+            >
               <fieldset disabled={@view.phase != :lobby} class="contents">
                 <%!-- Said as the order it plays in; a theme of one style has
                      nothing to split. --%>
@@ -1152,7 +1157,8 @@ defmodule WhoseJamWeb.HostLive do
               </fieldset>
             </form>
           </section>
-
+        </div>
+        <div class="space-y-5">
           <%!-- How the screens tell the game, for rooms that like it another
                way. None of these change the scoring or the timers. --%>
           <section class="space-y-3">
@@ -1291,8 +1297,10 @@ defmodule WhoseJamWeb.HostLive do
         </div>
       </div>
 
-      <%!-- The room: straight on the stage, no panel round it. --%>
-      <div class="flex flex-col gap-7 xl:pt-1">
+      <%!-- The room: straight on the stage, no panel round it. Who's here
+           and Start sit together as one block, its foot level with the
+           ticket's, so no gap opens between the names and the button. --%>
+      <div class="flex flex-col justify-end gap-7 xl:pt-1">
         <div class="flex items-baseline justify-between border-b-2 border-jam-cream/10 pb-3">
           <p class="text-[1.75rem] font-extrabold tracking-[-0.01em]">Players</p>
           <p id="player-count" class="font-display text-4xl tabular-nums">
@@ -1337,7 +1345,7 @@ defmodule WhoseJamWeb.HostLive do
           </div>
         </div>
 
-        <div class="mt-auto space-y-4">
+        <div class="mt-3 space-y-4">
           <button
             phx-click="start"
             disabled={@player_count < @min_players or is_nil(@active_service)}
@@ -2415,13 +2423,13 @@ defmodule WhoseJamWeb.HostLive do
       ]}
       {@rest}
     >
-      <%!-- A tab says who leads, in so many words; a phone that has
-           dropped out says so in the same place, so the room can see who to
-           help back in. Above the seat's right corner, never beside the
-           name. --%>
+      <%!-- A small tag says who leads, in so many words (in the body face:
+           the marker is for names); a phone that has dropped out says so in
+           the same place, so the room can see who to help back in. Above the
+           seat's right corner, never beside the name. --%>
       <span
         :if={@seat.ring? and @tag? and !@away?}
-        class="jam-tape jam-tape-orange absolute -top-6 right-2 px-3 py-0.5 text-[1.35rem] leading-none"
+        class="absolute -top-5 right-2 rounded-sm bg-jam-orange px-2.5 py-1 text-[1.3rem] font-bold leading-none text-jam-ink"
       >
         Leads
       </span>
@@ -2492,7 +2500,7 @@ defmodule WhoseJamWeb.HostLive do
           {@seat.score}
           <span
             :if={@gain > 0}
-            class="jam-sticker absolute left-[calc(50%+1.6rem)] top-[-0.55rem] rotate-[5deg] bg-jam-orange px-[0.35rem] py-[0.12rem] font-display text-[1.05rem] leading-none text-jam-ink"
+            class="jam-sticker absolute left-[calc(50%+1.7rem)] top-[-0.7rem] rotate-[5deg] bg-jam-orange px-[0.4rem] py-[0.15rem] font-display text-[1.35rem] leading-none text-jam-ink"
           >
             +{@gain}
           </span>
@@ -2589,7 +2597,7 @@ defmodule WhoseJamWeb.HostLive do
           ]}>
             <.marker_stroke
               kind={:crown}
-              class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] [--jam-stroke-w:0.42rem]"
+              class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] [--jam-stroke-w:0.6rem]"
             />
             <.winner_names winners={@winners} board={@board} />
           </p>
@@ -2773,7 +2781,7 @@ defmodule WhoseJamWeb.HostLive do
                   ]}>
                     {Standings.ordinal(row.rank)}
                     <%!-- A shared place says so, beside the place. --%>
-                    <span :if={row.tied?} class="font-body text-[1.3rem] font-semibold">
+                    <span :if={row.tied?} class="font-body text-[1.6rem] font-semibold opacity-75">
                       tied
                     </span>
                   </span>
@@ -2937,9 +2945,9 @@ defmodule WhoseJamWeb.HostLive do
   defp second_take?(%{prompt_take: %{nth: nth}}), do: nth > 1
   defp second_take?(_round), do: false
 
-  defp take_label(%{nth: 1, of: of}), do: "#{of} songs for this one"
-  defp take_label(%{nth: 2, of: 2}), do: "The other song for this one"
-  defp take_label(%{nth: nth, of: of}), do: "Song #{nth} of #{of} for this one"
+  defp take_label(%{nth: 1, of: of}), do: "#{of} songs picked for this prompt"
+  defp take_label(%{nth: 2, of: 2}), do: "The other song picked for this prompt"
+  defp take_label(%{nth: nth, of: of}), do: "Song #{nth} of #{of} picked for this prompt"
 
   # The answer as large as it can be and still sit on one line: names run up
   # to 24 characters.

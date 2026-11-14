@@ -774,7 +774,7 @@ defmodule WhoseJamWeb.PlayLive do
           {if @joins_audience?, do: "Join the audience", else: "Join game"}
         </button>
       </form>
-      <p :if={!@joins_audience?} class="mt-5 text-center text-sm text-jam-cream/60">
+      <p :if={!@joins_audience?} class="mt-5 text-sm text-jam-cream/60">
         Up to {Game.max_players()} play. Anyone who joins after the game starts votes from the audience.
       </p>
     </div>
@@ -1111,10 +1111,11 @@ defmodule WhoseJamWeb.PlayLive do
           >
             {waiting_on(@view, @player_id)}
           </p>
+          {own_song_explainer(assigns)}
         </div>
         <%!-- The song this player picked, as the room will see it: a poster
              with its title and artist. --%>
-        <figure class="jam-paper jam-poster w-[62%] max-w-[15rem] self-center p-2.5 pb-3 text-left text-jam-ink">
+        <figure class="jam-paper jam-poster w-[54%] max-w-[13rem] self-center p-2.5 pb-3 text-left text-jam-ink">
           <img
             :if={@question.song.album_art_url}
             src={@question.song.album_art_url}
@@ -1144,8 +1145,6 @@ defmodule WhoseJamWeb.PlayLive do
           Change pick
         </button>
       </div>
-
-      {own_song_explainer(assigns)}
 
       <div :if={@editing?}>
         <%!-- While another song is looked for, the saved one stays in view:
@@ -1272,14 +1271,15 @@ defmodule WhoseJamWeb.PlayLive do
   # reminder and not a surprise.
   defp own_song_explainer(assigns) do
     ~H"""
-    <div
+    <%!-- Right under the wait, in the reading order, not below the fold:
+         what this player will do when their own song comes up. --%>
+    <p
       :if={not @editing? and @answered == @total}
       id="own-song-explainer"
-      class="mt-6 border-t border-jam-cream/12 pt-4 text-[0.9375rem] leading-snug text-jam-cream/75"
+      class="mt-3 text-base font-medium leading-[1.4] text-jam-cream"
     >
-      <span class="font-bold text-jam-cream">Your own song comes up too.</span>
-      <.inline_points text="Then predict who’ll take the blame for it: +1 if you’re right." />
-    </div>
+      <.inline_points text="When your song plays, predict the room’s top wrong guess. +1 if you’re right." />
+    </p>
     """
   end
 
@@ -1467,9 +1467,12 @@ defmodule WhoseJamWeb.PlayLive do
   defp quick_card?(_round), do: false
 
   # How many songs were picked for this round's prompt, and which this is.
-  defp take_label(%{prompt_take: %{nth: 1, of: of}}), do: "#{of} songs for this one"
-  defp take_label(%{prompt_take: %{nth: 2, of: 2}}), do: "the other song for this one"
-  defp take_label(%{prompt_take: %{nth: nth, of: of}}), do: "song #{nth} of #{of} for this one"
+  defp take_label(%{prompt_take: %{nth: 1, of: of}}), do: "#{of} songs picked for this prompt"
+  defp take_label(%{prompt_take: %{nth: 2, of: 2}}), do: "the other song picked for this prompt"
+
+  defp take_label(%{prompt_take: %{nth: nth, of: of}}),
+    do: "song #{nth} of #{of} picked for this prompt"
+
   defp take_label(_round), do: nil
 
   # Not the first song picked for its prompt.
@@ -1907,12 +1910,13 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The answer as large as it can be on one line of a phone: the screen's
   # headline, as the TV's name is.
+  # (A size up on a tablet, which has the room.)
   defp reveal_name_size(name) do
     case String.length(name) do
-      n when n <= 5 -> "text-[5.5rem]"
-      n when n <= 8 -> "text-[4.5rem]"
-      n when n <= 12 -> "text-5xl"
-      _ -> "text-[2.5rem]"
+      n when n <= 5 -> "text-[5.5rem] md:text-[6.5rem]"
+      n when n <= 8 -> "text-[4.5rem] md:text-[5.25rem]"
+      n when n <= 12 -> "text-5xl md:text-[3.5rem]"
+      _ -> "text-[2.5rem] md:text-[2.9rem]"
     end
   end
 
@@ -2081,7 +2085,7 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <div
       id="phone-results"
-      class="relative flex flex-1 flex-col gap-6 text-left short:gap-4"
+      class="relative flex flex-1 flex-col gap-6 text-left short:gap-4 md:justify-center md:pb-[22vh]"
     >
       <%!-- While the TV has the reveal, the phone holds what its owner said,
            so it is never an empty screen. The picker's shows their
@@ -2544,9 +2548,10 @@ defmodule WhoseJamWeb.PlayLive do
                 aria-hidden="true"
               ></span>
               <%!-- Points are orange, the deeper orange that reads on
-                   paper. --%>
+                   paper (none, a quiet grey, as on every table). --%>
               <dd class={[
-                "font-display leading-none tabular-nums text-jam-orange-deep",
+                "font-display leading-none tabular-nums",
+                if(value == 0, do: "text-jam-ink/40", else: "text-jam-orange-deep"),
                 if(i == 0, do: "text-[1.625rem]", else: "text-lg")
               ]}>
                 {value}
@@ -2572,7 +2577,7 @@ defmodule WhoseJamWeb.PlayLive do
                waiting line it replaces, so nobody misses it. --%>
           <div id="game-ended" class="mt-4 flex flex-col gap-3 px-1">
             <p class="text-[1.0625rem] font-bold text-jam-cream">{ended_message(@end_reason)}</p>
-            <.link navigate={~p"/"} class="jam-btn jam-btn-ghost w-full text-base">
+            <.link navigate={~p"/"} class="jam-btn jam-btn-ghost w-fit text-base">
               Back home
             </.link>
           </div>
@@ -2779,7 +2784,7 @@ defmodule WhoseJamWeb.PlayLive do
       with %{called: called, player_ids: ids} = award <- awards[:sharpest],
            true <- Awards.given?(award),
            true <- player_id in ids do
-        [{"Sharpest ears", "#{called} right"}]
+        [{"Sharpest ears", "#{called} correct guesses"}]
       else
         _ -> []
       end
