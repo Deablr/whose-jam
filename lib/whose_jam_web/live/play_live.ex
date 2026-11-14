@@ -630,11 +630,11 @@ defmodule WhoseJamWeb.PlayLive do
               "jam-sticker relative -ml-1.5 flex shrink-0 items-baseline gap-0.5 px-1.5 py-0.5 leading-none",
               if(@my_score > 0,
                 do: "bg-jam-orange text-jam-ink",
-                else: "bg-jam-paper text-jam-ink/70"
+                else: "bg-jam-paper text-jam-ink"
               )
             ]}
           >
-            <span class="grid font-display text-[0.875rem] tabular-nums">
+            <span class="grid font-display text-[0.9375rem] tabular-nums">
               <span
                 :if={@my_gain > 0}
                 id={"my-old-score-#{@view.round.index}"}
@@ -819,7 +819,9 @@ defmodule WhoseJamWeb.PlayLive do
          screen but never past 5rem (the rest is at the foot); on a laptop the
          two columns sit in the middle of the screen, the welcome and how to
          score on the left. --%>
-    <div class="flex flex-1 flex-col pt-3 before:block before:max-h-20 before:flex-1 md:before:max-h-10 before:content-[''] after:block after:flex-[1.6] after:content-[''] lg:my-auto lg:grid lg:flex-none lg:grid-cols-2 lg:items-start lg:gap-x-12 lg:pb-[6vh] lg:pt-0 lg:before:hidden lg:after:hidden">
+    <%!-- Starts at one height under the header on every phone and tablet,
+         however many have joined; the spare room is under the names. --%>
+    <div class="flex flex-1 flex-col pt-8 short:pt-5 lg:my-auto lg:grid lg:flex-none lg:grid-cols-2 lg:items-start lg:gap-x-12 lg:pb-[6vh] lg:pt-0">
       <div>
         <%!-- Straight on the stage, as the TV's lobby is: no card. --%>
         <div>
@@ -885,9 +887,10 @@ defmodule WhoseJamWeb.PlayLive do
           />
           <.you_mark />
         </div>
-        <%!-- (On a tablet, four to a row, as the TV seats them, each seat as
-             wide as its name needs; a laptop's narrower column wraps them.) --%>
-        <div class="flex flex-wrap gap-x-2.5 gap-y-3 md:grid md:grid-cols-[repeat(4,max-content)] md:justify-between md:gap-y-3.5 lg:flex lg:justify-start">
+        <%!-- (On a tablet, four to a row in equal seats, each tape centred
+             in its seat, as the TV seats them; a laptop's narrower column
+             wraps them.) --%>
+        <div class="flex flex-wrap gap-x-2.5 gap-y-3 md:grid md:grid-cols-4 md:justify-items-center md:gap-y-3.5 lg:flex lg:justify-start">
           <span
             :for={p <- Enum.reject(@view.players, &(&1.id == @player_id))}
             class="relative flex max-w-full items-center"
@@ -1405,7 +1408,7 @@ defmodule WhoseJamWeb.PlayLive do
         <p
           :if={@round_state == :revealing}
           id="song-line"
-          class="mb-3 flex h-12 items-center text-sm font-semibold text-jam-cream/65 short:h-10"
+          class="mb-[1.375rem] flex h-12 items-center text-sm font-semibold text-jam-cream/65 short:h-10"
         >
           Round {@round.index + 1} of {@round.total}
         </p>
@@ -1418,7 +1421,7 @@ defmodule WhoseJamWeb.PlayLive do
         <figure
           :if={@round.prompt}
           id="round-prompt"
-          class="jam-paper jam-lean mt-3 w-full px-3.5 py-2.5 text-jam-ink short:mt-2"
+          class="jam-paper jam-lean mt-3 w-full px-3.5 py-2.5 text-jam-ink short:mt-2 lg:w-fit lg:max-w-full"
         >
           <%!-- A strip the width of the screen, under the song: what it was
                picked for. The round card gave it its moment in large type;
@@ -1552,12 +1555,21 @@ defmodule WhoseJamWeb.PlayLive do
         {vote_timer(assigns)}
       </div>
     </div>
-    <%!-- The vote's length is known, so it is a bar as well, the full width
-         of the column under the song, as the listening clock's is (keyed by
-         its deadline: the all-in countdown is a new one). Its place is kept
-         all round (the listening line keeps it too), so the slip under it
-         never moves. --%>
-    <div class="mt-2 h-1" aria-hidden="true">
+    <%!-- The clock's own row, under the song: before the clock starts it
+         says when it will (as the TV does); once it runs, its length is
+         known, so it is a bar the full width of the column, as the listening
+         clock's is (keyed by its deadline: the all-in countdown is a new
+         one). The row keeps one height all round (the listening line keeps
+         it too), the picker's phone's included, so the slip under it never
+         moves. --%>
+    <div class="mt-1.5 flex h-4 items-center">
+      <p
+        :if={@round_state == :voting and is_nil(@round.deadline_ms)}
+        id="phone-clock-note"
+        class="text-[0.8125rem] font-medium leading-none text-jam-cream/60"
+      >
+        Clock starts when most lock in
+      </p>
       <div
         :if={@round_state == :voting and @round.deadline_ms != nil and !@round.all_in?}
         id={"vote-bar-#{@round.deadline_ms}"}
@@ -1566,6 +1578,7 @@ defmodule WhoseJamWeb.PlayLive do
         data-deadline={@round.deadline_ms}
         data-duration={@view.config.vote_timer_s * 1000}
         class="jam-bar h-1 w-full overflow-hidden bg-jam-cream/15"
+        aria-hidden="true"
       >
         <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
       </div>
@@ -2073,18 +2086,9 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # No countdown until most voters are in; show nothing rather than "--".
-  # Before the clock starts, its place says when it will, as the TV does
-  # (the same words on every phone, the picker's included).
-  defp vote_timer(%{round: %{deadline_ms: nil}} = assigns) do
-    ~H"""
-    <p
-      id="phone-clock-note"
-      class="max-w-[6.5rem] text-right text-xs font-medium leading-tight text-jam-cream/60"
-    >
-      Clock starts when most lock in
-    </p>
-    """
-  end
+  # Before the clock starts it has no numerals (the row under the song says
+  # when it will start).
+  defp vote_timer(%{round: %{deadline_ms: nil}} = assigns), do: ~H""
 
   # A small pill beside the song while the vote is open: the clock, and once
   # everyone is in, what it now counts down to. It turns orange for the last
@@ -2608,7 +2612,7 @@ defmodule WhoseJamWeb.PlayLive do
               <dd class={[
                 "font-display leading-none tabular-nums",
                 if(value == 0, do: "text-jam-ink/55", else: "text-jam-orange-deep"),
-                if(i == 0, do: "text-[1.625rem]", else: "text-lg")
+                if(i == 0, do: "text-[1.875rem]", else: "text-xl")
               ]}>
                 {value}
               </dd>
@@ -2619,15 +2623,18 @@ defmodule WhoseJamWeb.PlayLive do
           <%!-- Every award the same way, a line each: its title on orange
                tape, and the song it was won with beside it (the counts are
                the receipt's, above). --%>
-          <dl :if={my_awards(@view, @player_id) != []} class="mt-3 space-y-1.5">
+          <%!-- The tapes in one column and what they were for in the next,
+               so the values start level. --%>
+          <dl
+            :if={my_awards(@view, @player_id) != []}
+            class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5"
+          >
             <div
               :for={{title, detail} <- my_awards(@view, @player_id)}
-              class="flex flex-wrap items-center gap-x-3 gap-y-1"
+              class="contents"
             >
-              <dt class="jam-tape jam-tape-orange jam-tilt-3 text-sm">{title}</dt>
-              <dd :if={detail} class="min-w-0 text-[0.9375rem] font-semibold text-jam-ink/80">
-                {detail}
-              </dd>
+              <dt class="jam-tape jam-tape-orange jam-tilt-3 justify-self-start text-sm">{title}</dt>
+              <dd class="min-w-0 text-[0.9375rem] font-semibold text-jam-ink/80">{detail}</dd>
             </div>
           </dl>
         </div>

@@ -571,11 +571,12 @@ defmodule WhoseJamWeb.HostLive do
         <ul
           :if={@closing.songs != []}
           id="closing-songs"
-          class="mt-2 flex flex-wrap justify-center gap-x-6 gap-y-8"
+          class="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-10"
         >
+          <%!-- Laid down by hand: each print at its own angle and height. --%>
           <li
             :for={song <- @closing.songs}
-            class="jam-paper relative w-[8.5rem] p-1.5 pb-5 text-jam-ink"
+            class="jam-paper relative w-[9rem] p-1.5 pb-6 text-jam-ink odd:!rotate-[-2.5deg] even:!rotate-[2deg] [&:nth-child(3n)]:translate-y-2 [&:nth-child(4n+1)]:-translate-y-1.5"
           >
             <img
               :if={song[:album_art_url]}
@@ -594,7 +595,7 @@ defmodule WhoseJamWeb.HostLive do
               :if={song.owner}
               player_id={song.player_id}
               name={song.owner}
-              class="absolute -bottom-4 left-1/2 max-w-[8rem] -translate-x-1/2 text-[1.15rem]"
+              class="absolute -bottom-5 left-1/2 max-w-[9rem] -translate-x-1/2 text-[1.6rem]"
             />
           </li>
         </ul>
@@ -1344,9 +1345,11 @@ defmodule WhoseJamWeb.HostLive do
             <div class="shrink-0 p-5 pl-7 [&>svg]:size-56">
               <.qr_code svg={@qr_svg} />
             </div>
-            <div class="flex flex-col justify-center border-l-[3px] border-dashed border-jam-ink/20 py-6 pl-8 pr-10">
+            <%!-- The code clear of the ticket's notch, however wide its
+                 letters. --%>
+            <div class="flex flex-col justify-center border-l-[3px] border-dashed border-jam-ink/20 py-6 pl-8 pr-14">
               <p class="text-2xl font-bold text-jam-ink/55">Room code</p>
-              <p class="font-display text-[7.5rem] leading-[0.95] tracking-[0.06em] whitespace-nowrap">
+              <p class="font-display text-[7rem] leading-[0.95] tracking-[0.04em] whitespace-nowrap">
                 {@view.code}
               </p>
               <p class="mt-2 text-[1.4rem] font-semibold text-jam-ink/65">
@@ -1644,9 +1647,9 @@ defmodule WhoseJamWeb.HostLive do
           </p>
           <div
             :if={@view.round.prompt}
-            class="jam-paper jam-lean max-w-[60rem] px-10 pb-9 pt-10 text-jam-ink"
+            class="jam-paper jam-lean max-w-[52rem] px-10 pb-9 pt-10 text-jam-ink"
           >
-            <p class="font-display text-[4.25rem] leading-[1.1] text-balance">
+            <p class="font-display text-[4.25rem] leading-[1.1] text-pretty">
               {@view.round.prompt}
             </p>
             <%!-- The round's one clue, said here, once. --%>
@@ -1751,7 +1754,7 @@ defmodule WhoseJamWeb.HostLive do
         :if={@view.round.prompt}
         class={
           [
-            "jam-paper jam-lean w-full text-jam-ink",
+            "jam-paper jam-lean w-fit max-w-full text-jam-ink",
             # Smaller at the reveal, so the answer under it leads.
             if(@view.round_state == :results, do: "px-5 py-2.5", else: "px-6 py-4")
           ]
@@ -1760,8 +1763,8 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- The round card gave the prompt its moment in large type; from
            the first note it is context, in the body face, so the song and
            the screen's one headline lead. --%>
-        <%!-- The slip runs to the column's right edge, the screen's margin,
-             as the header's ticket and the score strip do. --%>
+        <%!-- The slip is as wide as its words, up to the column's edge (a
+             strip of paper, not a banner). --%>
         <blockquote class={
           [
             # The words run the slip's full width (plain wrapping: a "pretty"
@@ -2570,7 +2573,7 @@ defmodule WhoseJamWeb.HostLive do
           {@seat.score}
           <span
             :if={@gain > 0}
-            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-[4deg] bg-jam-orange px-[0.35rem] py-[0.14rem] font-display text-[1.3rem] leading-none text-jam-ink"
+            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-0 bg-jam-orange px-[0.35rem] py-[0.14rem] font-display text-[1.3rem] leading-none text-jam-ink"
           >
             +{@gain}
           </span>
@@ -2667,7 +2670,7 @@ defmodule WhoseJamWeb.HostLive do
           <%!-- A shared win wears one crown, over the middle of the names,
                so neither reads as the winner. --%>
           <p class={[
-            "jam-pop jam-finale-win relative w-fit font-display leading-none text-balance text-jam-cream",
+            "jam-pop jam-finale-win relative mt-[0.3em] w-fit font-display leading-none text-balance text-jam-cream",
             length(@winner_songs) > 1 && "mx-auto",
             winner_card_size(@winners, @board)
           ]}>
@@ -3231,7 +3234,7 @@ defmodule WhoseJamWeb.HostLive do
   # them at a size to read from the sofa; a room that scattered needs two rows,
   # so each card is smaller and the reveal still fits above the scores.
   defp guess_size(count) when count <= 2,
-    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.55rem]"}
+    do: %{card: "px-6 pb-5 pt-4", said: "text-[1.85rem]", voters: "text-[1.65rem]"}
 
   defp guess_size(3),
     do: %{card: "px-6 pb-5 pt-4", said: "text-[1.7rem]", voters: "text-[1.35rem]"}
