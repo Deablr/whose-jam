@@ -192,15 +192,12 @@
    whose-jam design language
    =================================================================== */
 
-/* Page backdrop: charcoal, lit softly from one corner with egg white and
-   warmed from the other. */
+/* Page backdrop: plain charcoal. The only light on it is a song's own
+   tint (`.jam-ambient`), while that song is in play. */
 .jam-stage {
   font-family: var(--font-body);
   color: var(--color-jam-cream);
   background-color: var(--color-jam-ink);
-  background-image:
-    radial-gradient(70rem 45rem at -10% -20%, rgb(242 238 228 / 0.09), transparent 60%),
-    radial-gradient(60rem 40rem at 110% 120%, rgb(255 159 28 / 0.08), transparent 60%);
   position: relative;
   isolation: isolate;
 }
@@ -957,9 +954,10 @@
   outline-offset: 1px;
 }
 
-/* A switch reads at a glance: off is a dark, outlined slot with an egg-white
-   knob on the left; on is a mint slot with an ink knob on the right. The
-   knob's side and the slot's fill say it before the colour does. */
+/* A switch reads at a glance: the knob is egg white either way; off, it sits
+   left in a dark, outlined slot; on, it sits right in a filled mint slot (a
+   deep mint, so the egg-white knob shows on it). The knob's side and the
+   slot's fill say it before the colour does. */
 [data-theme="jam"] .modal-box .toggle {
   --radius-selector: 0.25rem;
   /* The UI's own corner on the slot, as on every other control (not a
@@ -973,9 +971,9 @@
 }
 
 [data-theme="jam"] .modal-box .toggle:checked {
-  background-color: var(--color-jam-mint);
+  background-color: var(--color-jam-mint-deep);
   box-shadow: none;
-  color: var(--color-jam-ink);
+  color: var(--color-jam-cream);
 }
 
 .jam-tv .modal-box :is(.checkbox, .toggle) {

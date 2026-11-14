@@ -134,7 +134,9 @@ defmodule WhoseJamWeb.HomeLive do
           <%!-- Joining: the room code is typed onto a ticket, like the one the
                TV shows it on. The main thing on a phone; a slim row under
                hosting on a TV. --%>
-          <section class="jam-panel order-1 p-6 sm:p-8 space-y-4 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:px-8 lg:py-5 xl:px-11">
+          <%!-- On a TV, straight on the stage under a hairline (no card): the
+               ticket is the prop. --%>
+          <section class="jam-panel order-1 p-6 sm:p-8 space-y-4 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:rounded-none lg:border-t lg:border-jam-cream/12 lg:!bg-transparent lg:px-0 lg:pb-0 lg:pt-10">
             <h2 class="text-2xl font-extrabold tracking-[-0.015em] lg:shrink-0 lg:text-xl lg:font-bold lg:text-jam-cream/75 xl:text-2xl">
               {if @seat, do: "Join another game", else: "Join a game"}
             </h2>
@@ -175,7 +177,9 @@ defmodule WhoseJamWeb.HomeLive do
             </form>
           </section>
 
-          <section class="jam-panel order-2 hidden p-8 xl:p-11 space-y-5 lg:order-1 lg:block">
+          <%!-- Hosting, straight on the stage: its headline, a line and the
+               pink button, with no card round them. --%>
+          <section class="order-2 hidden space-y-5 lg:order-1 lg:block">
             <div class="space-y-2">
               <h2 class="font-display text-5xl xl:text-6xl">Host a game</h2>
               <p class="font-medium text-balance text-jam-cream/70 xl:text-2xl">

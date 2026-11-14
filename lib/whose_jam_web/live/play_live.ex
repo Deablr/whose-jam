@@ -853,7 +853,7 @@ defmodule WhoseJamWeb.PlayLive do
           </li>
           <li :if={@role == :player} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
-            <span class="text-pretty">if you predict who takes the blame for your song</span>
+            <span class="text-pretty">if you predict your song’s top wrong guess</span>
           </li>
         </ul>
       </div>
@@ -1395,13 +1395,13 @@ defmodule WhoseJamWeb.PlayLive do
         <figure
           :if={@round.prompt}
           id="round-prompt"
-          class="jam-paper jam-lean mt-3 w-full px-4 py-2 text-jam-ink short:mt-2"
+          class="jam-paper jam-lean mt-3 w-full px-3.5 py-2.5 text-jam-ink short:mt-2"
         >
           <%!-- A strip the width of the screen, under the song: what it was
                picked for. The round card gave it its moment in large type;
                here it is context, said quietly in the body face, so the
                task under it leads. --%>
-          <blockquote class="text-[1.0625rem] font-semibold leading-[1.3] text-pretty">
+          <blockquote class="text-base font-semibold leading-[1.25] text-pretty">
             {@round.prompt}
           </blockquote>
         </figure>
