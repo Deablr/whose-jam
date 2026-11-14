@@ -235,7 +235,7 @@ defmodule WhoseJamWeb.HomeLive do
           aria-label="Close"
           class="grid size-11 cursor-pointer place-items-center rounded-md bg-jam-cream/[0.08] text-jam-cream/85 transition-colors hover:bg-jam-cream/15 hover:text-jam-cream focus-visible:bg-jam-cream/15"
         >
-          <.icon name="hero-x-mark-solid" class="size-7" />
+          <.icon name="hero-x-mark-mini" class="size-7" />
         </button>
       </div>
 
@@ -269,7 +269,7 @@ defmodule WhoseJamWeb.HomeLive do
           >
             Host this
             <.icon
-              name="hero-arrow-right"
+              name="hero-arrow-right-mini"
               class="size-[1.1em] transition-transform duration-150 group-hover:translate-x-1"
             />
           </button>

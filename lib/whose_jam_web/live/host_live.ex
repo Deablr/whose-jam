@@ -772,7 +772,7 @@ defmodule WhoseJamWeb.HostLive do
             data-confirm="Skip this song and move on?"
             class="jam-chip text-lg cursor-pointer"
           >
-            <.icon name="hero-forward" class="size-5" /> Skip
+            <.icon name="hero-forward-mini" class="size-5" /> Skip
           </button>
 
           <button
@@ -781,7 +781,7 @@ defmodule WhoseJamWeb.HostLive do
             aria-label="Settings"
             class="jam-chip !px-3 cursor-pointer"
           >
-            <.icon name="hero-cog-6-tooth" class="size-6" />
+            <.icon name="hero-cog-6-tooth-mini" class="size-6" />
           </button>
         </div>
 
@@ -1057,7 +1057,7 @@ defmodule WhoseJamWeb.HostLive do
         >
           <%!-- A heavier cross than the outline icon's hairline, to find
                from the sofa. --%>
-          <.icon name="hero-x-mark-solid" class="size-7" />
+          <.icon name="hero-x-mark-mini" class="size-7" />
         </button>
       </div>
 
@@ -1341,7 +1341,7 @@ defmodule WhoseJamWeb.HostLive do
             </li>
             <li class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
-              <span class="text-pretty">for predicting the most popular wrong answer to your song</span>
+              <span class="text-balance">for predicting the most popular wrong answer to your song</span>
             </li>
           </ul>
         </div>
@@ -1921,21 +1921,21 @@ defmodule WhoseJamWeb.HostLive do
   defp listening(assigns) do
     ~H"""
     <div id="tv-listening" class="jam-rise space-y-5 px-2">
-      <div class="flex items-center gap-8">
-        <%!-- The song has the room: the clock is a quiet line under the
-             headline, not a headline of its own. --%>
-        <div class="space-y-1">
-          <p class="font-display text-[3.5rem] leading-none">Listen up</p>
-          <p class="text-[1.75rem] font-medium text-jam-cream/65">
-            Voting opens in
-            <span
-              id="votes-open-countdown"
-              phx-hook="Countdown"
-              data-deadline={@view.round.votes_open_ms}
-              class="ml-2 font-display text-[2.4rem] leading-none text-jam-orange tabular-nums"
-            ></span>
-          </p>
-        </div>
+      <%!-- The song has the room: the clock is a quiet line under the
+           headline, not a headline of its own; what it counts down to on
+           the left, its numerals over the end of its bar, as every clock
+           has them. --%>
+      <div class="space-y-1">
+        <p class="font-display text-[3.5rem] leading-none">Listen up</p>
+        <p class="flex items-baseline justify-between gap-6 text-[1.75rem] font-medium text-jam-cream/65">
+          <span>Voting opens in</span>
+          <span
+            id="votes-open-countdown"
+            phx-hook="Countdown"
+            data-deadline={@view.round.votes_open_ms}
+            class="font-display text-[2.4rem] leading-none text-jam-orange tabular-nums"
+          ></span>
+        </p>
       </div>
       <%!-- The same wait as a line that drains, to read from across the room
            without reading a clock. The hook draws it (see Progress in
@@ -2065,15 +2065,21 @@ defmodule WhoseJamWeb.HostLive do
       <%!-- The clock, as the phones show it: before it runs, what starts it
            and its length in grey over a dashed slot (as everything that
            hasn't happened yet is drawn); once it runs, the time left over a
-           bar that starts full and drains. Nothing moves when it starts. --%>
+           bar that starts full and drains. The words on the left, the
+           numerals over the bar's end. Nothing moves when it starts. --%>
       <div :if={!@all_in?} id="tv-vote-clock" class="jam-pop space-y-3">
         <.tv_timer
           :if={@view.round.deadline_ms}
           id="vote-countdown"
           label="Time left"
           deadline={@view.round.deadline_ms}
+          class="justify-between"
         />
-        <div :if={!@view.round.deadline_ms} id="clock-note" class="flex items-baseline gap-4">
+        <div
+          :if={!@view.round.deadline_ms}
+          id="clock-note"
+          class="flex items-baseline justify-between gap-4"
+        >
           <p class="text-[1.75rem] font-semibold text-jam-cream/70">
             Starts when most players lock in
           </p>
@@ -2095,7 +2101,7 @@ defmodule WhoseJamWeb.HostLive do
         </div>
         <div
           :if={!@view.round.deadline_ms}
-          class="jam-bar h-2 border-2 border-dashed border-jam-cream/30"
+          class="jam-bar h-2 border-[0.15rem] border-dashed border-jam-cream/40"
           aria-hidden="true"
         >
         </div>
@@ -2791,14 +2797,15 @@ defmodule WhoseJamWeb.HostLive do
             id="awards"
             class={["space-y-7 pt-6", @build? && "jam-rise jam-finale-after-2"]}
           >
-            <%!-- Each award a slip of paper sized to its words, the two lying
-                 opposite ways: its title on orange tape, what it was for,
-                 and the song it was won with on a row of its own. One
+            <%!-- Each award a slip of paper, the slips one width so they
+                 stack as a pair, lying opposite ways: its title on orange
+                 tape, what it was for, and the song it was won with on a
+                 row of its own. One
                  player's two awards share a slip with their name on its
                  tape, a row each, each award named at its row's head. --%>
             <div
               :for={{title, rows, song} <- @awards}
-              class="jam-paper relative w-fit min-w-[22rem] max-w-[34rem] px-6 pb-6 pt-7 text-jam-ink odd:!rotate-[-1.5deg] even:!rotate-[1.3deg]"
+              class="jam-paper relative w-[30rem] max-w-full px-6 pb-6 pt-7 text-jam-ink odd:!rotate-[-1.5deg] even:!rotate-[1.3deg]"
             >
               <dt
                 :if={!Enum.any?(rows, &elem(&1, 0))}
@@ -3566,9 +3573,9 @@ defmodule WhoseJamWeb.HostLive do
   defp winner_verb(_winners, _board), do: nil
 
   # One winner's name can be set large; names sharing the line need the room.
-  defp winner_size_class(1), do: "text-8xl"
-  defp winner_size_class(2), do: "text-7xl"
-  defp winner_size_class(_count), do: "text-5xl"
+  defp winner_size_class(1), do: "text-[7.25rem]"
+  defp winner_size_class(2), do: "text-[5.25rem]"
+  defp winner_size_class(_count), do: "text-[3.5rem]"
 
   attr :winners, :list, required: true
   attr :verb, :string, default: nil

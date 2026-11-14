@@ -820,7 +820,7 @@ defmodule WhoseJamWeb.PlayLive do
           <p :if={@promoted?} id="promoted" class="mt-1 font-bold text-jam-mint">
             A seat opened up. You’re playing this time.
           </p>
-          <p class="mt-1 font-medium text-jam-cream/70">
+          <p class="mt-1 text-jam-cream/75">
             <%= if @role == :player do %>
               {lobby_wait(@view)}
             <% else %>
@@ -842,19 +842,19 @@ defmodule WhoseJamWeb.PlayLive do
       <div class="lg:col-start-1 lg:row-start-2">
         <ul
           id="how-to-score"
-          class="mt-5 space-y-1.5 px-1 text-[0.9375rem] font-medium leading-snug text-jam-cream/80 lg:mt-8"
+          class="mt-5 space-y-1.5 px-1 text-base leading-[1.45] text-jam-cream/80 lg:mt-8"
         >
           <li class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
-            <span class="text-pretty">for each correct guess</span>
+            <span class="text-balance">for each correct guess</span>
           </li>
           <li :if={@role == :player} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
-            <span class="text-pretty">for each player your song fools</span>
+            <span class="text-balance">for each player your song fools</span>
           </li>
           <li :if={@role == :player} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
-            <span class="text-pretty">for predicting the most popular wrong answer to your song</span>
+            <span class="text-balance">for predicting the most popular wrong answer to your song</span>
           </li>
         </ul>
       </div>
@@ -1196,7 +1196,7 @@ defmodule WhoseJamWeb.PlayLive do
              reloads the page. --%>
         <form id="song-search-form" phx-change="search" phx-submit="search" class="relative mt-1">
           <.icon
-            name="hero-magnifying-glass"
+            name="hero-magnifying-glass-mini"
             class="pointer-events-none absolute left-4 top-[0.95rem] size-6 text-jam-cream/60"
           />
           <input
@@ -1388,7 +1388,7 @@ defmodule WhoseJamWeb.PlayLive do
           <.icon name="hero-exclamation-triangle-solid" class="size-5 shrink-0" />
           <span class="flex-1">Time ran out, so your unpicked prompts sit this game out.</span>
           <button phx-click="dismiss_times_up" aria-label="Dismiss">
-            <.icon name="hero-x-mark" class="size-4" />
+            <.icon name="hero-x-mark-mini" class="size-4" />
           </button>
         </div>
 
