@@ -124,12 +124,14 @@ defmodule WhoseJamWeb.HomeLive do
              laptop, hosting (it comes first there, and joining waits under
              it). --%>
         <div class="flex flex-col gap-5 xl:gap-7">
-          <%!-- A phone that left its game by accident goes straight back. --%>
+          <%!-- A phone that left its game by accident goes straight back. On
+               a wide screen, where hosting is the pink button, the way back
+               is the quieter one. --%>
           <.link
             :if={@seat}
             id="back-to-game"
             navigate={~p"/play/#{@seat}"}
-            class="jam-btn w-full text-lg xl:text-2xl"
+            class="jam-btn w-full text-lg lg:bg-jam-cream lg:hover:bg-white xl:text-2xl"
           >
             <span>Back to your game ({@seat})</span>
           </.link>

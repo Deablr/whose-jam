@@ -1893,7 +1893,7 @@ defmodule WhoseJamWeb.HostLive do
       <figcaption class="mt-2 space-y-1 px-1">
         <.dynamic_tag
           tag_name={if @heading?, do: "h1", else: "p"}
-          class="font-display text-3xl leading-[1.05] line-clamp-2 break-keep"
+          class="font-display text-3xl leading-[1.05] line-clamp-2 break-words break-keep"
         >
           {@song[:name] || @song[:song_name]}
         </.dynamic_tag>
@@ -3179,9 +3179,9 @@ defmodule WhoseJamWeb.HostLive do
   defp forecast_point(_round), do: 0
 
   # The picker's prediction (which wrong answer the room would fall for), and
-  # whether it came true: `{text, right?}`, or nil when they made none or
-  # nobody was fooled (so nobody took the blame). One sentence, the same words
-  # as the picker's phone, whichever way it went.
+  # whether it came true: `{text, right?}` (with nobody fooled, nobody took the
+  # blame, and it says so), or nil when they made none. One sentence, the
+  # same words as the picker's phone, whichever way it went.
   defp forecast_line(%{round: %{forecast: %{choice: choice, right?: right?}} = round} = view) do
     case blamed(view, round) do
       # Nobody was fooled, so nobody took any blame: the prediction says so.

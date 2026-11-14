@@ -521,10 +521,11 @@ defmodule WhoseJam.Game.ServerTest do
       Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
       for pid <- ids, do: submit_all(code, pid)
 
-      # Still picking, with everyone shown as done...
+      # Still picking, with everyone shown as done, for the pause's length...
       view = Game.get_state(code)
       assert view.phase == :answering
       assert Enum.all?(view.answering.progress, fn {_id, p} -> p.submitted == p.total end)
+      assert view.answering.duration_ms == 150
 
       # ...then the first round starts by itself.
       assert_receive {:game_state, %{phase: :playing, round: %{index: 0}}}, 2000

@@ -411,7 +411,6 @@
   to { opacity: 1; transform: none; }
 }
 
-/* Leaves as its replacement arrives (an old score giving way to a new one). */
 /* A sticker that gets its colour on a later beat (with `.jam-beat-N`):
    paper until then, then its own fill. */
 .jam-paint-in {
@@ -422,6 +421,7 @@
   from { background-color: var(--color-jam-paper); }
 }
 
+/* Leaves as its replacement arrives (an old score giving way to a new one). */
 .jam-out {
   animation: jam-out 200ms ease both;
 }

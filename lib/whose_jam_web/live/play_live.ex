@@ -630,8 +630,8 @@ defmodule WhoseJamWeb.PlayLive do
               <span
                 id={"my-new-score-#{@my_gain > 0 && @view.round.index}"}
                 class={["[grid-area:1/1]", @my_gain > 0 && "jam-rise jam-beat-3"]}
-                aria-label={score_label(@my_score, @role)}
               >
+                <span class="sr-only">{score_label(@my_score, @role)}</span>
                 <.score_count count={@my_score} role={@role} />
               </span>
             </span>
@@ -670,7 +670,9 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <span class="flex items-baseline justify-end gap-1 whitespace-nowrap" aria-hidden="true">
       <span class="font-display text-[0.9375rem] tabular-nums">{@count}</span>
-      <span class="text-[0.8125rem] font-bold">
+      <%!-- A unit at one width, "pt" or "pts", so the sticker doesn't change
+           size before the new total lands. --%>
+      <span class="min-w-[1.6em] text-left text-[0.8125rem] font-bold">
         {cond do
           @role == :audience -> "right"
           @count == 1 -> "pt"

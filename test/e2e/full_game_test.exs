@@ -402,9 +402,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     end
   end
 
-  # A prediction that missed is said only when somebody got a wrong guess.
-  # Nobody was fooled, so nobody took the blame: both screens say so, in the
-  # same words.
+  # A missed prediction is always said. With nobody fooled, nobody took the
+  # blame: both screens say so, in the same words.
   defp assert_missed_guess(host, phone, guess, []) do
     assert_has(host, "#forecast", text: "Predicted #{guess}, but nobody was fooled")
     assert_has(phone, "#my-blame", text: "Predicted #{guess}, but nobody was fooled")
