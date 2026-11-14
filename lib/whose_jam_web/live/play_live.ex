@@ -2382,7 +2382,7 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The TV's words: who took the blame (most of the wrong guesses).
   defp prediction(_choice, took, true, _round),
-    do: "for predicting #{join_names(took)}"
+    do: "for predicting #{join_names(took)} correctly"
 
   defp prediction(choice, took, false, round),
     do: "Predicted #{guess_name(round, choice)}, but #{join_names(took)} took the blame."
@@ -2557,7 +2557,7 @@ defmodule WhoseJamWeb.PlayLive do
               <%!-- The winner's line wears its prize: an orange "1st" tape. --%>
               <div class={[
                 "flex flex-wrap items-center gap-x-3 gap-y-1",
-                if(@won?, do: "mt-4", else: "mt-1")
+                if(@won?, do: "mt-5", else: "mt-1")
               ]}>
                 <%!-- The winner's phone has its moment: the line larger, and
                      wearing the crown the TV drew on the winner's name, in
@@ -2572,7 +2572,7 @@ defmodule WhoseJamWeb.PlayLive do
                   <.marker_stroke
                     :if={@won?}
                     kind={:crown}
-                    class="absolute left-[0.01em] -top-[0.24em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.24rem]"
+                    class="absolute left-[0.01em] -top-[0.36em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.24rem]"
                   />
                   {if @mine, do: finish_line(@mine, @role, length(@board)), else: "Game over"}
                 </h1>
@@ -2646,7 +2646,8 @@ defmodule WhoseJamWeb.PlayLive do
                waiting line it replaces, so nobody misses it. --%>
           <div id="game-ended" class="mt-4 flex flex-col gap-3 px-1">
             <p class="text-[1.0625rem] font-bold text-jam-cream">{ended_message(@end_reason)}</p>
-            <.link navigate={~p"/"} class="jam-btn jam-btn-ghost w-fit text-base">
+            <%!-- The one thing left to do, so the screen's pink button. --%>
+            <.link navigate={~p"/"} class="jam-btn w-full text-base md:w-fit md:min-w-[14rem]">
               Back home
             </.link>
           </div>

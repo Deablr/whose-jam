@@ -233,7 +233,7 @@ defmodule WhoseJamWeb.HomeLive do
           type="button"
           phx-click="close_host"
           aria-label="Close"
-          class="grid size-11 cursor-pointer place-items-center rounded-md text-jam-cream/75 transition-colors hover:bg-jam-cream/10 hover:text-jam-cream focus-visible:bg-jam-cream/10"
+          class="grid size-11 cursor-pointer place-items-center rounded-md bg-jam-cream/[0.08] text-jam-cream/85 transition-colors hover:bg-jam-cream/15 hover:text-jam-cream focus-visible:bg-jam-cream/15"
         >
           <.icon name="hero-x-mark-solid" class="size-7" />
         </button>

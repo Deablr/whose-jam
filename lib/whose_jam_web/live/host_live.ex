@@ -1051,7 +1051,7 @@ defmodule WhoseJamWeb.HostLive do
           type="button"
           phx-click="close_settings"
           aria-label="Close settings"
-          class="grid size-11 cursor-pointer place-items-center rounded-md text-jam-cream/75 transition-colors hover:bg-jam-cream/10 hover:text-jam-cream focus-visible:bg-jam-cream/10"
+          class="grid size-11 cursor-pointer place-items-center rounded-md bg-jam-cream/[0.08] text-jam-cream/85 transition-colors hover:bg-jam-cream/15 hover:text-jam-cream focus-visible:bg-jam-cream/15"
         >
           <%!-- A heavier cross than the outline icon's hairline, to find
                from the sofa. --%>
@@ -2266,23 +2266,20 @@ defmodule WhoseJamWeb.HostLive do
             <%!-- Who said it, every voter on their tape (a pencilled name
                  only ever means "not in yet"); those who called it on mint
                  tape, as mint is for right. --%>
-            <div
-              :if={!guess.none?}
-              class={
-                [
-                  # Each tape its own width, lying its own way (the grid only
-                  # spaces the rows; it never stretches a strip).
-                  "mt-3 grid w-fit items-center justify-items-start gap-x-3 gap-y-3",
-                  tape_cols(guess.voters, length(@guesses))
-                ]
-              }
-            >
-              <.name_tape
-                :for={voter <- guess.voters}
-                player_id={voter.id}
-                name={voter.name}
-                class={["max-w-full", guess.right? && "jam-tape-mint", @guess_size.voters]}
-              />
+            <%!-- Each tape its own width, lying its own way, in rows that
+                 flow (no columns, so a short name leaves no hole). --%>
+            <div :if={!guess.none?} class="mt-3 flex w-fit flex-col items-start gap-y-3">
+              <div
+                :for={row <- tape_rows(guess.voters, length(@guesses))}
+                class="flex items-center gap-x-3"
+              >
+                <.name_tape
+                  :for={voter <- row}
+                  player_id={voter.id}
+                  name={voter.name}
+                  class={["max-w-full", guess.right? && "jam-tape-mint", @guess_size.voters]}
+                />
+              </div>
             </div>
           </li>
         </ul>
@@ -2487,25 +2484,14 @@ defmodule WhoseJamWeb.HostLive do
       id={@id}
       class={[
         "relative flex h-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-1.5 [grid-area:1/1]",
-        cond do
-          @seat.leader? -> "bg-jam-cream text-jam-ink"
-          @seat.ring? -> "bg-jam-cream/[0.06]"
-          true -> nil
-        end,
+        @seat.leader? && "bg-jam-cream text-jam-ink",
         @class
       ]}
       {@rest}
     >
-      <%!-- A small tag says who leads, in so many words (in the body face:
-           the marker is for names); a phone that has dropped out says so in
-           the same place, so the room can see who to help back in. Above the
-           seat's right corner, clear of the name's tape, never beside it. --%>
-      <span
-        :if={@seat.ring? and @tag? and !@away?}
-        class="absolute -top-8 right-2 z-10 rounded-sm bg-jam-orange px-2.5 py-1 text-[1.3rem] font-bold leading-none text-jam-ink"
-      >
-        Leads
-      </span>
+      <%!-- Who leads wears the prize's orange tape (no label of its own); a
+           phone that has dropped out says so above its seat, so the room
+           can see who to help back in. --%>
       <span
         :if={@away?}
         class="absolute -top-5 left-1/2 -translate-x-1/2 rounded-full bg-jam-orange px-3.5 py-1 text-lg font-extrabold leading-none text-jam-ink"
@@ -2534,7 +2520,12 @@ defmodule WhoseJamWeb.HostLive do
           :if={@in?}
           player_id={@player_id}
           name={@name}
-          class={["jam-bump jam-tape-paper max-w-full", @locked? && "gap-1.5", @away? && "opacity-50"]}
+          class={[
+            "jam-bump max-w-full",
+            if(@seat.ring? and @tag? and !@away?, do: "jam-tape-orange", else: "jam-tape-paper"),
+            @locked? && "gap-1.5",
+            @away? && "opacity-50"
+          ]}
         >
           <.icon
             :if={@locked?}
@@ -2678,7 +2669,7 @@ defmodule WhoseJamWeb.HostLive do
               :if={winner_verb(@winners, @board)}
               kind={:crown}
               class={[
-                "absolute -top-[0.26em] h-[0.52em] w-[0.64em] text-jam-orange [--jam-stroke-w:0.6rem]",
+                "absolute -top-[0.38em] h-[0.52em] w-[0.64em] text-jam-orange [--jam-stroke-w:0.6rem]",
                 if(match?([_], @winners),
                   do: "left-[0.01em] -rotate-[9deg]",
                   else: "left-1/2 -translate-x-1/2 -rotate-[4deg]"
@@ -2740,7 +2731,7 @@ defmodule WhoseJamWeb.HostLive do
                   <.marker_stroke
                     :if={length(@winners) == 1}
                     kind={:crown}
-                    class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.4rem]"
+                    class="absolute left-[0.01em] -top-[0.38em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.4rem]"
                   />
                   <.winner_names winners={@winners} board={@board} />
                 </h1>
@@ -3157,7 +3148,7 @@ defmodule WhoseJamWeb.HostLive do
   # is the right guessers'). A miss is said as clearly
   # as a hit, with no points to it.
   defp prediction(guess, _took, true, _style),
-    do: "Predicted #{guess} would take the blame"
+    do: "Correctly predicted #{guess} would take the blame"
 
   defp prediction(guess, took, false, _style),
     do: "Predicted #{guess}, but #{join_names(took)} took the blame"
@@ -3242,13 +3233,14 @@ defmodule WhoseJamWeb.HostLive do
   defp guess_size(_count),
     do: %{card: "px-5 pb-4 pt-3", said: "text-[1.5rem]", voters: "text-[1.15rem]"}
 
-  # Columns for a group's name tapes, so its rows come out even. A group on
-  # its own has the panel's width, so up to seven names make one row.
-  defp tape_cols(voters, 1 = _groups) when length(voters) <= 7, do: "grid-flow-col auto-cols-max"
-  defp tape_cols(voters, _groups) when length(voters) <= 3, do: "grid-flow-col auto-cols-max"
-  defp tape_cols(voters, _groups) when length(voters) == 4, do: "grid-cols-2"
-  defp tape_cols(voters, _groups) when length(voters) <= 6, do: "grid-cols-3"
-  defp tape_cols(_voters, _groups), do: "grid-cols-4"
+  # A group's name tapes in rows that come out even (six as two rows of
+  # three, not five and one). A group on its own has the panel's width, so up
+  # to seven names make one row.
+  defp tape_rows(voters, 1 = _groups) when length(voters) <= 7, do: [voters]
+  defp tape_rows(voters, _groups) when length(voters) <= 3, do: [voters]
+  defp tape_rows(voters, _groups) when length(voters) == 4, do: Enum.chunk_every(voters, 2)
+  defp tape_rows(voters, _groups) when length(voters) <= 6, do: Enum.chunk_every(voters, 3)
+  defp tape_rows(voters, _groups), do: Enum.chunk_every(voters, 4)
 
   # A guess-who round's votes by suspect: each player somebody named, with who
   # named them. The right answer always comes first, so the eye knows where to
