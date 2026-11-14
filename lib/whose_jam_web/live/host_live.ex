@@ -987,9 +987,9 @@ defmodule WhoseJamWeb.HostLive do
           type="button"
           phx-click="close_settings"
           aria-label="Close settings"
-          class="jam-chip !px-3 !py-3 cursor-pointer"
+          class="grid size-11 cursor-pointer place-items-center rounded-md text-jam-cream/75 transition-colors hover:bg-jam-cream/10 hover:text-jam-cream focus-visible:bg-jam-cream/10"
         >
-          <.icon name="hero-x-mark" class="size-6" />
+          <.icon name="hero-x-mark" class="size-7" />
         </button>
       </div>
 
@@ -999,12 +999,12 @@ defmodule WhoseJamWeb.HostLive do
       <div class="grid gap-x-12 gap-y-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div class="space-y-5">
           <section class="space-y-3">
-            <h3 class="text-xl font-extrabold tracking-[-0.01em]">Music service</h3>
+            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">Music service</h3>
             {music_service_list(assigns)}
           </section>
 
           <section class="space-y-3">
-            <h3 class="text-xl font-extrabold tracking-[-0.01em]">Game</h3>
+            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">Game</h3>
 
             <p :if={@view.phase != :lobby} class="text-sm text-base-content/60">
               Game settings are locked once the game starts.
@@ -1088,7 +1088,10 @@ defmodule WhoseJamWeb.HostLive do
                 </div>
                 <%!-- Players needed, as the row of numbers it is. --%>
                 <div class="fieldset mb-2 sm:col-span-3">
-                  <span id="min-players-label" class="label mb-1 w-full justify-start text-left">
+                  <%!-- (No gap under the label: the field beside it carries the
+                       inline gap of its own label, and the two must sit on one
+                       line.) --%>
+                  <span id="min-players-label" class="label mb-0 w-full justify-start text-left">
                     Players needed to start
                   </span>
                   <div
@@ -1123,7 +1126,7 @@ defmodule WhoseJamWeb.HostLive do
         </div>
         <div class="space-y-5">
           <section class="space-y-3">
-            <h3 class="text-xl font-extrabold tracking-[-0.01em]">Rules</h3>
+            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">Rules</h3>
             <%!-- A switch a row, label left and switch right. --%>
             <form phx-change="set_config" id="rule-settings" class="grid gap-1">
               <fieldset disabled={@view.phase != :lobby} class="contents">
@@ -1153,7 +1156,7 @@ defmodule WhoseJamWeb.HostLive do
           <%!-- How the screens tell the game, for rooms that like it another
                way. None of these change the scoring or the timers. --%>
           <section class="space-y-3">
-            <h3 class="text-xl font-extrabold tracking-[-0.01em]">On the screens</h3>
+            <h3 class="text-[1.6rem] font-extrabold tracking-[-0.01em]">On the screens</h3>
             <form phx-change="set_config" id="presentation-settings" class="grid gap-1">
               <fieldset disabled={@view.phase != :lobby} class="contents">
                 <.input
@@ -1311,7 +1314,7 @@ defmodule WhoseJamWeb.HostLive do
             <.name_tape
               player_id={p.id}
               name={p.name}
-              class="jam-tape-paper max-w-full px-6 py-3 text-[2.6rem]"
+              class="jam-tape-paper max-w-full px-6 py-3 text-[2.9rem]"
             />
           </li>
           <li
@@ -1463,20 +1466,31 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- The lobby's names, laid out as the lobby lays them (side by
              side, as a cluster): each pencilled into its slot, and taped
              down where it was as its player locks in their songs. --%>
-        <ul id="answering-players" class="flex flex-wrap content-start gap-x-5 gap-y-5">
-          <li :for={seat <- @seats} id={"picking-#{seat.id}"} class="flex min-w-0 max-w-full">
+        <%!-- A fixed grid, four to a row: every name keeps its place as the
+             tapes land, and the check sits on the tape's corner (taking no
+             room from the name), so nothing reflows when one turns into a
+             tape. --%>
+        <ul id="answering-players" class="grid grid-cols-4 gap-x-4 gap-y-5">
+          <li :for={seat <- @seats} id={"picking-#{seat.id}"} class="relative flex min-w-0">
             <.name_tape
               :if={seat.done?}
               player_id={seat.id}
               name={seat.name}
-              class="jam-bump max-w-full gap-3 py-2.5 pl-5 pr-4 text-[2rem]"
+              class="jam-bump w-full py-2.5 px-3 text-[1.75rem]"
+            />
+            <span
+              :if={seat.done?}
+              class="absolute -right-2 -top-2.5 z-10 grid size-8 place-items-center rounded-full bg-jam-ink"
             >
-              <.icon name="hero-check-circle-solid" class="size-7 shrink-0 text-jam-mint-deep" />
-            </.name_tape>
+              <.icon name="hero-check-circle-solid" class="size-8 text-jam-mint" />
+            </span>
             <%!-- Pencilled into the tape's slot until their tape lands. --%>
             <div
               :if={!seat.done?}
-              class="jam-tape-slot relative max-w-full justify-between gap-3 overflow-hidden py-2.5 pl-5 pr-4 text-[2rem]"
+              class={[
+                "jam-tape-slot relative w-full gap-2 overflow-hidden py-2.5 px-3 text-[1.75rem]",
+                seat.prog.total > 1 && "justify-between"
+              ]}
             >
               <span class="min-w-0 truncate whitespace-nowrap">{seat.name}</span>
               <span :if={seat.prog.total > 1} class="shrink-0 text-2xl tabular-nums">
@@ -1725,9 +1739,9 @@ defmodule WhoseJamWeb.HostLive do
         </div>
         <span
           :if={@playing?}
-          class="absolute bottom-3 left-3 flex rounded-sm bg-jam-ink/80 px-2.5 py-2"
+          class="absolute bottom-3 left-3 flex rounded-sm bg-jam-ink/80 px-3 py-2.5"
         >
-          <.now_playing_meter class="text-[1.6rem]" />
+          <.now_playing_meter class="text-[2.3rem]" />
         </span>
       </div>
       <%!-- The words sit at the foot of the sheet, as a print's do. --%>
@@ -2148,10 +2162,14 @@ defmodule WhoseJamWeb.HostLive do
                  tape, as mint is for right. --%>
             <div
               :if={!guess.none?}
-              class={[
-                "mt-3 grid w-fit gap-x-3 gap-y-2.5",
-                tape_cols(guess.voters, length(@guesses))
-              ]}
+              class={
+                [
+                  # Each tape its own width, lying its own way (the grid only
+                  # spaces the rows; it never stretches a strip).
+                  "mt-3 grid w-fit items-center justify-items-start gap-x-3 gap-y-3",
+                  tape_cols(guess.voters, length(@guesses))
+                ]
+              }
             >
               <.name_tape
                 :for={voter <- guess.voters}
@@ -2549,7 +2567,7 @@ defmodule WhoseJamWeb.HostLive do
           ]}>
             <.marker_stroke
               kind={:crown}
-              class="absolute left-[0.02em] -top-[0.16em] h-[0.4em] w-[0.5em] -rotate-12 [--jam-stroke-w:0.36rem]"
+              class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] [--jam-stroke-w:0.42rem]"
             />
             <.winner_names winners={@winners} board={@board} />
           </p>

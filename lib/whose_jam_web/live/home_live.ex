@@ -222,8 +222,7 @@ defmodule WhoseJamWeb.HomeLive do
            set a size up there. --%>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <p class="jam-eyebrow lg:!text-[1.3rem]">Host a game</p>
-          <h2 class="mt-1 font-display text-3xl leading-none lg:text-[2.5rem]">Pick a theme</h2>
+          <h2 class="font-display text-3xl leading-none lg:text-[2.75rem]">Pick a theme</h2>
         </div>
         <button
           type="button"

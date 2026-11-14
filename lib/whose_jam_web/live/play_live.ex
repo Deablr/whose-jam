@@ -1291,7 +1291,7 @@ defmodule WhoseJamWeb.PlayLive do
       class="mt-6 border-t border-jam-cream/12 pt-4 text-[0.9375rem] leading-snug text-jam-cream/75"
     >
       <span class="font-bold text-jam-cream">Your own song comes up too.</span>
-      Then predict who’ll take the blame for it: +1 if you’re right.
+      <.inline_points text="Then predict who’ll take the blame for it: +1 if you’re right." />
     </div>
     """
   end
@@ -1408,7 +1408,7 @@ defmodule WhoseJamWeb.PlayLive do
         <figure
           :if={@round.prompt}
           id="round-prompt"
-          class="jam-paper jam-lean mt-3.5 w-full px-4 py-2.5 text-jam-ink short:mt-2"
+          class="jam-paper jam-lean mt-3 w-full px-4 py-2 text-jam-ink short:mt-2"
         >
           <%!-- A strip the width of the screen, under the song: what it was
                picked for. The round card gave it its moment in large type;
@@ -1678,7 +1678,7 @@ defmodule WhoseJamWeb.PlayLive do
          place, which "Eyes on the TV" and the answer take after it. The same on every phone, the picker's included. --%>
       <div
         id="phone-voting"
-        class="mt-6 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-4 lg:mt-0 lg:after:hidden"
+        class="mt-5 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-3 lg:mt-0 lg:after:hidden"
       >
         <%!-- The question is the screen's headline, its how-to right under
              it in a space kept two lines tall on every phone (the picker's
@@ -1723,20 +1723,18 @@ defmodule WhoseJamWeb.PlayLive do
             # Every tile the same size, however long the name on it: a name
             # too long for half the width puts every choice on a row of its
             # own, and a name never wraps (a long one is set a size down).
-            # Two to a row, tall enough to fill the screen above the button;
-            # a short screen fits three to a row.
+            # Two to a row on every phone, the smallest too, so the ballot is
+            # the same control everywhere.
             # Equal rows, as tall as the names need, then sharing whatever
-            # room the screen has left, up to 4.75rem a row (the grid's cap), so
-            # a big phone gets big targets rather than a gap and a small one
-            # keeps its names' height; room past the cap (a tablet's) is left
-            # at the foot. A laptop's grid sits in its column at its
-            # names' height.
+            # room the screen has left, up to 4rem a row (the grid's cap), so
+            # a big phone gets comfortable targets and a small one keeps its
+            # names' height; room past the cap is left at the foot. A
+            # laptop's grid sits in its column at its names' height.
             # (Names only: a prompt's tile is as tall as its words.)
             "auto-rows-fr",
             @round.style == :guess_who && "grow-[100] basis-0 lg:flex-none",
-            @round.style == :guess_who && grid_cap(@choices, @cols),
-            @cols == 2 && "grid-cols-2",
-            @cols == 3 && "grid-cols-2 short:grid-cols-3"
+            @round.style == :guess_who && grid_cap(@choices),
+            @cols == 2 && "grid-cols-2"
           ]
         }>
           <button
@@ -1751,18 +1749,10 @@ defmodule WhoseJamWeb.PlayLive do
                 @round.style == :guess_who &&
                   "flex min-h-[3.75rem] items-center justify-center gap-2 px-9 font-marker font-bold [font-variation-settings:'INFM'_50] short:px-3",
                 @round.style == :guess_who && name_size(@choices),
-                # Two to a row, an odd one out takes the whole last row; a
-                # short screen's three to a row puts a lone last one in the
-                # middle.
-                @cols in [2, 3] &&
+                # Two to a row, an odd one out centred on the last row at a
+                # tile's width.
+                @cols == 2 &&
                   "last:odd:col-span-2 last:odd:mx-auto last:odd:w-[calc(50%_-_0.25rem)]",
-                @cols == 3 && "short:last:odd:mx-0 short:last:odd:w-auto",
-                # (One rule for the column, so nothing else can undo it.)
-                @cols == 3 &&
-                  if(rem(length(@choices), 3) == 1,
-                    do: "short:last:odd:[grid-column:2]",
-                    else: "short:last:odd:col-span-1"
-                  ),
                 # A long name takes the whole row rather than breaking.
                 @round.style != :guess_who && "pr-11 text-left text-lg font-bold",
                 # Chosen, a name becomes its tape (a prompt, a sheet of
@@ -1986,29 +1976,23 @@ defmodule WhoseJamWeb.PlayLive do
   # How many names sit to a row: two, or three when there are seven or more
   # short ones (so a full room's names and the button fit a small phone),
   # or one when any is too long for half the width. Prompts take the row.
-  defp grid_cols(%{style: :guess_who}, choices) do
-    cond do
-      long_names?(choices) -> 1
-      length(choices) >= 7 and Enum.all?(choices, &(String.length(&1[:name] || "") <= 6)) -> 3
-      true -> 2
-    end
-  end
+  defp grid_cols(%{style: :guess_who}, choices),
+    do: if(long_names?(choices), do: 1, else: 2)
 
   defp grid_cols(_round, _choices), do: 1
 
-  # The vote grid's greatest height: 4.75rem a row and the gaps between (a
-  # phone's three-across grid counted two across, its rows on a tall screen).
-  # Each a whole class, so the stylesheet has it.
-  defp grid_cap(choices, cols) do
-    case div(length(choices) + min(cols, 2) - 1, min(cols, 2)) do
-      1 -> "max-h-[4.75rem]"
-      2 -> "max-h-[10rem]"
-      3 -> "max-h-[15.25rem]"
-      4 -> "max-h-[20.5rem]"
-      5 -> "max-h-[25.75rem]"
-      6 -> "max-h-[31rem]"
-      7 -> "max-h-[36.25rem]"
-      _ -> "max-h-[41.5rem]"
+  # The vote grid's greatest height: 4rem a row (two to a row) and the gaps
+  # between. Each a whole class, so the stylesheet has it.
+  defp grid_cap(choices) do
+    case div(length(choices) + 1, 2) do
+      1 -> "max-h-[4rem]"
+      2 -> "max-h-[8.5rem]"
+      3 -> "max-h-[13rem]"
+      4 -> "max-h-[17.5rem]"
+      5 -> "max-h-[22rem]"
+      6 -> "max-h-[26.5rem]"
+      7 -> "max-h-[31rem]"
+      _ -> "max-h-[35.5rem]"
     end
   end
 
@@ -2546,8 +2530,10 @@ defmodule WhoseJamWeb.PlayLive do
                 class="min-w-4 flex-1 translate-y-[-0.25em] border-b border-dotted border-jam-ink/25"
                 aria-hidden="true"
               ></span>
+              <%!-- Points are orange, the deeper orange that reads on
+                   paper. --%>
               <dd class={[
-                "font-display leading-none tabular-nums",
+                "font-display leading-none tabular-nums text-jam-orange-deep",
                 if(i == 0, do: "text-[1.625rem]", else: "text-lg")
               ]}>
                 {value}
@@ -2612,8 +2598,8 @@ defmodule WhoseJamWeb.PlayLive do
                 class={[
                   "flex break-inside-avoid items-center justify-between gap-3 rounded-md px-3 leading-tight",
                   if(list_id == "final-scores" and row.rank == 1,
-                    do: "min-h-11 py-1",
-                    else: "min-h-10 py-0.5"
+                    do: "min-h-11 py-1 short:min-h-10",
+                    else: "min-h-10 py-0.5 short:min-h-9"
                   ),
                   row.id == @player_id && "bg-jam-cream/[0.08]"
                 ]}
