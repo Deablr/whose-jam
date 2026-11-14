@@ -255,10 +255,15 @@
   filter: brightness(0.9);
 }
 
-/* Disabled is a flat, quiet slab. */
+/* Disabled is the button's slot, not yet filled: its outline dashed in, as
+   a name's tape slot is, the words pencilled inside. It never looks like one
+   more choice beside the ones above it. */
 .jam-btn:disabled {
-  background: rgb(242 238 228 / 0.08);
-  color: rgb(242 238 228 / 0.6);
+  background: transparent;
+  box-shadow: inset 0 0 0 2px transparent;
+  outline: 2px dashed rgb(242 238 228 / 0.28);
+  outline-offset: -2px;
+  color: rgb(242 238 228 / 0.62);
   cursor: not-allowed;
 }
 
@@ -381,8 +386,9 @@
 .jam-meter > i:nth-child(4) { animation-delay: -120ms; background: var(--color-jam-orange); }
 .jam-meter > i:nth-child(5) { animation-delay: -380ms; }
 
+/* Never shorter than 40%, so at any size it reads as bars, not dots. */
 @keyframes jam-meter {
-  from { height: 25%; }
+  from { height: 40%; }
   to { height: 100%; }
 }
 
@@ -768,7 +774,8 @@
   font-weight: 650;
   font-variation-settings: "INFM" 50;
   line-height: 1.1;
-  filter: drop-shadow(0 0.04em 0.06em rgb(0 0 0 / 0.22));
+  /* A crisp edge where it sits on the surface, and a soft lift. */
+  filter: drop-shadow(0 0.06em 0 rgb(0 0 0 / 0.35)) drop-shadow(0 0.1em 0.12em rgb(0 0 0 / 0.18));
 }
 
 .jam-tape::before {
@@ -837,11 +844,11 @@
   background: var(--color-jam-mint);
 }
 
-.jam-tilt-0 { rotate: -0.9deg; }
-.jam-tilt-1 { rotate: -0.45deg; }
-.jam-tilt-2 { rotate: 0.2deg; }
-.jam-tilt-3 { rotate: 0.5deg; }
-.jam-tilt-4 { rotate: 0.9deg; }
+.jam-tilt-0 { rotate: -2deg; }
+.jam-tilt-1 { rotate: -1.2deg; }
+.jam-tilt-2 { rotate: 1deg; }
+.jam-tilt-3 { rotate: 1.6deg; }
+.jam-tilt-4 { rotate: -1.6deg; }
 
 /* A chosen vote tile becomes tape: the strip's colour and a torn end (a
    class of the UI's, but drawn as the prop it stands for). */
@@ -960,8 +967,11 @@
   --size: 1.6rem;
 }
 
-/* A sheet that scrolls shows that it does. */
+/* A sheet is solid, a step up from the page (the score strip's panel), over
+   a scrim dark enough that nothing behind it reads; and one that scrolls
+   shows that it does. */
 [data-theme="jam"] .modal-box {
+  background-color: var(--color-jam-night);
   scrollbar-width: thin;
   scrollbar-color: rgb(242 238 228 / 0.3) transparent;
 }

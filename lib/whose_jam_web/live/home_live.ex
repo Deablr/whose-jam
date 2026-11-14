@@ -222,23 +222,24 @@ defmodule WhoseJamWeb.HomeLive do
            set a size up there. --%>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <p class="jam-eyebrow">Host a game</p>
+          <p class="jam-eyebrow lg:!text-[1.3rem]">Host a game</p>
           <h2 class="mt-1 font-display text-3xl leading-none lg:text-[2.5rem]">Pick a theme</h2>
         </div>
         <button
           type="button"
           phx-click="close_host"
           aria-label="Close"
-          class="jam-chip !px-2.5 cursor-pointer"
+          class="jam-chip !px-2.5 cursor-pointer lg:!p-3"
         >
-          <.icon name="hero-x-mark" class="size-5" />
+          <.icon name="hero-x-mark" class="size-5 lg:size-7" />
         </button>
       </div>
 
       <%!-- The themes side by side, each a sheet of paper laid on the table:
-           its name, how it plays, and one of its prompts, with the way in at
-           its foot. The whole sheet is the button (its "Host this" stretches
-           over it); it lifts under the pointer and is ringed only on focus. --%>
+           its name, how it plays, and one of its prompts, with a "Host this"
+           button at its foot (the two level). The whole sheet is that button
+           (it stretches over it); it lifts under the pointer and is ringed
+           only on focus. --%>
       <ul class="grid gap-8 pt-2 sm:grid-cols-2">
         <li
           :for={theme <- @themes}
@@ -260,7 +261,7 @@ defmodule WhoseJamWeb.HomeLive do
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="mt-auto flex cursor-pointer items-center gap-2 pt-3 text-left text-[1.125rem] font-extrabold text-jam-ink after:absolute after:inset-0 after:content-[''] focus-visible:outline-none lg:text-[1.4rem]"
+            class="mt-auto flex h-11 w-fit cursor-pointer items-center gap-2 rounded-md bg-jam-ink px-5 text-[1.0625rem] font-bold text-jam-cream transition-colors after:absolute after:inset-0 after:content-[''] group-hover:bg-[#2c2b28] focus-visible:outline-none lg:h-14 lg:px-7 lg:text-[1.35rem]"
           >
             Host this
             <.icon

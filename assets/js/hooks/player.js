@@ -54,10 +54,11 @@ const Countdown = {
   },
 }
 
-// Progress — fills the element's first child from empty to full over the
+// Progress — drains the element's first child from full to empty over the
 // `data-duration` (ms) that ends at `data-deadline` (epoch ms): the same wait a
-// Countdown reads out, as a line to glance at. Put `phx-update="ignore"` on
-// the element, so a patch never resets the fill.
+// Countdown reads out, as a line to glance at (what is left of it, as the
+// clock says what is left). Put `phx-update="ignore"` on the element, so a
+// patch never resets it.
 const Progress = {
   mounted() {
     this.draw()
@@ -82,12 +83,11 @@ const Progress = {
     const duration = parseInt(this.el.dataset.duration, 10)
     if (!bar || !deadline || Number.isNaN(deadline)) return
 
-    const done =
-      duration > 0 ? Math.min(1, Math.max(0, 1 - (deadline - Date.now()) / duration)) : 1
+    const left = duration > 0 ? Math.min(1, Math.max(0, (deadline - Date.now()) / duration)) : 0
 
-    bar.style.transform = `scaleX(${done})`
+    bar.style.transform = `scaleX(${left})`
 
-    if (done < 1) {
+    if (left > 0) {
       this.frame = requestAnimationFrame(() => this.draw())
     }
   },

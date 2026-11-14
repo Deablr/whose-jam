@@ -131,6 +131,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
     |> fill_in("Listening time", with: "10")
+    # Once the sheet has finished fading in.
+    |> Stage.then_hold(600)
     |> Stage.then_snap(:host, "settings")
     |> click_button("Close settings")
 
