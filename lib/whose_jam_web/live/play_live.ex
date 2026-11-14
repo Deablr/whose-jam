@@ -1263,8 +1263,8 @@ defmodule WhoseJamWeb.PlayLive do
             </div>
             <%!-- The whole row is the button; this only says so, quietly, so
                  a list of results isn't a column of pink buttons. --%>
-            <span class="shrink-0 rounded-md bg-jam-cream/[0.1] px-3.5 py-1.5 text-sm font-bold text-jam-cream">
-              Pick
+            <span class="flex shrink-0 items-center gap-1 px-1 text-sm font-bold text-jam-cream/85">
+              Pick <.icon name="hero-arrow-right-mini" class="size-4" />
             </span>
           </button>
         </div>
@@ -1410,7 +1410,7 @@ defmodule WhoseJamWeb.PlayLive do
         <p
           :if={@round_state == :revealing}
           id="song-line"
-          class="mb-[1.375rem] flex h-12 items-center text-sm font-semibold text-jam-cream/65 short:h-10"
+          class="mb-[1.375rem] flex h-12 items-end text-sm font-semibold text-jam-cream/65 short:h-10"
         >
           Round {@round.index + 1} of {@round.total}
         </p>
@@ -2628,18 +2628,14 @@ defmodule WhoseJamWeb.PlayLive do
           <%!-- Every award the same way, a line each: its title on orange
                tape, and the song it was won with beside it (the counts are
                the receipt's, above). --%>
-          <%!-- The tapes in one column and what they were for in the next,
-               so the values start level. --%>
-          <dl
-            :if={my_awards(@view, @player_id) != []}
-            class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5"
-          >
-            <div
-              :for={{title, detail} <- my_awards(@view, @player_id)}
-              class="contents"
-            >
-              <dt class="jam-tape jam-tape-orange jam-tilt-3 justify-self-start text-sm">{title}</dt>
-              <dd class="min-w-0 text-[0.9375rem] font-semibold text-jam-ink/80">{detail}</dd>
+          <%!-- Each award the same way: its title on orange tape, and what
+               earned it in a sentence under it. --%>
+          <dl :if={my_awards(@view, @player_id) != []} class="mt-3 space-y-2.5">
+            <div :for={{title, detail} <- my_awards(@view, @player_id)}>
+              <dt class="jam-tape jam-tape-orange jam-tilt-3 text-sm">{title}</dt>
+              <dd class="mt-2 text-[0.9375rem] font-medium leading-snug text-pretty text-jam-ink/80">
+                {no_widow(detail)}
+              </dd>
             </div>
           </dl>
         </div>
@@ -2865,7 +2861,7 @@ defmodule WhoseJamWeb.PlayLive do
       with %{called: called, player_ids: ids} = award <- awards[:sharpest],
            true <- Awards.given?(award),
            true <- player_id in ids do
-        [{"Sharpest ears", "#{called} right" <> shared_note(view, ids -- [player_id])}]
+        [{"Sharpest ears", "#{called} correct guesses." <> shared_note(view, ids -- [player_id])}]
       else
         _ -> []
       end
@@ -2877,14 +2873,22 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp my_bluff([], _fooled, _shared), do: []
 
-  defp my_bluff([song], _fooled, shared), do: [{"Best bluff", song <> shared}]
-  defp my_bluff(songs, _fooled, shared), do: [{"Best bluff", "#{length(songs)} songs" <> shared}]
+  defp my_bluff([song], fooled, shared),
+    do: [{"Best bluff", "#{song} fooled #{fooled} #{players(fooled)}." <> shared}]
+
+  defp my_bluff(songs, fooled, shared),
+    do: [
+      {"Best bluff", "#{length(songs)} songs each fooled #{fooled} #{players(fooled)}." <> shared}
+    ]
+
+  defp players(1), do: "player"
+  defp players(_n), do: "players"
 
   # An award held with others says whom with, as the TV does.
   defp shared_note(view, ids) do
     case ids |> Enum.map(&participant_name(view, &1)) |> Enum.reject(&is_nil/1) do
       [] -> ""
-      names -> ", shared with " <> join_names(names)
+      names -> " Shared with " <> join_names(names) <> "."
     end
   end
 

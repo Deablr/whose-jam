@@ -2841,12 +2841,13 @@ defmodule WhoseJamWeb.HostLive do
               >
                 {if @playlist_open?, do: "Back to the scores", else: "Tonight’s playlist"}
               </button>
+              <%!-- Leaving is the quiet one, set apart at the row's end. --%>
               <button
                 id="exit-game"
                 type="button"
                 phx-click="exit_game"
                 data-confirm="End the game for everyone?"
-                class="jam-btn jam-btn-ghost text-[1.4rem]"
+                class="ml-auto cursor-pointer px-2 text-[1.3rem] font-bold text-jam-cream/70 underline decoration-jam-cream/30 underline-offset-4 transition-colors hover:text-jam-cream"
               >
                 Exit game
               </button>
