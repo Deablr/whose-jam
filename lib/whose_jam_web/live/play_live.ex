@@ -627,7 +627,7 @@ defmodule WhoseJamWeb.PlayLive do
             :if={@my_score}
             id="my-score"
             class={[
-              "jam-sticker relative ml-1.5 flex shrink-0 items-baseline gap-0.5 px-1.5 py-0.5 leading-none",
+              "jam-sticker relative ml-1.5 flex shrink-0 items-baseline gap-1 px-1.5 py-0.5 leading-none",
               if(@my_score > 0,
                 do: "bg-jam-orange text-jam-ink",
                 else: "bg-jam-paper text-jam-ink"
@@ -1137,7 +1137,7 @@ defmodule WhoseJamWeb.PlayLive do
         </div>
         <%!-- The song this player picked, as the room will see it: a poster
              with its title and artist. --%>
-        <figure class="jam-paper jam-poster w-[54%] max-w-[13rem] self-center p-2.5 pb-3 text-left text-jam-ink">
+        <figure class="jam-paper jam-poster w-[46%] max-w-[10rem] self-center p-2 pb-2.5 text-left text-jam-ink">
           <img
             :if={@question.song.album_art_url}
             src={@question.song.album_art_url}
@@ -1370,7 +1370,9 @@ defmodule WhoseJamWeb.PlayLive do
           :if={@round.prompt}
           class="jam-paper jam-lean px-6 pb-5 pt-5 text-jam-ink"
         >
-          <p class="font-display text-[1.75rem] leading-[1.15] text-balance">{@round.prompt}</p>
+          <p class="font-display text-[1.75rem] leading-[1.15] text-balance">
+            {no_widow(@round.prompt)}
+          </p>
           <%!-- The round's one clue, said here, once. --%>
           <p :if={take_label(@round)} class="mt-3 text-sm font-semibold text-jam-ink/75">
             {take_label(@round)}
@@ -1767,13 +1769,12 @@ defmodule WhoseJamWeb.PlayLive do
              their place from the first tap to the last, so the names below
              never move under a thumb about to tap again. --%>
         <div class="mb-4 mt-1 space-y-1 short:mb-3">
-          <%!-- Two lines kept on every phone, the picker's and everyone
-               else's alike, so the names under it sit at the same height
-               whichever of the two lines wraps (a tablet or laptop has the
-               width for either on one). --%>
+          <%!-- One line on every phone, the picker's and everyone else's
+               alike, so the names under it sit at the same height (two kept
+               on the narrowest, where either might wrap). --%>
           <p
             id="vote-hint"
-            class="min-h-[2.8em] text-[0.9375rem] font-normal leading-[1.4] text-jam-cream/75 md:min-h-0"
+            class="text-[0.9375rem] font-normal leading-[1.4] text-jam-cream/75 max-[359px]:min-h-[2.8em]"
           >
             <.inline_points text={vote_hint(@round, @own?, @change?)} />
           </p>
@@ -1998,8 +1999,10 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The picker's job, under their own question, in the measure the reveal
   # reports: where most of the wrong guesses land.
+  # As short as everyone else's, so both fit one line on any phone (the
+  # headline has asked whom the room will blame).
   defp vote_hint(_round, true, _change?),
-    do: "Predict the most popular wrong answer. +1 if you’re right."
+    do: "Pick who they’ll blame. +1 if you’re right."
 
   defp vote_hint(round, false, true), do: "Tap a #{choice_noun(round)}. Tap another to switch."
 

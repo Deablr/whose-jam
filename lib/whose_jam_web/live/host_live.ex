@@ -788,7 +788,9 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- Where to join stays readable all game, for anyone who turns up
              late: a ticket with the address on its stub and the room code
              on the rest. --%>
-        <div :if={@view.phase != :lobby} class="jam-lift">
+        <%!-- A step down while a game plays, so the song and the answer
+             win the first glance. --%>
+        <div :if={@view.phase != :lobby} class="jam-lift opacity-80">
           <p class="jam-ticket flex items-stretch [--jam-notch:0.35rem]">
             <span
               id="join-at"
@@ -1072,11 +1074,11 @@ defmodule WhoseJamWeb.HostLive do
               Game settings are locked once the game starts.
             </p>
 
-            <%!-- The times three to a row and the counts two, each with its
-                 unit written in the field. --%>
+            <%!-- The time to pick and the prompts on a row, then the players
+                 needed; each time with its unit written in the field. --%>
             <form phx-change="set_config" class="grid items-end gap-x-5 gap-y-1 sm:grid-cols-6">
               <fieldset disabled={@view.phase != :lobby} class="contents">
-                <div class="jam-unit sm:col-span-2" data-unit="seconds">
+                <div class="jam-unit sm:col-span-3" data-unit="seconds">
                   <.input
                     type="number"
                     id="answer_timer_s"
@@ -1087,31 +1089,9 @@ defmodule WhoseJamWeb.HostLive do
                     max={Config.range(:answer_timer_s).last}
                   />
                 </div>
-                <div class="jam-unit sm:col-span-2" data-unit="seconds">
-                  <.input
-                    type="number"
-                    id="vote_delay_s"
-                    name="vote_delay_s"
-                    label="Voting opens after"
-                    value={@view.config.vote_delay_s}
-                    min={Config.range(:vote_delay_s).first}
-                    max={Config.range(:vote_delay_s).last}
-                  />
-                </div>
-                <div class="jam-unit sm:col-span-2" data-unit="seconds">
-                  <.input
-                    type="number"
-                    id="vote_timer_s"
-                    name="vote_timer_s"
-                    label="Voting time"
-                    value={@view.config.vote_timer_s}
-                    min={Config.range(:vote_timer_s).first}
-                    max={Config.range(:vote_timer_s).last}
-                  />
-                </div>
                 <%!-- A count steps one at a time, its number in the scores'
                      lettering between a − and a +. --%>
-                <div class="jam-stepper sm:col-span-2">
+                <div class="jam-stepper sm:col-span-3">
                   <.input
                     type="number"
                     id="questions_per_player"
@@ -1149,13 +1129,13 @@ defmodule WhoseJamWeb.HostLive do
                   </button>
                 </div>
                 <%!-- Players needed, as the row of numbers it is. --%>
-                <div class="fieldset mb-2 sm:col-span-4">
+                <div class="fieldset mb-2 sm:col-span-6">
                   <%!-- (No gap under the label: the field beside it carries the
                        inline gap of its own label, and the two must sit on one
                        line.) --%>
                   <span
                     id="min-players-label"
-                    class="label relative top-[0.18rem] mb-0 w-full justify-start text-left"
+                    class="label mb-0 w-full justify-start text-left"
                   >
                     Players needed to start
                   </span>
@@ -1197,6 +1177,37 @@ defmodule WhoseJamWeb.HostLive do
         <div class="space-y-6">
           <section class="space-y-3">
             <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Voting</h3>
+            <%!-- The vote's own times, beside each other, above its rules. --%>
+            <form
+              phx-change="set_config"
+              id="vote-times"
+              class="grid items-end gap-x-5 sm:grid-cols-2"
+            >
+              <fieldset disabled={@view.phase != :lobby} class="contents">
+                <div class="jam-unit" data-unit="seconds">
+                  <.input
+                    type="number"
+                    id="vote_delay_s"
+                    name="vote_delay_s"
+                    label="Voting opens after"
+                    value={@view.config.vote_delay_s}
+                    min={Config.range(:vote_delay_s).first}
+                    max={Config.range(:vote_delay_s).last}
+                  />
+                </div>
+                <div class="jam-unit" data-unit="seconds">
+                  <.input
+                    type="number"
+                    id="vote_timer_s"
+                    name="vote_timer_s"
+                    label="Voting time"
+                    value={@view.config.vote_timer_s}
+                    min={Config.range(:vote_timer_s).first}
+                    max={Config.range(:vote_timer_s).last}
+                  />
+                </div>
+              </fieldset>
+            </form>
             <%!-- The rules' switches, a row each, label left and switch
                  right, as the screens' are under them. --%>
             <form phx-change="set_config" id="rule-settings" class="grid gap-1">
@@ -1649,8 +1660,9 @@ defmodule WhoseJamWeb.HostLive do
             :if={@view.round.prompt}
             class="jam-paper jam-lean max-w-[52rem] px-10 pb-9 pt-10 text-jam-ink"
           >
-            <p class="font-display text-[4.25rem] leading-[1.1] text-pretty">
-              {@view.round.prompt}
+            <%!-- Balanced lines, and never one word alone on the last. --%>
+            <p class="font-display text-[4.25rem] leading-[1.1] text-balance">
+              {no_widow(@view.round.prompt)}
             </p>
             <%!-- The round's one clue, said here, once. --%>
             <p
@@ -2536,6 +2548,15 @@ defmodule WhoseJamWeb.HostLive do
         <span :if={!@in?} class="jam-tape-slot max-w-full">
           <span class="min-w-0 truncate">{@name}</span>
         </span>
+        <%!-- What this round added: a small orange sticker slapped on the
+             tape's corner, as a phone's result wears its points, away from
+             the total under the name, so "1" and "+1" never read as a sum. --%>
+        <span
+          :if={@seat.score && @gain > 0}
+          class="jam-sticker absolute -right-3 -top-3 z-10 rotate-[8deg] bg-jam-orange px-[0.35rem] py-[0.12rem] font-display text-[1.05rem] leading-none text-jam-ink"
+        >
+          +{@gain}
+        </span>
       </span>
       <%!-- A seat with no total (the last reveal) says only what it won. --%>
       <span
@@ -2547,10 +2568,8 @@ defmodule WhoseJamWeb.HostLive do
       >
         {if @gain > 0, do: "+#{@gain}", else: "–"}
       </span>
-      <%!-- The total, centred under the name; what this round added rides
-           on a small orange sticker beside it, on its line and clear of the
-           tape, as a phone's result wears its points (a sticker, so "1" and
-           "+1" never read as a sum). --%>
+      <%!-- The total, centred under the name, alone (what this round added
+           is on the tape's corner). --%>
       <span :if={@seat.score} class={["relative flex justify-center", @away? && "opacity-50"]}>
         <span class={[
           "font-display leading-none tabular-nums",
@@ -2562,12 +2581,6 @@ defmodule WhoseJamWeb.HostLive do
           end
         ]}>
           {@seat.score}
-          <span
-            :if={@gain > 0}
-            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-0 bg-jam-orange px-[0.4rem] py-[0.16rem] font-display text-[1.5rem] leading-none text-jam-ink"
-          >
-            +{@gain}
-          </span>
         </span>
       </span>
     </div>

@@ -277,7 +277,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         timeout: @wait
       )
       |> assert_has("#vote-hint",
-        text: "Predict the most popular wrong answer. +1 if you’re right."
+        text: "Pick who they’ll blame. +1 if you’re right."
       )
       |> assert_has("#round-prompt blockquote", text: prompt)
       |> refute_has("#phone-voting button", text: submitter_name, exact: true)

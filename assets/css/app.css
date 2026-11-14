@@ -131,9 +131,10 @@
 
 @theme {
   /* Each face has a Japanese partner of a matching weight, for the songs
-     and names written in it: Lilita's is Dela Gothic One, as heavy;
-     Figtree's and Shantell's, Noto Sans JP at the same weight. */
-  --font-display: "Lilita One", "Dela Gothic One", "Figtree", ui-sans-serif, system-ui, sans-serif;
+     and names written in it: Lilita's is M PLUS Rounded 1c at 800, as heavy
+     and as round; Figtree's and Shantell's, Noto Sans JP at the same
+     weight. */
+  --font-display: "Lilita One", "M PLUS Rounded 1c", "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Figtree", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
   /* Marker: a player's name, as it is written on their `.jam-tape` strip
      (and on the vote tiles that name them). */
@@ -1029,6 +1030,12 @@
   font-weight: 600;
   color: rgb(242 238 228 / 0.6);
   pointer-events: none;
+}
+
+/* The display face sets its words close; a touch more space between them
+   keeps "Whose jam" from running together. */
+.font-display {
+  word-spacing: 0.06em;
 }
 
 /* An apostrophe in a display headline (`curly/1`): the body face's curl,
