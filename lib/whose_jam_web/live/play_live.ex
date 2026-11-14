@@ -865,8 +865,9 @@ defmodule WhoseJamWeb.PlayLive do
         <%!-- Everyone's name on its strip of tape, as the TV has them. --%>
         <%!-- Their own first, pointed out in marker under it: the mark takes
              no room in the row, so the names wrap as they would without it. --%>
-        <%!-- (On a tablet, four to a row, as the TV seats them.) --%>
-        <div class="flex flex-wrap gap-x-2.5 gap-y-7 md:grid md:grid-cols-4 md:justify-items-start">
+        <%!-- (On a tablet, four to a row, as the TV seats them, each seat as
+             wide as its name needs; a laptop's narrower column wraps them.) --%>
+        <div class="flex flex-wrap gap-x-2.5 gap-y-7 md:grid md:grid-cols-[repeat(4,max-content)] md:justify-between lg:flex lg:justify-start">
           <span
             :for={p <- mine_first(@view.players, @player_id)}
             class="relative flex max-w-full items-center"
@@ -1113,7 +1114,7 @@ defmodule WhoseJamWeb.PlayLive do
         </div>
         <%!-- The song this player picked, as the room will see it: a poster
              with its title and artist. --%>
-        <figure class="jam-paper jam-poster w-[62%] max-w-[15rem] p-2.5 pb-3 text-left text-jam-ink">
+        <figure class="jam-paper jam-poster w-[62%] max-w-[15rem] self-center p-2.5 pb-3 text-left text-jam-ink">
           <img
             :if={@question.song.album_art_url}
             src={@question.song.album_art_url}
@@ -1522,7 +1523,9 @@ defmodule WhoseJamWeb.PlayLive do
       <%!-- The song the TV is playing, as the TV has it: a poster, its cover
            printed on a sheet of paper with its name under it, large enough
            to see at arm's length (`.jam-poster` in app.css). --%>
-      <figure class="jam-paper jam-poster w-[14rem] p-3 pb-3.5 text-left text-jam-ink short:w-[11.25rem] short:p-2.5 md:w-[17rem]">
+      <%!-- Centred in the column (the slip above and the clock below run its
+           full width), the song as the screen's object. --%>
+      <figure class="jam-paper jam-poster w-[78%] max-w-[17rem] self-center p-3 pb-3.5 text-left text-jam-ink short:max-w-[12rem] short:p-2.5 md:max-w-[19rem]">
         <%!-- The meter on the art's corner, so the artist has the line. --%>
         <div class="relative">
           <img
@@ -1829,8 +1832,9 @@ defmodule WhoseJamWeb.PlayLive do
       >
         {@note}
       </p>
-      <%!-- A slip sized to what is on it: its label and the ringed name. --%>
-      <div class="jam-paper jam-lean mt-6 w-fit min-w-[15rem] max-w-full px-8 pb-6 pt-4 text-center text-jam-ink short:mt-4">
+      <%!-- A slip sized to what is on it (its label and the ringed name),
+           centred in the column. --%>
+      <div class="jam-paper jam-lean mx-auto mt-6 w-fit min-w-[15rem] max-w-full px-8 pb-6 pt-4 text-center text-jam-ink short:mt-4">
         <p
           id={@label_id}
           class="flex items-center justify-center gap-1.5 text-sm font-bold text-jam-ink/60"
@@ -2466,7 +2470,9 @@ defmodule WhoseJamWeb.PlayLive do
              dotted leader to each number. --%>
         <%!-- Their place is the headline itself ("You came 2nd"), so the
              receipt carries no second badge saying it again. --%>
-        <div class="jam-paper jam-lean relative mt-1 px-4 pb-3 pt-3 text-jam-ink">
+        <%!-- The receipt lies all but straight: its dense rows and leaders
+             stay level to read. --%>
+        <div class="jam-paper relative mt-1 !rotate-[0.3deg] px-4 pb-3 pt-3 text-jam-ink short:pb-2.5 short:pt-2.5">
           <div class="flex items-start gap-4">
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-jam-ink/65">
@@ -2497,7 +2503,13 @@ defmodule WhoseJamWeb.PlayLive do
           <dl
             :if={recap_stats(@me, @role, @mine) != []}
             id="my-recap"
-            class="mt-1.5 space-y-0 border-t-2 border-dashed border-jam-ink/20 pt-1.5 leading-[1.3]"
+            class={
+              [
+                "space-y-0 border-t-2 border-dashed border-jam-ink/20 pt-1.5 leading-[1.3]",
+                # The winner's marker underline needs room above the rule.
+                if(@won?, do: "mt-4", else: "mt-1.5")
+              ]
+            }
           >
             <%!-- The total first and largest; how it came, smaller under it. --%>
             <div
@@ -2542,14 +2554,16 @@ defmodule WhoseJamWeb.PlayLive do
         <%= if @status == :ended do %>
           <%!-- One compact row, so the player's own place in the scores below
                stays on screen however short the screen is. --%>
+          <%!-- The room has closed: said plainly, a step up from the
+               waiting line it replaces, so nobody misses it. --%>
           <div id="game-ended" class="mt-4 flex flex-col gap-3 px-1">
-            <p class="text-sm font-medium text-jam-cream/75">{ended_message(@end_reason)}</p>
+            <p class="text-[1.0625rem] font-bold text-jam-cream">{ended_message(@end_reason)}</p>
             <.link navigate={~p"/"} class="jam-btn jam-btn-ghost w-full text-base">
               Back home
             </.link>
           </div>
         <% else %>
-          <p id="what-next" class="mt-3 px-1 text-sm font-medium text-jam-cream/65">
+          <p id="what-next" class="mt-3 px-1 text-sm font-medium text-jam-cream/65 short:mt-2">
             Waiting for the host to start another game.
           </p>
         <% end %>
@@ -2570,7 +2584,7 @@ defmodule WhoseJamWeb.PlayLive do
              (this player's included) is in view without scrolling. --%>
         <div id="final-lists" class="lg:!col-start-2 lg:row-span-6 lg:row-start-1">
           <%= for {title, rows, list_id} <- score_lists(@role, @players_board, @board) do %>
-            <h2 class="mb-2 mt-6 px-1 text-sm font-semibold text-jam-cream/65 lg:mt-0">
+            <h2 class="mb-2 mt-6 px-1 text-sm font-semibold text-jam-cream/65 short:mb-1.5 short:mt-4 lg:mt-0">
               {title}
             </h2>
             <%!-- The audience's table in the TV's words ("4 correct"), with no
