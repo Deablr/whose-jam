@@ -995,7 +995,7 @@ defmodule WhoseJamWeb.PlayLive do
         <%!-- A fixed height, so on a laptop the search box beside it can
              line up with the slip: the words and the clock on a line, the
              clock's bar the line's full width under them. --%>
-        <div class="relative mb-4 flex h-8 items-center justify-between gap-3">
+        <div class="relative mb-6 flex h-8 items-center justify-between gap-3">
           <div class="text-sm font-semibold text-jam-cream/65">
             <%= if @total > 1 do %>
               Prompt {@index + 1} of {@total}, {@answered} picked
@@ -1055,7 +1055,7 @@ defmodule WhoseJamWeb.PlayLive do
       </div>
 
       <%!-- On a laptop, level with the slip (past the line above it). --%>
-      <div class="lg:pt-12">
+      <div class="lg:pt-14">
         {answer_body(assigns)}
 
         <%!-- Only worth showing when there is somewhere to page to. --%>
@@ -1409,7 +1409,7 @@ defmodule WhoseJamWeb.PlayLive do
         <p
           :if={@round_state == :revealing}
           id="song-line"
-          class="flex h-12 items-end text-sm font-semibold text-jam-cream/65 short:h-10"
+          class="flex h-12 items-start pt-0.5 text-xs font-semibold text-jam-cream/65 short:h-10"
         >
           Round {@round.index + 1} of {@round.total}
         </p>
@@ -2212,7 +2212,7 @@ defmodule WhoseJamWeb.PlayLive do
       >
         <span
           :if={@gain > 0}
-          class="absolute -right-2.5 -top-3.5 rotate-[7deg] rounded-sm bg-jam-orange px-2.5 py-1 font-display text-2xl leading-none text-jam-ink shadow-[0_0.15rem_0_rgb(0_0_0/0.3)]"
+          class="absolute -right-2 -top-3.5 rotate-[7deg] rounded-sm bg-jam-orange px-2.5 py-1 font-display text-2xl leading-none text-jam-ink shadow-[0_0.15rem_0_rgb(0_0_0/0.3)]"
           aria-label={"Plus #{@gain}"}
         >
           +{@gain}
@@ -2633,7 +2633,7 @@ defmodule WhoseJamWeb.PlayLive do
                 </dd>
                 <dd
                   :if={award}
-                  class="flex basis-full flex-wrap items-center gap-x-2 gap-y-1 pb-1.5 pt-1 text-[0.8125rem] font-medium leading-snug text-jam-ink/65"
+                  class="flex basis-full flex-wrap items-center gap-x-2 gap-y-1 pb-2.5 pt-1 text-[0.8125rem] font-medium leading-snug text-jam-ink/65"
                 >
                   <span class="jam-tape jam-tape-orange jam-tilt-3 shrink-0 !px-2 !py-0.5 text-xs text-jam-ink">
                     {award.title}
@@ -2708,14 +2708,23 @@ defmodule WhoseJamWeb.PlayLive do
             <ol id={list_id} class="jam-panel px-1.5 py-1.5">
               <li
                 :for={row <- rows}
-                class={[
-                  "flex break-inside-avoid items-center justify-between gap-3 rounded-md px-3 leading-tight",
-                  if(list_id == "final-scores" and row.rank == 1,
-                    do: "min-h-10 py-1 short:min-h-9",
-                    else: "min-h-8 py-0.5"
-                  ),
-                  row.id == @player_id && "bg-jam-cream/[0.08]"
-                ]}
+                class={
+                  [
+                    "flex break-inside-avoid items-center justify-between gap-3 px-3 leading-tight",
+                    if(list_id == "final-scores" and row.rank == 1,
+                      do: "min-h-10 py-1 short:min-h-9",
+                      else: "min-h-8 py-0.5"
+                    ),
+                    # The player's own row stands out; a run of tied rows
+                    # shares one faint band, so a shared place reads as one
+                    # group (its corners at the run's ends).
+                    cond do
+                      row.id == @player_id -> "rounded-md bg-jam-cream/[0.08]"
+                      row.tied? -> ["bg-jam-cream/[0.035]", tie_band_corners(rows, row)]
+                      true -> "rounded-md"
+                    end
+                  ]
+                }
               >
                 <div class="flex min-w-0 items-center gap-3">
                   <span

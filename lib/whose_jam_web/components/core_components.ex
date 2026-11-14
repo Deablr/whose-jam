@@ -548,6 +548,21 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
+  The corners of the faint band a run of tied rows shares in a ranked table
+  (`tie_part/2`): rounded at the run's two ends only, so the run reads as one
+  group.
+  """
+  @spec tie_band_corners([%{id: term(), rank: pos_integer()}], %{id: term(), rank: pos_integer()}) ::
+          String.t() | nil
+  def tie_band_corners(rows, row) do
+    case tie_part(rows, row) do
+      :first -> "rounded-t-md"
+      :middle -> nil
+      :last -> "rounded-b-md"
+    end
+  end
+
+  @doc """
   Joins a line of copy's last two words with a no-break space, so a prompt
   that wraps never leaves one word alone on its last line. Copy of three
   words or fewer is left as it is (it may need to break anywhere on a
@@ -718,7 +733,7 @@ defmodule WhoseJamWeb.CoreComponents do
   def modal(assigns) do
     ~H"""
     <div
-      class="modal modal-open bg-jam-ink/[0.96] backdrop-blur-[24px]"
+      class="modal modal-open bg-jam-ink/[0.985] backdrop-blur-[24px]"
       phx-window-keydown={@on_close}
       phx-key="Escape"
     >

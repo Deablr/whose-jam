@@ -253,8 +253,8 @@ defmodule WhoseJamWeb.HomeLive do
         >
           <h3 class="font-display text-[2rem] leading-none lg:text-[2.6rem]">{theme.name}</h3>
           <%!-- Two lines kept for it on every card, so the prompts start level. --%>
-          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-balance text-jam-ink/70 lg:text-[1.35rem]">
-            {how_it_plays(theme.style_sequence)}
+          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-pretty text-jam-ink/70 lg:text-[1.35rem]">
+            {no_widow(how_it_plays(theme.style_sequence))}
           </p>
           <%!-- One of its prompts, quoted, past a dashed rule as the
                receipt's lines are. --%>

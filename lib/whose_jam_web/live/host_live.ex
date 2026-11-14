@@ -1656,12 +1656,20 @@ defmodule WhoseJamWeb.HostLive do
           <p :if={@view.round.prompt} class="text-[1.75rem] font-bold text-jam-cream/70">
             Round {@view.round.index + 1} of {@view.round.total}<span :if={second_take?(@view.round)}>: another song for</span>
           </p>
+          <%!-- A long prompt gets a wider slip and a size down, so it sets in
+               about three even lines rather than a tall block. --%>
           <div
             :if={@view.round.prompt}
-            class="jam-paper jam-lean max-w-[52rem] px-10 pb-9 pt-10 text-jam-ink"
+            class={[
+              "jam-paper jam-lean px-10 pb-9 pt-10 text-jam-ink",
+              round_card_width(@view.round.prompt)
+            ]}
           >
             <%!-- Balanced lines, and never one word alone on the last. --%>
-            <p class="font-display text-[4.25rem] leading-[1.1] text-balance">
+            <p class={[
+              "font-display leading-[1.1] text-balance",
+              round_card_text(@view.round.prompt)
+            ]}>
               {curly(no_widow(@view.round.prompt))}
             </p>
             <%!-- The round's one clue, said here, once. --%>
@@ -2115,6 +2123,18 @@ defmodule WhoseJamWeb.HostLive do
     </div>
     """
   end
+
+  # A prompt too long for the round card's slip at full size (more than about
+  # three lines of it) gets a wider slip and a size down.
+  defp round_card_width(prompt) when is_binary(prompt) and byte_size(prompt) > 64,
+    do: "max-w-[62rem]"
+
+  defp round_card_width(_prompt), do: "max-w-[52rem]"
+
+  defp round_card_text(prompt) when is_binary(prompt) and byte_size(prompt) > 64,
+    do: "text-[3.75rem]"
+
+  defp round_card_text(_prompt), do: "text-[4.25rem]"
 
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -2823,9 +2843,9 @@ defmodule WhoseJamWeb.HostLive do
                   :if={song[:album_art_url]}
                   src={song.album_art_url}
                   alt=""
-                  class="size-14 shrink-0 rounded-sm object-cover"
+                  class="size-[4.5rem] shrink-0 rounded-sm object-cover"
                 />
-                <span class="min-w-0 text-[1.5rem] font-bold leading-tight text-jam-ink/75 line-clamp-2">
+                <span class="min-w-0 text-[1.75rem] font-bold leading-tight text-jam-ink line-clamp-2">
                   {song.song_name}
                 </span>
               </dd>
@@ -2871,7 +2891,16 @@ defmodule WhoseJamWeb.HostLive do
                is the headline's to say: "… share the win"). --%>
           <p :if={!@playlist_open?} class="jam-eyebrow -mb-3 px-1 pb-3">Final scores</p>
           <ol :if={!@playlist_open?} id="final-scores" class="jam-panel px-3 py-3">
-            <li :for={row <- @board} class="grid">
+            <%!-- A run of tied rows shares one faint band, so a shared
+                 place reads as one group (its corners at the run's ends). --%>
+            <li
+              :for={row <- @board}
+              class={[
+                "grid",
+                row.tied? && "bg-jam-cream/[0.035]",
+                row.tied? && tie_band_corners(@board, row)
+              ]}
+            >
               <%!-- The top two are kept face down while the rest fill in, so
                    the winner is never given away by who is left: a final two,
                    turned over together as the winner is named. --%>
