@@ -986,6 +986,9 @@
    shows that it does. */
 [data-theme="jam"] .modal-box {
   background-color: var(--color-jam-night);
+  /* Flat and filled, no outline (an outline is only focus or the chosen
+     thing): its fill and a soft shadow lift it off the scrim. */
+  box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.45);
   scrollbar-width: thin;
   scrollbar-color: rgb(242 238 228 / 0.3) transparent;
 }
@@ -998,6 +1001,9 @@
   justify-content: space-between;
   padding-block: 0.4rem;
   font-size: 1.3rem;
+  /* A switch's words are an option, said a step lighter than the labels
+     over the fields. */
+  font-weight: 500;
   cursor: pointer;
 }
 

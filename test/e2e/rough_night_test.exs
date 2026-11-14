@@ -339,7 +339,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     assert length(winners) == 2
 
     host
-    |> assert_has("p", text: "It’s a tie", timeout: @wait)
+    |> assert_has("#winner-margin", text: "share the win", timeout: @wait)
     |> then(fn host -> Enum.reduce(winners, host, &assert_has(&2, "h1#winner", text: &1)) end)
   end
 

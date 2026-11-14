@@ -654,7 +654,7 @@ defmodule WhoseJamWeb.PlayLive do
                 {@my_score}
               </span>
             </span>
-            <span class="text-[0.75rem] font-bold" aria-hidden="true">
+            <span class="text-[0.8125rem] font-bold" aria-hidden="true">
               {cond do
                 @role == :audience -> "right"
                 @my_score == 1 -> "pt"
@@ -679,8 +679,10 @@ defmodule WhoseJamWeb.PlayLive do
   defp in_play?(%{phase: phase}), do: phase in [:answering, :playing, :finished]
   defp in_play?(_view), do: false
 
+  # The header's points, while a game plays (the final screens' receipt says
+  # them instead).
   defp my_score(%{view: %{phase: phase, scores: scores}, player_id: player_id})
-       when phase in [:playing, :finished] and is_binary(player_id),
+       when phase == :playing and is_binary(player_id),
        do: Map.get(scores, player_id, 0)
 
   defp my_score(_assigns), do: nil
@@ -1463,7 +1465,12 @@ defmodule WhoseJamWeb.PlayLive do
         </figure>
       </div>
 
-      <div class="flex flex-1 flex-col lg:flex-none">
+      <%!-- On a laptop, while the song plays, what to do sits level with
+           the middle of the slip and poster beside it. --%>
+      <div class={[
+        "flex flex-1 flex-col lg:flex-none",
+        @round_state == :revealing && "lg:self-center"
+      ]}>
         <%= case @round_state do %>
           <% :revealing -> %>
             {revealing_body(assigns)}
@@ -1585,14 +1592,16 @@ defmodule WhoseJamWeb.PlayLive do
       <%!-- The TV's countdown, in the one form every countdown takes: its
            words and orange numerals on a line, and the square bar under
            them, draining as voting gets nearer. --%>
+      <%!-- The numerals at the line's end, so the words before them (the
+           picker's are longer) never move them. --%>
       <div class="w-full space-y-2">
-        <p class="text-sm font-medium text-jam-cream/70">
+        <p class="flex items-baseline justify-between gap-3 text-sm font-medium text-jam-cream/70">
           {if own_round?(assigns), do: "Your prediction opens in", else: "Voting opens in"}
           <span
             id="countdown-votes-open"
             phx-hook="Countdown"
             data-deadline={@round.votes_open_ms}
-            class="ml-1 font-display text-lg tabular-nums text-jam-orange"
+            class="font-display text-lg tabular-nums text-jam-orange"
           ></span>
         </p>
         <div
@@ -1741,11 +1750,13 @@ defmodule WhoseJamWeb.PlayLive do
              their place from the first tap to the last, so the names below
              never move under a thumb about to tap again. --%>
         <div class="mb-4 mt-1 space-y-1 short:mb-3">
-          <%!-- One line on every phone (two kept on the narrowest, where
-               the longer of the two might wrap). --%>
+          <%!-- Two lines kept on every phone, the picker's and everyone
+               else's alike, so the names under it sit at the same height
+               whichever of the two lines wraps (a tablet or laptop has the
+               width for either on one). --%>
           <p
             id="vote-hint"
-            class="text-[0.9375rem] font-normal leading-[1.4] text-jam-cream/75 max-[359px]:min-h-[2.8em]"
+            class="min-h-[2.8em] text-[0.9375rem] font-normal leading-[1.4] text-jam-cream/75 md:min-h-0"
           >
             <.inline_points text={vote_hint(@round, @own?, @change?)} />
           </p>
@@ -2520,7 +2531,7 @@ defmodule WhoseJamWeb.PlayLive do
              receipt carries no second badge saying it again. --%>
         <%!-- The receipt lies all but straight: its dense rows and leaders
              stay level to read. --%>
-        <div class="jam-paper relative mt-1 !rotate-[0.3deg] px-4 pb-3 pt-3 text-jam-ink short:pb-2.5 short:pt-2.5">
+        <div class="jam-paper relative mt-1 !rotate-[0.3deg] px-4 pb-2.5 pt-2.5 text-jam-ink short:pb-2 short:pt-2">
           <div class="flex items-start gap-4">
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-jam-ink/65">
@@ -2537,7 +2548,7 @@ defmodule WhoseJamWeb.PlayLive do
                 <h1
                   id="my-place"
                   class={[
-                    "relative font-display leading-tight text-balance",
+                    "relative font-display leading-[1.05] text-balance",
                     if(@won?, do: "text-[2.6rem]", else: "text-[1.75rem]")
                   ]}
                 >
@@ -2620,7 +2631,7 @@ defmodule WhoseJamWeb.PlayLive do
             </.link>
           </div>
         <% else %>
-          <p id="what-next" class="mt-3.5 px-1 text-sm font-medium text-jam-cream/65 short:mt-2.5">
+          <p id="what-next" class="mt-3 px-1 text-sm font-medium text-jam-cream/65 short:mt-2.5">
             Waiting for the host to start another game.
           </p>
         <% end %>
@@ -2783,8 +2794,8 @@ defmodule WhoseJamWeb.PlayLive do
       [] -> "That’s the game"
       [winner] -> "#{winner.name} won"
       winners when length(winners) == length(board) -> "That’s the game"
-      [a, b] -> "#{a.name} & #{b.name} tied"
-      winners -> "#{length(winners)} tied for the win"
+      [a, b] -> "#{a.name} & #{b.name} share the win"
+      winners -> "#{length(winners)} players share the win"
     end
   end
 

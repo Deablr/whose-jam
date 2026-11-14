@@ -662,7 +662,7 @@ defmodule WhoseJamWeb.CoreComponents do
         role="dialog"
         aria-modal="true"
         phx-mounted={JS.focus_first(to: "#" <> @id)}
-        class={["modal-box border border-jam-cream/10", @class]}
+        class={["modal-box", @class]}
       >
         <div class={@body_class}>
           {render_slot(@inner_block)}

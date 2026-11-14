@@ -1156,7 +1156,7 @@ defmodule WhoseJamWeb.HostLive do
         </div>
         <div class="space-y-6">
           <section class="space-y-3">
-            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Rules</h3>
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Voting</h3>
             <%!-- The rules' switches, a row each, label left and switch
                  right, as the screens' are under them. --%>
             <form phx-change="set_config" id="rule-settings" class="grid gap-1">
@@ -1599,13 +1599,9 @@ defmodule WhoseJamWeb.HostLive do
             Round {@view.round.index + 1}
             <span class="text-jam-cream/40">of {@view.round.total}</span>
           </p>
+          <%!-- The round, as the slip's label (the lobby named the theme). --%>
           <p :if={@view.round.prompt} class="text-[1.75rem] font-bold text-jam-cream/70">
-            <span class="font-display text-jam-cream">{@view.theme.name}</span>
-            <span class="ml-4 border-l-2 border-jam-cream/20 pl-4">
-              Round {@view.round.index + 1} of {@view.round.total}<span :if={
-                second_take?(@view.round)
-              }>: another song for</span>
-            </span>
+            Round {@view.round.index + 1} of {@view.round.total}<span :if={second_take?(@view.round)}>: another song for</span>
           </p>
           <div
             :if={@view.round.prompt}
@@ -2171,7 +2167,7 @@ defmodule WhoseJamWeb.HostLive do
            points on an orange sticker. --%>
         <%!-- Set a step quieter than the name: the body face at 500–600, so
              the answer stays the loudest thing on the screen. --%>
-        <div class="jam-rise jam-beat-2 space-y-1.5 text-[1.55rem] font-medium leading-snug">
+        <div class="jam-rise jam-beat-2 space-y-2.5 text-[1.55rem] font-medium leading-snug">
           <p id="reveal-summary" class="flex items-center gap-4 font-semibold text-jam-cream">
             <span
               :if={@summary.points}
@@ -2501,7 +2497,7 @@ defmodule WhoseJamWeb.HostLive do
           <.icon
             :if={@locked?}
             name="hero-check-circle-solid"
-            class="size-[0.8em] shrink-0 text-jam-mint-deep"
+            class="size-[0.95em] shrink-0 text-jam-mint-deep"
           />
         </.name_tape>
         <span :if={!@in?} class="jam-tape-slot max-w-full">
@@ -2535,7 +2531,7 @@ defmodule WhoseJamWeb.HostLive do
           {@seat.score}
           <span
             :if={@gain > 0}
-            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-[4deg] bg-jam-orange px-[0.32rem] py-[0.12rem] font-display text-[1.1rem] leading-none text-jam-ink"
+            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-[4deg] bg-jam-orange px-[0.35rem] py-[0.14rem] font-display text-[1.3rem] leading-none text-jam-ink"
           >
             +{@gain}
           </span>
@@ -2613,13 +2609,14 @@ defmodule WhoseJamWeb.HostLive do
             >
               {song.caption}
             </p>
-            <%!-- Tied winners' songs each say whose they are. --%>
-            <p
+            <%!-- Tied winners' songs each say whose they are, on the prize's
+                 orange tape. --%>
+            <.name_tape
               :if={length(@winner_songs) > 1}
-              class="max-w-64 truncate text-center font-display text-4xl text-jam-orange"
-            >
-              {song.owner}
-            </p>
+              player_id={song.owner_id}
+              name={song.owner}
+              class="jam-tape-orange max-w-64 text-[2rem]"
+            />
           </div>
         </div>
         <div class="min-w-0 space-y-4">
@@ -2628,20 +2625,31 @@ defmodule WhoseJamWeb.HostLive do
                top, overlapping it a little. The orange is the prize's (the
                crown, the tapes) and the points', so the name stands clear of
                it. --%>
+          <%!-- A shared win wears one crown, over the middle of the names,
+               so neither reads as the winner. --%>
           <p class={[
-            "jam-pop jam-finale-win relative font-display leading-none text-balance text-jam-cream",
+            "jam-pop jam-finale-win relative w-fit font-display leading-none text-balance text-jam-cream",
+            length(@winner_songs) > 1 && "mx-auto",
             winner_card_size(@winners, @board)
           ]}>
             <.marker_stroke
+              :if={winner_verb(@winners, @board)}
               kind={:crown}
-              class="absolute left-[0.01em] -top-[0.26em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.6rem]"
+              class={[
+                "absolute -top-[0.26em] h-[0.52em] w-[0.64em] text-jam-orange [--jam-stroke-w:0.6rem]",
+                if(match?([_], @winners),
+                  do: "left-[0.01em] -rotate-[9deg]",
+                  else: "left-1/2 -translate-x-1/2 -rotate-[4deg]"
+                )
+              ]}
             />
             <.winner_names winners={@winners} board={@board} />
           </p>
-          <%!-- How it was won, a step down from the name: the points in
-               orange, as every point is; the margin quieter under them. --%>
+          <%!-- What they did and how, a step down from the names: the
+               points in orange, as every point is; the margin quieter under
+               them. --%>
           <p class="text-[3rem] font-bold leading-tight text-jam-cream">
-            <.winner_points_line winners={@winners} />
+            <.winner_points_line winners={@winners} verb={winner_verb(@winners, @board)} />
             <span
               :if={winner_margin(@winners, @board)}
               class="mt-1 block text-[2.4rem] font-semibold text-jam-cream/65"
@@ -2704,7 +2712,9 @@ defmodule WhoseJamWeb.HostLive do
                   @build? && "jam-rise jam-finale-after-1"
                 ]}
               >
-                <span class="block"><.winner_points_line winners={@winners} /></span>
+                <span class="block">
+                  <.winner_points_line winners={@winners} verb={winner_verb(@winners, @board)} />
+                </span>
                 <span
                   :if={winner_margin(@winners, @board)}
                   class="block whitespace-nowrap text-jam-cream/60"
@@ -2796,18 +2806,9 @@ defmodule WhoseJamWeb.HostLive do
           <%!-- The night's setlist, best first, the way every phone lists it
                too: place, name on its tape, score; first place on orange
                prize tape, a row taller. --%>
-          <%!-- What the table is, on the table, as the phones have it; the
-               tie is news the winner's moment breaks, not the countdown
-               before it. --%>
-          <p :if={!@playlist_open?} class="jam-eyebrow -mb-3 px-1 pb-3">
-            Final scores<span
-              :if={length(@winners) > 1 and length(@winners) < length(@board)}
-              class={[
-                "ml-3 rounded-md bg-jam-orange/15 px-2.5 py-0.5 text-jam-orange",
-                @build? && "jam-rise jam-finale-win"
-              ]}
-            >It’s a tie</span>
-          </p>
+          <%!-- What the table is, on the table, as the phones have it (a tie
+               is the headline's to say: "… share the win"). --%>
+          <p :if={!@playlist_open?} class="jam-eyebrow -mb-3 px-1 pb-3">Final scores</p>
           <ol :if={!@playlist_open?} id="final-scores" class="jam-panel px-3 py-3">
             <li :for={row <- @board} class="grid">
               <%!-- The top two are kept face down while the rest fill in, so
@@ -2961,7 +2962,7 @@ defmodule WhoseJamWeb.HostLive do
         song =
           bluff_song(covered, best_bluff_of(view, winner.id)) || Map.put(first, :caption, nil)
 
-        Map.put(song, :owner, winner.name)
+        song |> Map.put(:owner, winner.name) |> Map.put(:owner_id, winner.id)
     end
   end
 
@@ -3400,14 +3401,15 @@ defmodule WhoseJamWeb.HostLive do
   attr :winners, :list, required: true
   attr :board, :list, required: true
 
-  # The winner headline with each name kept whole: it breaks between names,
-  # never inside one ("Maximiliana-Rose / & Cleo"). A tie says so above it.
+  # The winners' names, each kept whole: the line breaks between names, never
+  # inside one ("Maximiliana-Rose / & Cleo"). What they did ("wins", "share
+  # the win") is the line under it (`winner_points_line/1`); a table where
+  # everyone tied says so instead.
   defp winner_names(%{winners: [_ | _] = winners, board: board} = assigns)
        when length(winners) < length(board) or length(board) <= 2 do
     assigns =
       assign(assigns,
-        names: Enum.map(winners, & &1.name),
-        verb: if(length(winners) == 1, do: "wins", else: "share the win")
+        names: Enum.map(winners, & &1.name)
       )
 
     ~H"""
@@ -3415,7 +3417,6 @@ defmodule WhoseJamWeb.HostLive do
       <span :if={index > 0 and index == length(@names) - 1}>&</span>
       <span class="whitespace-nowrap">{name}{if index < length(@names) - 2, do: ","}</span>
     <% end %>
-    {@verb}
     """
   end
 
@@ -3443,16 +3444,34 @@ defmodule WhoseJamWeb.HostLive do
     |> Map.new(fn {rank, step} -> {rank, min(step, 5)} end)
   end
 
-  # The winner's own beat: about twice a reveal's name, as large as the
-  # headline's length leaves room for.
+  # The winner's own beat: the name alone, larger than a reveal's, as large
+  # as its length leaves room for; tied names a step smaller, under their
+  # posters.
   defp winner_card_size(winners, board) do
-    case String.length(winner_headline(winners, board)) do
-      n when n <= 10 -> "text-[13rem]"
-      n when n <= 16 -> "text-[9rem]"
-      n when n <= 24 -> "text-[6.5rem]"
-      _ -> "text-[5rem]"
+    case {length(winners), String.length(winner_label(winners, board))} do
+      {1, n} when n <= 6 -> "text-[15rem]"
+      {1, n} when n <= 10 -> "text-[12rem]"
+      {_, n} when n <= 12 -> "text-[9rem]"
+      {_, n} when n <= 18 -> "text-[7rem]"
+      {_, n} when n <= 26 -> "text-[5.5rem]"
+      _ -> "text-[4.5rem]"
     end
   end
+
+  # The names as the headline sets them (or the line said instead of them).
+  defp winner_label(winners, board) when length(winners) < length(board) or length(board) <= 2,
+    do: join_names(Enum.map(winners, & &1.name))
+
+  defp winner_label(winners, board), do: winner_headline(winners, board)
+
+  # What the named winners did, said under their names; nothing when the
+  # headline has said it already ("Everyone tied").
+  defp winner_verb([_], _board), do: "wins"
+
+  defp winner_verb(winners, board) when length(winners) < length(board) or length(board) <= 2,
+    do: "share the win"
+
+  defp winner_verb(_winners, _board), do: nil
 
   # One winner's name can be set large; names sharing the line need the room.
   defp winner_size_class(1), do: "text-8xl"
@@ -3460,12 +3479,14 @@ defmodule WhoseJamWeb.HostLive do
   defp winner_size_class(_count), do: "text-5xl"
 
   attr :winners, :list, required: true
+  attr :verb, :string, default: nil
 
-  # "with 11 points", the number in the scores' lettering and orange.
+  # "wins with 11 points" (or "share the win with 9 points each"), the number
+  # in the scores' lettering and orange.
   defp winner_points_line(assigns) do
     assigns =
       assign(assigns,
-        lead: if(match?([_], assigns.winners), do: "with", else: "on"),
+        lead: Enum.join(Enum.reject([assigns.verb, "with"], &is_nil/1), " "),
         score: hd(assigns.winners).score,
         tail: if(match?([_], assigns.winners), do: "", else: " each")
       )
