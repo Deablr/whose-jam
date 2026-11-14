@@ -258,7 +258,7 @@
 /* Disabled is a flat, quiet slab. */
 .jam-btn:disabled {
   background: rgb(242 238 228 / 0.08);
-  color: rgb(242 238 228 / 0.45);
+  color: rgb(242 238 228 / 0.6);
   cursor: not-allowed;
 }
 
@@ -329,8 +329,8 @@
   filter: blur(80px) saturate(1.3) brightness(0.7);
   transform: scale(1.15);
   /* A tint, not a wash: enough of the cover to set the song's mood (about a
-     tenth of it shows through the charcoal), never enough to read. */
-  opacity: 0.4;
+     twentieth of it shows through the charcoal), never enough to read. */
+  opacity: 0.26;
 }
 
 /* The tint gathers where the art is (behind the TV's poster, on the left;
@@ -348,7 +348,7 @@
 
 /* At the end of the game the tint sits behind a table: softer still. */
 .jam-ambient-soft > img {
-  opacity: 0.28;
+  opacity: 0.2;
 }
 
 .jam-ambient::after {
@@ -898,7 +898,9 @@
 /* A mask clips a box shadow, so a ticket is lifted from outside. */
 @layer components {
   .jam-lift {
-    filter: drop-shadow(0 0.2rem 0 rgb(0 0 0 / 0.25)) drop-shadow(0 0.8rem 1.2rem rgb(0 0 0 / 0.35));
+    /* Short and soft: a long shadow would pool in the notches as dark
+       dots and spill onto whatever sits under the ticket. */
+    filter: drop-shadow(0 0.12rem 0.2rem rgb(0 0 0 / 0.35));
   }
 }
 
@@ -992,6 +994,24 @@
   pointer-events: none;
 }
 
+/* A theme to pick, as a sheet of paper (`.jam-theme-card`): it lifts under
+   the pointer, and its pink ring shows only when it has keyboard focus. */
+.jam-theme-card {
+  transition: translate 150ms ease, box-shadow 150ms ease;
+}
+
+.jam-theme-card:hover {
+  translate: 0 -0.25rem;
+  box-shadow:
+    0 0.06rem 0.12rem rgb(0 0 0 / 0.3),
+    0 0.8rem 1.6rem rgb(0 0 0 / 0.35);
+}
+
+.jam-theme-card:has(button:focus-visible) {
+  outline: 3px solid var(--color-jam-pink);
+  outline-offset: 4px;
+}
+
 /* A count with a − and a + set into its field (`.jam-stepper`), the number
    between them in the scores' lettering. The buttons sit over the field's
    ends, level with it (the field ends 0.65rem above its wrapper's foot). */
@@ -1055,9 +1075,9 @@
   }
 }
 
-/* A tablet in a player's hands gets the phone layout a little larger, in a
-   wider column that fills the screen (a tablet is a roomier phone, not a
-   blown-up one); a laptop, set further back, larger still. */
+/* A tablet in a player's hands gets the phone layout a size up, in the
+   phone's own column (a bigger phone, never a stretched one); a laptop, set
+   further back, larger still. */
 @media (min-width: 48rem) {
   html:has(.jam-handheld) {
     font-size: 125%;

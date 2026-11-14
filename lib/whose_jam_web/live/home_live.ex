@@ -148,8 +148,10 @@ defmodule WhoseJamWeb.HomeLive do
                    a perforation; on a phone it is the screen's pink button,
                    under it. --%>
               <%!-- Focus is a pink line under the code, inside the ticket,
-                   so it follows the ticket's cut ends. --%>
-              <div class="jam-lift min-w-0 flex-1 lg:filter-none">
+                   so it follows the ticket's cut ends. Flat on its panel:
+                   a lifting shadow would fall into its notches (dark dots)
+                   and onto the button under it. --%>
+              <div class="min-w-0 flex-1">
                 <div class="jam-ticket [--jam-notch:0.55rem] lg:bg-transparent lg:[mask:none]">
                   <input
                     type="text"
@@ -160,7 +162,7 @@ defmodule WhoseJamWeb.HomeLive do
                     placeholder="Room code"
                     maxlength="4"
                     aria-label="Room code"
-                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/45 placeholder-shown:pt-3 placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:text-xl"
+                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/45 placeholder-shown:pt-[1.4rem] placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:text-xl"
                   />
                 </div>
               </div>
@@ -233,32 +235,38 @@ defmodule WhoseJamWeb.HomeLive do
         </button>
       </div>
 
-      <%!-- The themes side by side, each a flat card: its name, how it
-           plays in a line, one of its prompts on the slip the players will
-           get, and the way in at its foot, so the two cards' buttons line
-           up. --%>
-      <ul class="grid gap-5 sm:grid-cols-2">
+      <%!-- The themes side by side, each a sheet of paper laid on the table:
+           its name, how it plays, and one of its prompts, with the way in at
+           its foot. The whole sheet is the button (its "Host this" stretches
+           over it); it lifts under the pointer and is ringed only on focus. --%>
+      <ul class="grid gap-8 pt-2 sm:grid-cols-2">
         <li
           :for={theme <- @themes}
-          class="flex flex-col gap-4 rounded-lg bg-[#2c2b28] p-6 lg:gap-5 lg:p-7"
+          class="jam-paper jam-theme-card group relative flex flex-col gap-3 px-7 pb-6 pt-7 text-jam-ink lg:gap-4 lg:px-9 lg:pb-8 lg:pt-9"
         >
-          <h3 class="font-display text-[1.75rem] leading-none lg:text-[2.25rem]">{theme.name}</h3>
-          <%!-- Two lines kept for it on every card, so the slips start level. --%>
-          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-jam-cream/85 lg:text-[1.35rem]">
+          <h3 class="font-display text-[2rem] leading-none lg:text-[2.6rem]">{theme.name}</h3>
+          <%!-- Two lines kept for it on every card, so the prompts start level. --%>
+          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-jam-ink/70 lg:text-[1.35rem]">
             {how_it_plays(theme.style_sequence)}
           </p>
+          <%!-- One of its prompts, quoted, past a dashed rule as the
+               receipt's lines are. --%>
           <p
             :if={theme.examples != []}
-            class="jam-paper jam-lean w-fit px-4 py-2.5 font-display text-base leading-snug text-pretty text-jam-ink lg:text-[1.4rem]"
+            class="border-t-2 border-dashed border-jam-ink/15 pt-4 font-display text-[1.125rem] leading-[1.2] text-pretty text-jam-ink/85 lg:text-[1.5rem]"
           >
-            {hd(theme.examples).prompt}
+            “{hd(theme.examples).prompt}”
           </p>
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="jam-btn jam-btn-cream mt-auto w-full lg:text-xl"
+            class="mt-auto flex cursor-pointer items-center gap-2 pt-3 text-left text-[1.125rem] font-extrabold text-jam-ink after:absolute after:inset-0 after:content-[''] focus-visible:outline-none lg:text-[1.4rem]"
           >
             Host this
+            <.icon
+              name="hero-arrow-right"
+              class="size-[1.1em] transition-transform duration-150 group-hover:translate-x-1"
+            />
           </button>
         </li>
       </ul>

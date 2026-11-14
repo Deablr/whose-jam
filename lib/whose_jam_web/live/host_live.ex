@@ -745,18 +745,24 @@ defmodule WhoseJamWeb.HostLive do
       :if={@show_music_prompt?}
       id="music-prompt-modal"
       on_close="dismiss_music_prompt"
-      class="max-w-2xl"
-      body_class="space-y-5"
+      class="max-w-2xl lg:max-w-[56rem] lg:p-10"
+      body_class="space-y-6"
     >
-      <div class="space-y-2">
-        <h2 class="font-display text-[2.5rem] leading-none">Connect your music</h2>
-        <p class="text-lg text-base-content/75">
+      <%!-- Read from the sofa: the game's own sizes, one big row for each
+           service, and the way out as a quiet link. --%>
+      <div class="space-y-3">
+        <h2 class="font-display text-[2.5rem] leading-none lg:text-[3.25rem]">Connect your music</h2>
+        <p class="text-lg text-base-content/75 lg:text-[1.4rem] lg:leading-snug">
           This screen plays every song the players pick. Connect a music service before you start.
         </p>
       </div>
-      {music_service_list(assigns)}
-      <div class="modal-action mt-0">
-        <button type="button" phx-click="dismiss_music_prompt" class="jam-btn jam-btn-ghost text-sm">
+      {music_service_list(assign(assigns, :big?, true))}
+      <div class="flex justify-end">
+        <button
+          type="button"
+          phx-click="dismiss_music_prompt"
+          class="cursor-pointer text-base font-semibold text-jam-cream/70 underline decoration-jam-cream/30 underline-offset-4 hover:text-jam-cream lg:text-[1.3rem]"
+        >
           Not now
         </button>
       </div>
@@ -814,20 +820,34 @@ defmodule WhoseJamWeb.HostLive do
 
   defp music_service_list(assigns) do
     {available, unconfigured} = Enum.split_with(assigns.services, &(&1.status != :unconfigured))
-    assigns = assign(assigns, available: available, unconfigured: unconfigured)
+
+    assigns =
+      assign(assigns,
+        available: available,
+        unconfigured: unconfigured,
+        big?: Map.get(assigns, :big?, false)
+      )
 
     ~H"""
     <ul class="space-y-2.5">
       <li
         :for={service <- @available}
-        class="space-y-3 rounded-xl bg-jam-cream/[0.05] p-4"
+        class={["space-y-3 rounded-xl bg-jam-cream/[0.05]", if(@big?, do: "px-7 py-6", else: "p-4")]}
       >
         <div class="flex items-center gap-4">
           <div class="flex-1 min-w-0">
-            <p class="text-xl font-bold leading-tight">{service.name}</p>
+            <p class={[
+              "font-bold leading-tight",
+              if(@big?, do: "text-[1.75rem]", else: "text-xl")
+            ]}>
+              {service.name}
+            </p>
             <%!-- Connected says whether this screen can play yet, in the same
                  line. --%>
-            <p class={["text-sm", service_status_class(service.status)]}>
+            <p class={[
+              if(@big?, do: "mt-1 text-[1.25rem]", else: "text-sm"),
+              service_status_class(service.status)
+            ]}>
               {service_status_text(service)}<span
                 :if={service.status == :connected}
                 class="text-jam-cream/70"
@@ -839,7 +859,11 @@ defmodule WhoseJamWeb.HostLive do
           <a
             :if={service.connect_href && service.status != :unconfigured}
             href={service.connect_href}
-            class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
+            class={[
+              "jam-btn",
+              if(@big?, do: "text-[1.4rem]", else: "text-sm !px-4 !py-2"),
+              service.status == :connected && "jam-btn-ghost"
+            ]}
           >
             {service_action(service.status)}
           </a>
@@ -848,7 +872,11 @@ defmodule WhoseJamWeb.HostLive do
             type="button"
             phx-click="connect_music"
             phx-value-provider={service.id}
-            class={["jam-btn text-sm !px-4 !py-2", service.status == :connected && "jam-btn-ghost"]}
+            class={[
+              "jam-btn",
+              if(@big?, do: "text-[1.4rem]", else: "text-sm !px-4 !py-2"),
+              service.status == :connected && "jam-btn-ghost"
+            ]}
           >
             {service_action(service.status)}
           </button>
@@ -885,7 +913,10 @@ defmodule WhoseJamWeb.HostLive do
     </ul>
     <%!-- What this server can't offer, in one quiet line rather than a row
          each. --%>
-    <p :if={@unconfigured != []} class="text-sm font-medium text-jam-cream/60">
+    <p
+      :if={@unconfigured != []}
+      class={["font-medium text-jam-cream/60", if(@big?, do: "text-[1.2rem]", else: "text-sm")]}
+    >
       {join_names(Enum.map(@unconfigured, & &1.name))}
       {if length(@unconfigured) == 1, do: "isn’t", else: "aren’t"} set up on this server.
     </p>
@@ -922,15 +953,23 @@ defmodule WhoseJamWeb.HostLive do
       class="max-w-3xl max-h-[92vh] lg:max-w-[74rem]"
       body_class="space-y-5"
     >
-      <div class="flex items-center justify-between">
-        <h2 class="font-display text-[2.5rem] leading-none">Settings</h2>
+      <%!-- The sheet's summary under its title: how long these settings
+           make the game (changes save as they are made). --%>
+      <div class="flex items-start justify-between gap-6">
+        <div>
+          <h2 class="font-display text-[2.5rem] leading-none">Settings</h2>
+          <p id="settings-estimate" class="mt-2 text-[1.25rem] font-medium text-jam-cream/75">
+            About <span class="font-bold text-jam-orange">{@estimate} minutes</span>
+            with these settings
+          </p>
+        </div>
         <button
           type="button"
           phx-click="close_settings"
           aria-label="Close settings"
-          class="jam-chip !px-2.5 cursor-pointer"
+          class="jam-chip !px-3 !py-3 cursor-pointer"
         >
-          <.icon name="hero-x-mark" class="size-5" />
+          <.icon name="hero-x-mark" class="size-6" />
         </button>
       </div>
 
@@ -1132,24 +1171,6 @@ defmodule WhoseJamWeb.HostLive do
           </section>
         </div>
       </div>
-
-      <%!-- Always in reach, however far the sheet has scrolled: how long
-           these settings make the game, and the way out. --%>
-      <%!-- On a surface of its own, a step darker, lifted by a shadow over
-           whatever scrolls under it. --%>
-      <div class="sticky -bottom-6 -mx-6 -mb-6 mt-6 flex items-center justify-between gap-4 border-t border-jam-cream/10 bg-[#1d1d1b] px-6 py-4 shadow-[0_-0.75rem_1.25rem_-0.75rem_rgb(0_0_0/0.6)]">
-        <p class="text-[1.05rem] font-medium text-jam-cream/75">
-          About <span class="font-bold text-jam-orange">{@estimate} minutes</span> with these settings
-        </p>
-        <button
-          type="button"
-          id="settings-done"
-          phx-click="close_settings"
-          class="jam-btn jam-btn-cream text-lg"
-        >
-          Done
-        </button>
-      </div>
     </.modal>
     """
   end
@@ -1231,7 +1252,7 @@ defmodule WhoseJamWeb.HostLive do
               <p class="font-display text-[8.5rem] leading-[0.95] tracking-[0.06em] whitespace-nowrap">
                 {@view.code}
               </p>
-              <p class="mt-2 text-xl font-semibold text-jam-ink/60">
+              <p class="mt-2 text-[1.4rem] font-semibold text-jam-ink/65">
                 Scan to join, or go to
                 <span
                   id="join-url"
@@ -1395,10 +1416,25 @@ defmodule WhoseJamWeb.HostLive do
             class="font-display text-9xl leading-none tabular-nums text-jam-orange"
           >
           </p>
+          <%!-- Its length is known: a bar, as every such countdown has. --%>
+          <div
+            :if={@view.answering.deadline_ms}
+            id={"answer-bar-#{@view.answering.deadline_ms}"}
+            phx-hook="Progress"
+            phx-update="ignore"
+            data-deadline={@view.answering.deadline_ms}
+            data-duration={@view.config.answer_timer_s * 1000}
+            class="jam-bar mt-5 h-2 w-[26rem] max-w-full overflow-hidden bg-jam-cream/12"
+            aria-hidden="true"
+          >
+            <span class="block h-full origin-left bg-jam-orange [transform:scaleX(0)]"></span>
+          </div>
         </div>
       </div>
 
-      <div :if={@view.answering} class="jam-panel space-y-8 p-8 xl:p-10">
+      <%!-- Straight on the stage, as the lobby's names are: the tapes group
+           themselves. --%>
+      <div :if={@view.answering} class="space-y-8">
         <div class="flex items-baseline justify-between">
           <p class="text-[1.75rem] font-extrabold tracking-[-0.01em]">Songs picked</p>
           <p id="locked-in-count" class="font-display text-4xl tabular-nums">
@@ -1499,12 +1535,12 @@ defmodule WhoseJamWeb.HostLive do
             <span class="ml-4 border-l-2 border-jam-cream/20 pl-4">
               Round {@view.round.index + 1} of {@view.round.total}<span :if={
                 second_take?(@view.round)
-              }>: another pick for</span>
+              }>: another song for</span>
             </span>
           </p>
           <div
             :if={@view.round.prompt}
-            class="jam-paper jam-lean px-14 pb-10 pt-11 text-jam-ink"
+            class="jam-paper jam-lean max-w-[60rem] px-14 pb-10 pt-11 text-jam-ink"
           >
             <p class="font-display text-[4.25rem] leading-[1.1] text-balance">
               {@view.round.prompt}
@@ -1548,30 +1584,20 @@ defmodule WhoseJamWeb.HostLive do
                art lead; at the reveal it steps back to a small print and the
                answer takes the stage. --%>
           <div class="relative shrink-0 p-2">
+            <%!-- The same print, in the same place, from the first note to
+                 the reveal: only the headline beside it changes. --%>
             <.poster
               song={@view.round.song}
               art_id={"art-#{@round_key}"}
-              size={if @view.round_state == :results, do: :reveal, else: :wide}
+              size={:wide}
               playing?={@view.round_state in [:revealing, :voting]}
             />
-            <%!-- At the reveal the prompt's slip is taped to the poster's
-                 corner: still there, out of the answer's way. --%>
-            <div
-              :if={@view.round_state == :results && @view.round.prompt}
-              id="reveal-slip"
-              class="jam-paper absolute left-6 right-[-3rem] top-full -mt-3 rotate-[1.5deg] px-4 pb-2.5 pt-3.5 text-jam-ink"
-            >
-              <span class="jam-tape jam-tilt-3 jam-cut-2 absolute -top-3 left-1/2 h-6 w-14 -translate-x-1/2 opacity-60"></span>
-              <p class="font-display text-[1.4rem] leading-[1.15] text-pretty">
-                {@view.round.prompt}
-              </p>
-            </div>
           </div>
           <%!-- Beside it, what the song was picked for, then what the room
                is doing right now. --%>
           <div class={[
             "min-w-0 flex-1",
-            if(@view.round_state == :results, do: "space-y-6", else: "space-y-12")
+            if(@view.round_state == :results, do: "space-y-6", else: "space-y-10")
           ]}>
             {prompt_band(assigns)}
             {phase_panel(assigns)}
@@ -1609,14 +1635,14 @@ defmodule WhoseJamWeb.HostLive do
         </span>
       </figcaption>
       <%!-- The prompt was the round card's to show, large on its slip; from
-           then on it is that slip across the column (it is what the room is
-           talking about, but the screen's headline leads), and at the reveal
-           it is taped to the poster's corner: the answer owns the screen. --%>
+           then on it is that slip, as wide as its words (it is what the room
+           is talking about, but the song and the screen's headline lead),
+           in the same place through to the reveal. --%>
       <div
-        :if={@view.round.prompt && @view.round_state != :results}
-        class="jam-paper jam-lean w-full px-6 py-4 text-jam-ink"
+        :if={@view.round.prompt}
+        class="jam-paper jam-lean w-fit max-w-[44rem] px-6 py-4 text-jam-ink"
       >
-        <blockquote class="font-display text-[2.1rem] leading-[1.12] text-pretty">
+        <blockquote class="font-display text-[2rem] leading-[1.15] text-pretty">
           {@view.round.prompt}
         </blockquote>
       </div>
@@ -1635,7 +1661,7 @@ defmodule WhoseJamWeb.HostLive do
       <h1 class="font-display text-[3.4rem] leading-[1.05] line-clamp-2 text-balance">
         {@view.round.song.name}
       </h1>
-      <p class="mt-2 truncate text-[1.6rem] font-bold uppercase tracking-[0.12em] text-jam-cream/70">
+      <p class="mt-2 truncate text-[1.6rem] font-semibold text-jam-cream/70">
         {@view.round.song.artist}
       </p>
     </div>
@@ -1658,36 +1684,45 @@ defmodule WhoseJamWeb.HostLive do
     ~H"""
     <figure class={[
       "jam-paper jam-poster bg-jam-cream text-jam-ink transition-[width] duration-500",
-      if(@size == :reveal, do: "w-[17rem] p-3 pb-4", else: "w-[24rem] p-4 pb-5")
+      if(@size == :reveal, do: "w-[17rem] p-3 pb-4", else: "w-[26rem] p-4 pb-5")
     ]}>
-      <img
-        :if={@song[:album_art_url]}
-        id={@art_id}
-        src={@song.album_art_url}
-        alt="Album art"
-        class="aspect-square w-full object-cover"
-      />
-      <div
-        :if={!@song[:album_art_url]}
-        class="grid aspect-square w-full place-items-center bg-jam-ink/10"
-        aria-hidden="true"
-      >
-        <.icon name="hero-musical-note-solid" class="size-1/3 text-jam-ink/40" />
+      <%!-- While it plays, the meter on a dark tab at the art's corner, as
+           the phones have it. --%>
+      <div class="relative">
+        <img
+          :if={@song[:album_art_url]}
+          id={@art_id}
+          src={@song.album_art_url}
+          alt="Album art"
+          class="aspect-square w-full object-cover"
+        />
+        <div
+          :if={!@song[:album_art_url]}
+          class="grid aspect-square w-full place-items-center bg-jam-ink/10"
+          aria-hidden="true"
+        >
+          <.icon name="hero-musical-note-solid" class="size-1/3 text-jam-ink/40" />
+        </div>
+        <span
+          :if={@playing?}
+          class="absolute bottom-3 left-3 flex rounded-sm bg-jam-ink/80 px-2.5 py-2"
+        >
+          <.now_playing_meter class="text-[1.6rem]" />
+        </span>
       </div>
       <%!-- The words sit at the foot of the sheet, as a print's do. --%>
       <figcaption class="mt-3.5 min-w-0 px-0.5">
         <h1 class={[
           "font-display leading-[1.02] line-clamp-2 text-balance break-keep",
-          if(@size == :reveal, do: "text-[1.9rem]", else: "text-[2.6rem]")
+          if(@size == :reveal, do: "text-[1.9rem]", else: "text-[3rem]")
         ]}>
           {@song.name}
         </h1>
         <p class={[
-          "mt-1.5 flex items-center gap-3 font-semibold text-jam-ink/65",
+          "mt-1.5 truncate font-semibold text-jam-ink/65",
           if(@size == :reveal, do: "text-[1.2rem]", else: "text-[1.5rem]")
         ]}>
-          <.now_playing_meter :if={@playing?} class="shrink-0 text-[1.3rem]" />
-          <span class="truncate">{@song.artist}</span>
+          {@song.artist}
         </p>
       </figcaption>
     </figure>
@@ -1747,7 +1782,7 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- The song has the room: the clock is a quiet line under the
              headline, not a headline of its own. --%>
         <div class="space-y-1">
-          <p class="font-display text-[5rem] leading-none">Listen up</p>
+          <p class="font-display text-[3.5rem] leading-none">Listen up</p>
           <p class="text-[1.75rem] font-medium text-jam-cream/65">
             Voting opens in
             <span
@@ -1819,7 +1854,7 @@ defmodule WhoseJamWeb.HostLive do
                  out the name is on screen, with no second wait after it.
                  Where votes can still change, it is the last chance to, as
                  the phones say too. --%>
-            <p class="font-display text-[5rem] leading-none text-jam-mint">
+            <p class="font-display text-[3.5rem] leading-none text-jam-mint">
               {if @view.config.allow_vote_change?, do: "All in", else: "All votes in"}
             </p>
             <p
@@ -1844,7 +1879,7 @@ defmodule WhoseJamWeb.HostLive do
         id="tv-vote-now"
         class="jam-pop group text-jam-cream"
       >
-        <p class="whitespace-nowrap font-display text-[5rem] leading-none text-jam-pink transition-colors group-has-[[data-urgent]]:text-jam-orange">
+        <p class="whitespace-nowrap font-display text-[3.5rem] leading-none text-jam-pink transition-colors group-has-[[data-urgent]]:text-jam-orange">
           Vote now
         </p>
         <%!-- One line of how: where to vote, and (until the clock runs) what
@@ -2038,7 +2073,7 @@ defmodule WhoseJamWeb.HostLive do
           <p id="reveal-summary" class="flex items-center gap-4 text-jam-cream">
             <span
               :if={@summary.points}
-              class="w-[3.6rem] shrink-0 rounded-sm bg-jam-orange py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-ink"
+              class="jam-sticker w-[3.6rem] shrink-0 bg-jam-orange py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-ink"
             >
               {@summary.points}
             </span>
@@ -2049,9 +2084,9 @@ defmodule WhoseJamWeb.HostLive do
         </div>
       </div>
 
-      <%!-- Who said whom, on one panel: a group for each player named, the
-           right one first and marked in mint, with whoever named them on
-           their tapes. --%>
+      <%!-- Who said whom, straight on the stage (the tapes group
+           themselves): a group for each player named, the right one first
+           and on mint tape, under a small label each. --%>
       <div class="jam-rise jam-beat-2c">
         <%!-- Side by side (up to three groups; a scattered room wraps), each
              group as wide as its share, its names wrapping inside it. --%>
@@ -2059,14 +2094,14 @@ defmodule WhoseJamWeb.HostLive do
           :if={@guesses != []}
           id="room-said"
           class={[
-            "jam-panel flex w-full gap-y-5 px-8 py-5",
+            "flex w-full gap-y-5",
             if(length(@guesses) > 3, do: "flex-wrap", else: "flex-nowrap")
           ]}
         >
           <li
             :for={guess <- @guesses}
             id={"said-#{guess.id}"}
-            class="max-w-full flex-[1_1_auto] border-jam-cream/10 pr-8 [&:not(:first-child)]:border-l-2 [&:not(:first-child)]:pl-8"
+            class="max-w-full flex-[0_1_auto] border-jam-cream/12 pr-10 [&:not(:first-child)]:border-l-2 [&:not(:first-child)]:pl-10"
           >
             <%!-- The group's heading is a count, in the body face: the names
                  under it are what the room reads. --%>
@@ -2141,7 +2176,6 @@ defmodule WhoseJamWeb.HostLive do
 
     assigns =
       assign(assigns,
-        submitter_id: reveal? && view.round.submitter_id,
         final_reveal?: final_reveal?,
         name_class: strip_name_class(view, final_reveal?),
         cells:
@@ -2204,7 +2238,6 @@ defmodule WhoseJamWeb.HostLive do
             name_class={@name_class}
             away?={cell.away?}
             gain={cell.gain}
-            bluff?={cell.id == @submitter_id}
             class={["jam-beat-2c", if(cell.gain > 0, do: "jam-pop", else: "jam-rise")]}
           />
         <% else %>
@@ -2295,7 +2328,6 @@ defmodule WhoseJamWeb.HostLive do
   attr :in?, :boolean, default: true, doc: "locked in (or not voting): their tape is down"
   attr :locked?, :boolean, default: false, doc: "locked in while the vote is open: a mint check"
   attr :gain, :integer, default: 0
-  attr :bluff?, :boolean, default: false
   attr :name_class, :string, default: "text-[1.7rem]"
   attr :away?, :boolean, default: false
   attr :tag?, :boolean, default: true
@@ -2325,7 +2357,7 @@ defmodule WhoseJamWeb.HostLive do
            help back in. Above the seat, never beside the name. --%>
       <span
         :if={@seat.ring? and @tag? and !@away?}
-        class="jam-tape jam-tape-orange absolute -top-5 left-1/2 -translate-x-1/2 px-3 py-0.5 text-lg leading-none"
+        class="jam-tape jam-tape-orange absolute -top-6 left-1/2 -translate-x-1/2 px-3 py-0.5 text-[1.35rem] leading-none"
       >
         Leads
       </span>
@@ -2352,7 +2384,17 @@ defmodule WhoseJamWeb.HostLive do
       <%!-- All names in the strip share one size. --%>
       <%!-- The name on its tape once it's down; pencilled into the tape's
            slot until then. --%>
-      <span class={["flex max-w-full items-center justify-center leading-none", @name_class]}>
+      <span class={["relative flex max-w-full items-center justify-center leading-none", @name_class]}>
+        <%!-- What this round won, on a small orange sticker stuck to the
+             tape's corner: apart from the total under it, so "1" and "+1"
+             never read as a sum (the last reveal's seats, which have no
+             total, say it in the total's place instead). --%>
+        <span
+          :if={@gain > 0 and @seat.score}
+          class="jam-sticker absolute -right-3 -top-4 z-10 rotate-[8deg] bg-jam-orange px-[0.4rem] py-[0.15rem] font-display text-[1.25rem] leading-none text-jam-ink"
+        >
+          +{@gain}
+        </span>
         <.name_tape
           :if={@in?}
           player_id={@player_id}
@@ -2379,34 +2421,17 @@ defmodule WhoseJamWeb.HostLive do
       >
         {if @gain > 0, do: "+#{@gain}", else: "–"}
       </span>
-      <%!-- The score, and what this round added raised at its shoulder, so
-           the total stands alone and "1" and "+1" never read as a sum. --%>
+      <%!-- The total, alone. --%>
       <span
         :if={@seat.score}
-        class={["flex items-center justify-center", @away? && "opacity-50"]}
+        class={[
+          "font-display leading-none tabular-nums",
+          if(@seat[:rank], do: "text-[2rem]", else: "text-[2.2rem]"),
+          if(@seat.leader?, do: "text-jam-ink", else: "text-jam-cream/80"),
+          @away? && "opacity-50"
+        ]}
       >
-        <span class={[
-          "relative font-display leading-none tabular-nums",
-          if(@seat[:rank], do: "text-[2rem]", else: "text-[2.3rem]"),
-          if(@seat.leader?, do: "text-jam-ink", else: "text-jam-cream/80")
-        ]}>
-          {@seat.score}
-          <%!-- Points are orange wherever they land (mint is only ever
-               "right"): a guess's as a plain raised number, the picker's
-               take on a small tilted sticker. --%>
-          <span
-            :if={@gain > 0}
-            class={[
-              "absolute left-full top-[-0.3em] ml-[0.18em] whitespace-nowrap text-[0.6em] leading-none",
-              if(@bluff?,
-                do: "rotate-[6deg] rounded-sm bg-jam-orange px-[0.3em] py-[0.12em] text-jam-ink",
-                else: "text-jam-orange"
-              )
-            ]}
-          >
-            +{@gain}
-          </span>
-        </span>
+        {@seat.score}
       </span>
     </div>
     """
@@ -2517,17 +2542,6 @@ defmodule WhoseJamWeb.HostLive do
         <div class="space-y-8">
           <div>
             <div class="min-w-0 space-y-2">
-              <%!-- The tie is news the winner's moment breaks, not the
-                   countdown before it. --%>
-              <p class="jam-eyebrow">
-                Final scores<span
-                  :if={length(@winners) > 1 and length(@winners) < length(@board)}
-                  class={[
-                    "ml-3 rounded-md bg-jam-orange/15 px-2.5 py-0.5 text-jam-orange",
-                    @build? && "jam-rise jam-finale-win"
-                  ]}
-                >It’s a tie</span>
-              </p>
               <div class="grid items-center">
                 <%!-- What holds the winner's place until they are named. --%>
                 <div
@@ -2536,23 +2550,11 @@ defmodule WhoseJamWeb.HostLive do
                   class="jam-out jam-finale-wait relative self-start [grid-area:1/1]"
                   aria-hidden="true"
                 >
+                  <%!-- The only unknown on screen is the table's orange "?"
+                       tape: the headline says what it is waiting for. --%>
                   <p class="font-display text-6xl leading-tight text-jam-cream">
                     And the winner is…
                   </p>
-                  <%!-- The winner's print, face down and sealed: the back of
-                       the same poster the next screen turns over, a strip of
-                       orange tape holding it shut along its top and what it
-                       is written on its back. Out of the flow, so the
-                       headline's place is only as tall as the headline once
-                       the winner takes it. --%>
-                  <div class="jam-paper jam-poster absolute left-0 top-full mt-10 h-[21rem] w-64">
-                    <span class="jam-tape jam-tape-orange jam-tilt-1 absolute -top-3 left-1/2 h-9 w-36 -translate-x-1/2"></span>
-                    <%!-- The back of a print, written on in pink marker as
-                         the back of a photo is. --%>
-                    <p class="absolute inset-x-6 top-1/2 -translate-y-1/2 -rotate-[6deg] text-center font-marker text-[2.6rem] font-bold leading-[1.05] text-jam-pink [font-variation-settings:'INFM'_50]">
-                      Tonight’s winner
-                    </p>
-                  </div>
                 </div>
                 <h1
                   id="winner"
@@ -2650,6 +2652,18 @@ defmodule WhoseJamWeb.HostLive do
           <%!-- The night's setlist, best first, the way every phone lists it
                too: place, name on its tape, score; first place on orange
                prize tape, a row taller. --%>
+          <%!-- What the table is, on the table, as the phones have it; the
+               tie is news the winner's moment breaks, not the countdown
+               before it. --%>
+          <p :if={!@playlist_open?} class="jam-eyebrow -mb-3 px-1">
+            Final scores<span
+              :if={length(@winners) > 1 and length(@winners) < length(@board)}
+              class={[
+                "ml-3 rounded-md bg-jam-orange/15 px-2.5 py-0.5 text-jam-orange",
+                @build? && "jam-rise jam-finale-win"
+              ]}
+            >It’s a tie</span>
+          </p>
           <ol :if={!@playlist_open?} id="final-scores" class="jam-panel px-3 py-3">
             <li :for={row <- @board} class="grid">
               <%!-- First place is kept, face down, while the rest fill in. --%>
@@ -2675,12 +2689,12 @@ defmodule WhoseJamWeb.HostLive do
               ]}>
                 <span class="flex min-w-0 shrink items-center gap-5">
                   <span class={[
-                    "flex w-[4.5rem] shrink-0 flex-col font-display text-[1.8rem] leading-none tabular-nums",
+                    "flex w-[7.5rem] shrink-0 items-baseline gap-2 font-display text-[1.8rem] leading-none tabular-nums",
                     if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                   ]}>
                     {Standings.ordinal(row.rank)}
-                    <%!-- A shared place says so, under the place. --%>
-                    <span :if={row.tied?} class="mt-1 font-body text-[1.05rem] font-semibold">
+                    <%!-- A shared place says so, beside the place. --%>
+                    <span :if={row.tied?} class="font-body text-[1.3rem] font-semibold">
                       tied
                     </span>
                   </span>
@@ -2846,18 +2860,18 @@ defmodule WhoseJamWeb.HostLive do
   defp second_take?(%{prompt_take: %{nth: nth}}), do: nth > 1
   defp second_take?(_round), do: false
 
-  defp take_label(%{nth: 1, of: of}), do: "#{of} people chose this prompt"
-  defp take_label(%{nth: 2, of: 2}), do: "The other pick for this prompt"
-  defp take_label(%{nth: nth, of: of}), do: "Pick #{nth} of #{of} for this prompt"
+  defp take_label(%{nth: 1, of: of}), do: "#{of} songs for this one"
+  defp take_label(%{nth: 2, of: 2}), do: "The other song for this one"
+  defp take_label(%{nth: nth, of: of}), do: "Song #{nth} of #{of} for this one"
 
   # The answer as large as it can be and still sit on one line: names run up
   # to 24 characters.
   defp reveal_name_size(name) do
     case String.length(name) do
-      n when n <= 8 -> "text-[10.5rem]"
-      n when n <= 12 -> "text-[7.5rem]"
-      n when n <= 17 -> "text-[5.5rem]"
-      _ -> "text-[4rem]"
+      n when n <= 8 -> "text-[8.5rem]"
+      n when n <= 12 -> "text-[6.5rem]"
+      n when n <= 17 -> "text-[5rem]"
+      _ -> "text-[3.75rem]"
     end
   end
 
@@ -2967,16 +2981,13 @@ defmodule WhoseJamWeb.HostLive do
     >
       <span
         :if={elem(@line, 1)}
-        class="w-[3.6rem] shrink-0 rounded-sm bg-jam-orange py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-ink"
+        class="jam-sticker w-[3.6rem] shrink-0 bg-jam-orange py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-ink"
       >
         +1
       </span>
-      <span
-        :if={!elem(@line, 1)}
-        class="w-[3.6rem] shrink-0 rounded-sm bg-jam-cream/15 py-0.5 text-center font-display text-[1.6rem] leading-tight text-jam-cream/70"
-      >
-        0
-      </span>
+      <%!-- A miss wins nothing, so it has no sticker: only its place, so
+           the lines stay aligned. --%>
+      <span :if={!elem(@line, 1)} class="w-[3.6rem] shrink-0" aria-hidden="true"></span>
       <span>{elem(@line, 0)}.</span>
     </p>
     """
@@ -3100,10 +3111,10 @@ defmodule WhoseJamWeb.HostLive do
   defp reveal_summary(%{wrong: []}), do: %{points: nil, text: "Everyone saw through it."}
 
   defp reveal_summary(%{wrong: wrong, fool_points: points}) when length(wrong) <= 3,
-    do: %{points: plus_points(points), text: "Fooled #{join_names(wrong)}"}
+    do: %{points: plus_points(points), text: "Fooled #{join_names(wrong)}."}
 
   defp reveal_summary(%{wrong: wrong, players_voted: voted, fool_points: points}),
-    do: %{points: plus_points(points), text: "Fooled #{length(wrong)} of #{voted}"}
+    do: %{points: plus_points(points), text: "Fooled #{length(wrong)} of #{voted}."}
 
   defp plus_points(0), do: nil
   defp plus_points(points), do: "+#{points}"

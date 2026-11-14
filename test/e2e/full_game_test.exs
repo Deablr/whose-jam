@@ -287,7 +287,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # In the first round one voter goes first, alone, for the stills.
       {lead, rest} = if first?, do: Enum.split(votes, 1), else: {[], votes}
       Enum.each(lead, &cast_vote(devices, &1, true))
-      if first?, do: Stage.snap(devices, [:host], "tv-voting")
+      # With the TV, the smallest phone's vote screen while it is still
+      # choosing (unless it is the picker's, already locked in), so every run
+      # shows the vote on a small screen too.
+      small = if Enum.any?(rest, &match?({:cleo, _}, &1)), do: [:cleo], else: []
+      if first?, do: Stage.snap(devices, [:host | small], "tv-voting")
       in_parallel(rest, &cast_vote(devices, &1, false))
 
       # The TV shows who is in on the score strip, the picker among them
