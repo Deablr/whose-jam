@@ -932,7 +932,7 @@ defmodule WhoseJamWeb.HostLive do
             href={service.connect_href}
             class={[
               "jam-btn",
-              if(@big?, do: "text-[1.4rem]", else: "text-base !px-4 !py-2"),
+              if(@big?, do: "text-[1.4rem]", else: "text-[1.125rem] !px-5 !py-2.5"),
               service.status == :connected && "jam-btn-ghost"
             ]}
           >
@@ -945,7 +945,7 @@ defmodule WhoseJamWeb.HostLive do
             phx-value-provider={service.id}
             class={[
               "jam-btn",
-              if(@big?, do: "text-[1.4rem]", else: "text-base !px-4 !py-2"),
+              if(@big?, do: "text-[1.4rem]", else: "text-[1.125rem] !px-5 !py-2.5"),
               service.status == :connected && "jam-btn-ghost"
             ]}
           >
@@ -2209,7 +2209,7 @@ defmodule WhoseJamWeb.HostLive do
          the name alone; then what it was worth to the picker, each line led
          by its points; then who said whom, with the points landing in the
          strip (`.jam-beat-1`, `-2`, `-2c` in app.css). --%>
-    <div id="tv-results" class="space-y-6">
+    <div id="tv-results" class="space-y-5">
       <%!-- One column, read down in the reveal's beats: the name, then what
            it was worth to the picker right under it, then who said whom. --%>
       <div class="flex flex-col items-start gap-y-3">
@@ -2230,13 +2230,14 @@ defmodule WhoseJamWeb.HostLive do
           </p>
         </div>
 
-        <%!-- What it was worth to the picker, in one row under the name (it
-             wraps only when it must), so the voters under it have room above
-             the score strip: the fooling, then the prediction, each led by
-             its points on an orange sticker. --%>
+        <%!-- What it was worth to the picker, as aligned rows under the name
+             (each sticker kept with its words, so neither reads as one
+             run-on line): the fooling, then the prediction, each led by its
+             points on an orange sticker. Set close, so the voters under it
+             keep their room above the score strip. --%>
         <%!-- Set a step quieter than the name: the body face at 500–600, so
              the answer stays the loudest thing on the screen. --%>
-        <div class="jam-rise jam-beat-2 flex flex-wrap items-center gap-x-10 gap-y-2.5 text-[1.55rem] font-medium leading-snug">
+        <div class="jam-rise jam-beat-2 space-y-2 text-[1.5rem] font-medium leading-snug">
           <p id="reveal-summary" class="flex items-center gap-4 font-semibold text-jam-cream">
             <span
               :if={@summary.points}
@@ -2247,7 +2248,7 @@ defmodule WhoseJamWeb.HostLive do
             <span>{@summary.text}</span>
           </p>
           <%!-- The picker's prediction, right or not, in the same form. --%>
-          <.forecast :if={@forecast_line} line={@forecast_line} pad?={false} />
+          <.forecast :if={@forecast_line} line={@forecast_line} pad?={!!@summary.points} />
         </div>
       </div>
 

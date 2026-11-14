@@ -1123,7 +1123,7 @@ defmodule WhoseJamWeb.PlayLive do
           <p
             :if={@answered == @total}
             id="waiting-on"
-            class="mt-0.5 text-[0.9375rem] font-medium text-jam-cream/70"
+            class="mt-0.5 text-[0.9375rem] text-jam-cream/75"
           >
             {waiting_on(@view, @player_id)}
           </p>
@@ -1294,7 +1294,7 @@ defmodule WhoseJamWeb.PlayLive do
     <p
       :if={not @editing? and @answered == @total}
       id="own-song-explainer"
-      class="mt-3 text-base leading-[1.4] text-jam-cream/85"
+      class="mt-3 text-base leading-[1.4] text-jam-cream/75"
     >
       <.inline_points text="When your song plays, predict the most common wrong guess. +1 if you’re right." />
     </p>
@@ -1711,13 +1711,15 @@ defmodule WhoseJamWeb.PlayLive do
          place, which "Eyes on the TV" and the answer take after it. The same on every phone, the picker's included. --%>
       <div
         id="phone-voting"
-        class="mt-4 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-3 lg:mt-0 lg:after:hidden"
+        class="mt-3 flex flex-1 flex-col after:block after:grow after:content-[''] lg:mt-0 lg:after:hidden"
       >
         <%!-- The question is the screen's headline, its how-to right under
              it in the same space on every phone (the picker's too), then the
              vote's clock, so the names below sit in the same place on every
-             screen. --%>
-        <h1 class="font-display text-[2rem] leading-tight short:text-2xl">
+             screen. A size down on the narrowest phones, so the longer
+             question ("Who'll get the blame?") stays on one line there too
+             and never moves the picker's names below everyone else's. --%>
+        <h1 class="font-display text-[2rem] leading-tight max-[359px]:text-[1.75rem] short:text-2xl">
           {curly(
             if @change? and @round.all_in?,
               do: "Final changes",
@@ -2557,7 +2559,7 @@ defmodule WhoseJamWeb.PlayLive do
               <%!-- The winner's line wears its prize: an orange "1st" tape. --%>
               <div class={[
                 "flex flex-wrap items-center gap-x-3 gap-y-1",
-                if(@won?, do: "mt-7", else: "mt-1")
+                if(@won?, do: "mt-8", else: "mt-1")
               ]}>
                 <%!-- The winner's phone has its moment: the line larger, and
                      wearing the crown the TV drew on the winner's name, in
@@ -2572,7 +2574,7 @@ defmodule WhoseJamWeb.PlayLive do
                   <.marker_stroke
                     :if={@won?}
                     kind={:crown}
-                    class="absolute -left-[0.06em] -top-[0.52em] h-[0.76em] w-[0.94em] -rotate-[12deg] text-jam-orange [--jam-stroke-w:0.26rem]"
+                    class="absolute -left-[0.06em] -top-[0.66em] h-[0.76em] w-[0.94em] -rotate-[12deg] text-jam-orange [--jam-stroke-w:0.26rem]"
                   />
                   {if @mine, do: finish_line(@mine, @role, length(@board)), else: "Game over"}
                 </h1>
@@ -2666,8 +2668,14 @@ defmodule WhoseJamWeb.PlayLive do
 
         <%!-- The game's scores, for everyone; the audience's own after them.
              On a wide screen they have a column of their own, so every row
-             (this player's included) is in view without scrolling. --%>
-        <div id="final-lists" class="lg:!col-start-2 lg:row-span-6 lg:row-start-1">
+             (this player's included) is in view without scrolling. On a
+             tablet or laptop the tables keep to a reading width (their root
+             is scaled up, so the width is set per size), so a name and its
+             score stay close; on a laptop, centred in their column. --%>
+        <div
+          id="final-lists"
+          class="w-full md:max-w-[26rem] lg:!col-start-2 lg:row-span-6 lg:row-start-1 lg:mx-auto lg:max-w-[20rem]"
+        >
           <%= for {title, rows, list_id} <- score_lists(@role, @players_board, @board) do %>
             <h2 class="mb-2 mt-6 px-1 text-sm font-semibold text-jam-cream/65 short:mb-1.5 short:mt-4 lg:mt-0">
               {title}
