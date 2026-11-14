@@ -111,7 +111,9 @@ defmodule WhoseJamWeb.HomeLive do
             alt="Whose Jam"
             class="w-48 sm:w-80 lg:w-full lg:max-w-[min(48rem,62vh*1.33)] lg:-ml-[4%]"
           />
-          <p class="text-lg sm:text-2xl xl:text-3xl font-medium leading-snug text-jam-cream/70 max-w-xl xl:max-w-2xl text-balance">
+          <%!-- On a wide screen, lined up with the logo's speech bubble (not
+               the lines drawn either side of it). --%>
+          <p class="text-lg sm:text-2xl xl:text-3xl font-medium leading-snug text-jam-cream/70 max-w-xl xl:max-w-2xl text-balance lg:pl-[min(4.5rem,8.5vh)]">
             Everyone picks a song. The room guesses whose jam it is.
           </p>
         </header>
@@ -200,11 +202,13 @@ defmodule WhoseJamWeb.HomeLive do
 
   defp host_picker(assigns) do
     ~H"""
+    <%!-- The theme cards lie straight on the dimmed room: no panel behind
+         them. --%>
     <.modal
       :if={@host_open?}
       id="host-game-modal"
       on_close="close_host"
-      class="max-w-3xl"
+      class="max-w-3xl !border-0 !bg-transparent !shadow-none"
       body_class="space-y-6"
     >
       <div class="flex items-start justify-between gap-4">
@@ -244,7 +248,7 @@ defmodule WhoseJamWeb.HomeLive do
             </p>
             <p
               :if={theme.examples != []}
-              class="mt-3 font-display text-[1.35rem] leading-[1.2] text-balance"
+              class="mt-3 text-[1.25rem] font-bold leading-snug text-pretty"
             >
               “{hd(theme.examples).prompt}”
             </p>

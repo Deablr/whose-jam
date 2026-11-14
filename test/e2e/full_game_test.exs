@@ -127,7 +127,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
-    |> fill_in("Listen before voting opens", with: "10")
+    |> fill_in("Listening, before the vote", with: "10")
     |> Stage.then_snap(:host, "settings")
     |> click_button("Close settings")
 
@@ -172,6 +172,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       assert_has(devices.host, "#lobby-players li", text: name)
     end)
 
+    # Once the last seat has finished landing.
+    Stage.hold(600)
     Stage.snap(devices, [:host, :ben, :eli, :gus], "lobby")
   end
 
@@ -325,7 +327,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     # Nobody is offered their own name.
     |> refute_has("#phone-voting button", text: voter_name, exact: true)
     # A tap chooses; locking it in is the vote.
-    |> assert_has("#vote-hint", text: "Pick who chose it, then lock it in.")
+    |> assert_has("#vote-hint", text: "Pick who you think chose it. +1 if you’re right.")
     |> refute_has("#phone-voting", text: "blame")
     |> snap_if(snap?, voter, "vote")
     |> click_button(nil, choice_name, exact: true)
@@ -373,11 +375,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # (A tie for the most wrong guesses names every one of them.)
       devices.host
       |> assert_has("#forecast", text: "+1")
-      |> assert_has("#forecast", text: "Prediction right: ")
+      |> assert_has("#forecast", text: ", and called it")
       |> assert_has("#forecast", text: name_of(bluff))
 
       phone
-      |> assert_has("#my-blame", text: "+1 Prediction right: ")
+      |> assert_has("#my-blame", text: "+1 for predicting ")
       |> assert_has("#my-blame", text: name_of(bluff))
     else
       assert_missed_guess(devices.host, phone, name_of(bluff), fooled)

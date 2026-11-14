@@ -519,6 +519,20 @@ defmodule WhoseJamWeb.CoreComponents do
     do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 3)}"
 
   @doc """
+  Renders the "now playing" level meter (`.jam-meter` in `app.css`): five
+  square bars that move while a song plays. Its size is its font size.
+  """
+  attr :class, :any, default: nil
+
+  def now_playing_meter(assigns) do
+    ~H"""
+    <span class={["jam-meter", @class]} role="img" aria-label="Now playing">
+      <i></i><i></i><i></i><i></i><i></i>
+    </span>
+    """
+  end
+
+  @doc """
   Renders an open modal dialog. Render it conditionally with `:if`; Escape and
   a backdrop click both push the `on_close` event. The box is a
   `role="dialog"` / `aria-modal` element wrapped in `<.focus_wrap>`, so Tab
