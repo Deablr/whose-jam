@@ -532,6 +532,23 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
+  Readies a song's title for a poster: a short closing parenthetical ("(if
+  i don't mean it)") is kept whole, so a title breaks before it, never
+  inside it, and the last line is never one word alone (`no_widow/1`).
+  """
+  @spec poster_title(String.t()) :: String.t()
+  def poster_title(title) when is_binary(title) do
+    title =
+      Regex.replace(~r/\(([^()]{1,24})\)\s*\z/u, title, fn whole, _inner ->
+        String.replace(whole, " ", "\u00A0")
+      end)
+
+    no_widow(title)
+  end
+
+  def poster_title(other), do: other
+
+  @doc """
   Sets a display headline's curly apostrophes in the body face (`.jam-apos`
   in `app.css`): Lilita One draws its own as an upright tick that stands
   apart from the letters, where the body face's curls into the word. Takes

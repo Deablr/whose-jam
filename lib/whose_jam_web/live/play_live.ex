@@ -627,7 +627,7 @@ defmodule WhoseJamWeb.PlayLive do
             :if={@my_score}
             id="my-score"
             class={[
-              "jam-sticker relative -ml-1.5 flex shrink-0 items-baseline gap-0.5 px-1.5 py-0.5 leading-none",
+              "jam-sticker relative ml-1.5 flex shrink-0 items-baseline gap-0.5 px-1.5 py-0.5 leading-none",
               if(@my_score > 0,
                 do: "bg-jam-orange text-jam-ink",
                 else: "bg-jam-paper text-jam-ink"
@@ -1263,7 +1263,7 @@ defmodule WhoseJamWeb.PlayLive do
             </div>
             <%!-- The whole row is the button; this only says so, quietly, so
                  a list of results isn't a column of pink buttons. --%>
-            <span class="shrink-0 rounded-md bg-jam-cream px-3.5 py-1.5 text-sm font-extrabold text-jam-ink">
+            <span class="shrink-0 rounded-md bg-jam-cream/[0.1] px-3.5 py-1.5 text-sm font-bold text-jam-cream">
               Pick
             </span>
           </button>
@@ -1460,7 +1460,9 @@ defmodule WhoseJamWeb.PlayLive do
             </span>
           </div>
           <figcaption class="mt-2 px-0.5">
-            <p class="line-clamp-2 font-display text-lg leading-tight">{@round.song.name}</p>
+            <p class="line-clamp-2 font-display text-lg leading-tight text-balance">
+              {poster_title(@round.song.name)}
+            </p>
             <p class="mt-0.5 truncate text-sm font-semibold text-jam-ink/65">
               {@round.song.artist}
             </p>
@@ -1568,7 +1570,7 @@ defmodule WhoseJamWeb.PlayLive do
         id="phone-clock-note"
         class="text-[0.8125rem] font-medium leading-none text-jam-cream/60"
       >
-        Clock starts when most lock in
+        The clock starts when most players lock in.
       </p>
       <div
         :if={@round_state == :voting and @round.deadline_ms != nil and !@round.all_in?}
@@ -1658,8 +1660,8 @@ defmodule WhoseJamWeb.PlayLive do
           </span>
         </div>
         <figcaption class="mt-2.5 px-0.5">
-          <p class="line-clamp-2 break-words break-keep font-display text-xl leading-tight">
-            {@round.song.name}
+          <p class="line-clamp-2 break-words break-keep font-display text-xl leading-tight text-balance">
+            {poster_title(@round.song.name)}
           </p>
           <p class="mt-0.5 line-clamp-2 text-base font-medium leading-[1.2] text-balance text-jam-ink/70 short:text-[0.9375rem]">
             {@round.song.artist}
@@ -2382,7 +2384,7 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The TV's words: who took the blame (most of the wrong guesses).
   defp prediction(_choice, took, true, _round),
-    do: "for predicting #{join_names(took)} correctly"
+    do: "for predicting #{join_names(took)} would take the blame"
 
   defp prediction(choice, took, false, round),
     do: "Predicted #{guess_name(round, choice)}, but #{join_names(took)} took the blame."
@@ -2647,7 +2649,7 @@ defmodule WhoseJamWeb.PlayLive do
           <div id="game-ended" class="mt-4 flex flex-col gap-3 px-1">
             <p class="text-[1.0625rem] font-bold text-jam-cream">{ended_message(@end_reason)}</p>
             <%!-- The one thing left to do, so the screen's pink button. --%>
-            <.link navigate={~p"/"} class="jam-btn w-full text-base md:w-fit md:min-w-[14rem]">
+            <.link navigate={~p"/"} class="jam-btn w-full text-base">
               Back home
             </.link>
           </div>
@@ -2841,11 +2843,17 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The awards this player holds, worded as the TV words them, and only the
   # ones the TV hands out (`Awards.given?/1`).
-  defp my_awards(%{awards: %{} = awards}, player_id) do
+  defp my_awards(%{awards: %{} = awards} = view, player_id) do
     bluff =
       with %{fooled: fooled, bluffs: bluffs} = award <- awards[:best_bluff],
            true <- Awards.given?(award) do
-        my_bluff(for(%{player_id: ^player_id, song_name: song} <- bluffs, do: song), fooled)
+        bluff_shared_with = for(%{player_id: id} <- bluffs, id != player_id, uniq: true, do: id)
+
+        my_bluff(
+          for(%{player_id: ^player_id, song_name: song} <- bluffs, do: song),
+          fooled,
+          shared_note(view, bluff_shared_with)
+        )
       else
         _ -> []
       end
@@ -2854,7 +2862,7 @@ defmodule WhoseJamWeb.PlayLive do
       with %{called: called, player_ids: ids} = award <- awards[:sharpest],
            true <- Awards.given?(award),
            true <- player_id in ids do
-        [{"Sharpest ears", "#{called} right"}]
+        [{"Sharpest ears", "#{called} right" <> shared_note(view, ids -- [player_id])}]
       else
         _ -> []
       end
@@ -2864,10 +2872,18 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp my_awards(_view, _player_id), do: []
 
-  defp my_bluff([], _fooled), do: []
+  defp my_bluff([], _fooled, _shared), do: []
 
-  defp my_bluff([song], _fooled), do: [{"Best bluff", song}]
-  defp my_bluff(songs, _fooled), do: [{"Best bluff", "#{length(songs)} songs"}]
+  defp my_bluff([song], _fooled, shared), do: [{"Best bluff", song <> shared}]
+  defp my_bluff(songs, _fooled, shared), do: [{"Best bluff", "#{length(songs)} songs" <> shared}]
+
+  # An award held with others says whom with, as the TV does.
+  defp shared_note(view, ids) do
+    case ids |> Enum.map(&participant_name(view, &1)) |> Enum.reject(&is_nil/1) do
+      [] -> ""
+      names -> ", shared with " <> join_names(names)
+    end
+  end
 
   # --- game ended -----------------------------------------------------------
 

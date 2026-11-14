@@ -244,7 +244,9 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
   end
 
   defp submitter_on_screen(host) do
-    song = text_of(host, "h1")
+    # (A poster keeps a title's closing parenthetical whole with no-break
+    # spaces; the song's name has plain ones.)
+    song = host |> text_of("h1") |> String.replace("\u00A0", " ")
     {key, _steps} = Enum.find(@picks, fn {_key, steps} -> last_song(steps) == song end)
     key
   end

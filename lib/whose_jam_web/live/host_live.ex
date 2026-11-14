@@ -1847,7 +1847,7 @@ defmodule WhoseJamWeb.HostLive do
           "font-display leading-[1.02] line-clamp-2 text-balance break-keep",
           if(@size == :reveal, do: "text-[2.4rem]", else: "text-[3rem]")
         ]}>
-          {@song.name}
+          {poster_title(@song.name)}
         </h1>
         <p class={[
           "mt-1.5 truncate font-semibold text-jam-ink/65",
@@ -2564,7 +2564,7 @@ defmodule WhoseJamWeb.HostLive do
           {@seat.score}
           <span
             :if={@gain > 0}
-            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-0 bg-jam-orange px-[0.35rem] py-[0.14rem] font-display text-[1.3rem] leading-none text-jam-ink"
+            class="jam-sticker absolute bottom-[0.08em] left-full ml-2 rotate-0 bg-jam-orange px-[0.4rem] py-[0.16rem] font-display text-[1.5rem] leading-none text-jam-ink"
           >
             +{@gain}
           </span>

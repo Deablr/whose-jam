@@ -233,7 +233,9 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       devices.host
       |> assert_has("p", text: "Round #{round} of #{@rounds}", timeout: @wait)
 
-      song = text_of(devices.host, "h1")
+      # (A poster keeps a title's closing parenthetical whole with no-break
+      # spaces; the song's name has plain ones.)
+      song = devices.host |> text_of("h1") |> String.replace("\u00A0", " ")
       {submitter, submitter_name, _, _, _} = List.keyfind!(@players, song, 4)
       votes = votes_for(round, submitter)
       first? = round == 1
