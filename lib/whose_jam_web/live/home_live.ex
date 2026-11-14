@@ -243,7 +243,8 @@ defmodule WhoseJamWeb.HomeLive do
           class="flex flex-col gap-4 rounded-lg bg-[#2c2b28] p-6 lg:gap-5 lg:p-7"
         >
           <h3 class="font-display text-[1.75rem] leading-none lg:text-[2.25rem]">{theme.name}</h3>
-          <p class="text-[1.0625rem] font-semibold leading-snug text-jam-cream/85 lg:text-[1.35rem]">
+          <%!-- Two lines kept for it on every card, so the slips start level. --%>
+          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-jam-cream/85 lg:text-[1.35rem]">
             {how_it_plays(theme.style_sequence)}
           </p>
           <p

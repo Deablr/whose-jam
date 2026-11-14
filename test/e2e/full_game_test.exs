@@ -125,12 +125,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> click_button("Settings")
     # The Mock player hook is running in this browser.
     |> assert_has("p", text: "This screen is ready to play the music.")
-    |> fill_in("Time to pick songs", with: "120")
+    |> fill_in("Time to pick", with: "120")
     |> fill_in("Prompts per player", with: "1")
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
-    |> fill_in("Listening, before the vote", with: "10")
+    |> fill_in("Listening time", with: "10")
     |> Stage.then_snap(:host, "settings")
     |> click_button("Close settings")
 
@@ -271,7 +271,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         timeout: @wait
       )
       |> assert_has("#vote-hint",
-        text: "Call the room’s top wrong guess for +1."
+        text: "Predict the room’s top wrong guess for +1."
       )
       |> assert_has("#round-prompt blockquote", text: prompt)
       |> refute_has("#phone-voting button", text: submitter_name, exact: true)
@@ -378,7 +378,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # (A tie for the most wrong guesses names every one of them.)
       devices.host
       |> assert_has("#forecast", text: "+1")
-      |> assert_has("#forecast", text: ", and called it")
+      |> assert_has("#forecast", text: " would take the blame")
       |> assert_has("#forecast", text: name_of(bluff))
 
       phone

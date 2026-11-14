@@ -89,9 +89,9 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> within("#music-prompt-modal", &click_button(&1, nil, "Connect", exact: true))
     |> refute_has("#music-prompt-modal")
     |> click_button("Settings")
-    |> fill_in("Time to pick songs", with: "120")
+    |> fill_in("Time to pick", with: "120")
     |> fill_in("Prompts per player", with: "1")
-    |> fill_in("Listening, before the vote", with: "10")
+    |> fill_in("Listening time", with: "10")
     |> fill_in("Voting time", with: Integer.to_string(@vote_timer_s))
     # Votes can be changed until the clock runs out: a tap is the vote.
     |> check("Allow changing a vote")
@@ -100,7 +100,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     # the last round's totals shown as they land.
     |> check("Quick reveals: everything at once")
     |> uncheck("Name who didn’t vote")
-    |> check("Show every place on the score strip")
+    |> check("Show everyone’s rank")
     |> uncheck("Hide totals during the final round")
     |> Stage.then_hold(to_timeout(second: 2))
     |> click_button("Close settings")
