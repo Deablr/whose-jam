@@ -454,14 +454,15 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
-  Renders the game's illustration: a Heroicon on a disc (`.jam-badge` in
-  `app.css`). Game screens use this instead of emoji, so every state is drawn
-  the same way on every device. Its size is its font size.
+  Renders a status mark: a solid Heroicon in its tone's colour, on nothing
+  (`.jam-badge` in `app.css`). Game screens use this instead of emoji, so a
+  state is drawn the same way on every device. Its size is its font size;
+  keep it small, beside the words it marks.
 
   ## Examples
 
-      <.jam_badge icon="hero-tv" class="text-7xl" />
-      <.jam_badge icon="hero-check" tone="mint" class="text-7xl" />
+      <.jam_badge icon="hero-lock-closed-solid" class="text-xl" />
+      <.jam_badge icon="hero-check-circle-solid" tone="mint" class="text-2xl" />
   """
   attr :icon, :string, required: true
   attr :tone, :string, default: "brand", values: ~w(brand mint quiet)
@@ -478,10 +479,232 @@ defmodule WhoseJamWeb.CoreComponents do
       ]}
       aria-hidden="true"
     >
-      <.icon name={@icon} class="size-[0.5em]" />
+      <.icon name={@icon} class="size-[1em]" />
     </span>
     """
   end
+
+  @doc """
+  Renders a player's name written on a strip of tape (`.jam-tape` in
+  `app.css`), the one prop a name wears on a game screen. The strip's tilt
+  and cut come from the player's id (`tilt_class/1`), so a name looks the
+  same on every screen it appears on. Its size is its font size.
+
+  ## Examples
+
+      <.name_tape player_id={p.id} name={p.name} class="text-2xl" />
+  """
+  attr :player_id, :string, required: true
+  attr :name, :string, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, doc: "anything written on the strip after the name (a mark)"
+
+  def name_tape(assigns) do
+    ~H"""
+    <span class={["jam-tape", tilt_class(@player_id), @class]} {@rest}>
+      <span class="min-w-0 truncate">{@name}</span>
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  @doc """
+  How a player's tape lies and how its strip was cut (`.jam-tilt-0` to
+  `.jam-tilt-4` and `.jam-cut-0` to `.jam-cut-4` in `app.css`): the same for
+  the same id, on every screen.
+  """
+  @spec tilt_class(term()) :: String.t()
+  def tilt_class(id),
+    do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 5)}"
+
+  @doc """
+  A clock's length in seconds as a countdown's numerals show it (`m:ss`), for
+  a clock that hasn't started yet: `clock_length(30)` is `"0:30"`.
+  """
+  @spec clock_length(non_neg_integer()) :: String.t()
+  def clock_length(seconds) when is_integer(seconds) and seconds >= 0 do
+    "#{div(seconds, 60)}:#{seconds |> rem(60) |> Integer.to_string() |> String.pad_leading(2, "0")}"
+  end
+
+  @doc """
+  Where a row sits in its run of equal places in a ranked table (rows as
+  `WhoseJam.Game.Standings.rank/2` returns them): `:first`, `:middle` or
+  `:last`. A shared place is said once, at the run's first row, and the line
+  bracketing the run starts in its first row and ends in its last, so two
+  runs that meet never read as one. A row with a place of its own is
+  `:first`.
+  """
+  @spec tie_part([%{id: term(), rank: pos_integer()}], %{id: term(), rank: pos_integer()}) ::
+          :first | :middle | :last
+  def tie_part(rows, row) do
+    run = Enum.filter(rows, &(&1.rank == row.rank))
+
+    cond do
+      hd(run).id == row.id -> :first
+      List.last(run).id == row.id -> :last
+      true -> :middle
+    end
+  end
+
+  @doc """
+  The corners of the faint band a run of tied rows shares in a ranked table
+  (`tie_part/2`): rounded at the run's two ends only, so the run reads as one
+  group.
+  """
+  @spec tie_band_corners([%{id: term(), rank: pos_integer()}], %{id: term(), rank: pos_integer()}) ::
+          String.t() | nil
+  def tie_band_corners(rows, row) do
+    case tie_part(rows, row) do
+      :first -> "rounded-t-md"
+      :middle -> nil
+      :last -> "rounded-b-md"
+    end
+  end
+
+  @doc """
+  Joins a line of copy's last two words with a no-break space, so a prompt
+  that wraps never leaves one word alone on its last line. Copy of three
+  words or fewer is left as it is (it may need to break anywhere on a
+  narrow screen).
+  """
+  @spec no_widow(String.t()) :: String.t()
+  def no_widow(text) when is_binary(text) do
+    if length(String.split(text)) > 3,
+      do: String.replace(text, ~r/\s+(\S+)\s*\z/u, "\u00A0\\1"),
+      else: text
+  end
+
+  @doc """
+  Readies a song's title for a poster: a short closing parenthetical ("(if
+  i don't mean it)") is kept whole, so a title breaks before it, never
+  inside it, and the last line is never one word alone (`no_widow/1`).
+  """
+  @spec poster_title(String.t()) :: String.t()
+  def poster_title(title) when is_binary(title) do
+    title =
+      Regex.replace(~r/\(([^()]{1,24})\)\s*\z/u, title, fn whole, _inner ->
+        String.replace(whole, " ", "\u00A0")
+      end)
+
+    no_widow(title)
+  end
+
+  def poster_title(other), do: other
+
+  @doc """
+  Sets a display headline's curly apostrophes in the body face (`.jam-apos`
+  in `app.css`): Lilita One draws its own as an upright tick that stands
+  apart from the letters, where the body face's curls into the word. Takes
+  plain text; returns it escaped, safe to interpolate.
+  """
+  @spec curly(String.t()) :: Phoenix.HTML.safe()
+  def curly(text) when is_binary(text) do
+    parts =
+      text
+      |> String.split("\u2019")
+      |> Enum.map(fn part ->
+        part |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      end)
+      |> Enum.intersperse(~s(<span class="jam-apos">\u2019</span>))
+
+    {:safe, parts}
+  end
+
+  @doc """
+  Renders the "now playing" level meter (`.jam-meter` in `app.css`): five
+  square bars that move while a song plays. Its size is its font size.
+  """
+  attr :class, :any, default: nil
+
+  def now_playing_meter(assigns) do
+    ~H"""
+    <span class={["jam-meter", @class]} role="img" aria-label="Now playing">
+      <i></i><i></i><i></i><i></i><i></i>
+    </span>
+    """
+  end
+
+  @doc """
+  Renders the game's name as a one-line wordmark in its own lettering, for a
+  screen's header: the speech-bubble logo is for the front door, and shrunk
+  to a header it stops reading. Its size is its font size.
+  """
+  attr :class, :any, default: nil
+
+  def wordmark(assigns) do
+    ~H"""
+    <span
+      class={["whitespace-nowrap font-display leading-none text-jam-cream", @class]}
+      role="img"
+      aria-label="Whose Jam"
+    >
+      <span aria-hidden="true">Whose <span class="text-jam-pink">Jam</span></span>
+    </span>
+    """
+  end
+
+  @doc """
+  Renders a stroke of pink marker (`.jam-stroke` in `app.css`), drawn by hand
+  in the same hand as the names, and only where it says something: a ring
+  round the name a player locked in (`:circle`), a line under the revealed
+  name (`:underline`), the winner's crown (`:crown`), and the arrow that
+  points a player to their own name (`:arrow`). It takes its colour from the
+  text colour and its size from its box; `.jam-stroke-draw` draws it in.
+  """
+  attr :kind, :atom, required: true, values: [:circle, :underline, :crown, :arrow]
+  attr :class, :any, default: nil
+
+  def marker_stroke(assigns) do
+    assigns = assign(assigns, :shape, stroke_shape(assigns.kind))
+
+    ~H"""
+    <svg
+      class={["jam-stroke", @class]}
+      viewBox={@shape.box}
+      preserveAspectRatio={@shape.aspect}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path :for={d <- @shape.paths} d={d} vector-effect="non-scaling-stroke" />
+    </svg>
+    """
+  end
+
+  # A loop that overshoots where it started, as a ring drawn in one go does.
+  defp stroke_shape(:circle),
+    do: %{
+      box: "0 0 200 100",
+      aspect: "none",
+      paths: [
+        "M116 11C163 8 195 25 192 52C189 80 143 94 97 91C49 89 8 76 9 49C10 23 49 8 98 8C131 7 159 13 181 26"
+      ]
+    }
+
+  # A quick line and a shorter one back under it.
+  defp stroke_shape(:underline),
+    do: %{
+      box: "0 0 200 24",
+      aspect: "none",
+      paths: ["M4 12C52 6 118 4 196 8", "M40 19C86 15 132 14 172 16"]
+    }
+
+  defp stroke_shape(:crown),
+    do: %{
+      box: "0 0 64 46",
+      aspect: "xMidYMid meet",
+      paths: [
+        "M9 40C8 31 6 21 5 12L19 26L32 5L45 26L59 12C58 21 56 31 55 40C40 42 24 42 9 40Z"
+      ]
+    }
+
+  # From the word to the name on its left, curving up into it.
+  defp stroke_shape(:arrow),
+    do: %{
+      box: "0 0 40 24",
+      aspect: "xMidYMid meet",
+      paths: ["M37 18C27 21 14 18 5 9", "M5 9L14 8", "M5 9L7 18"]
+    }
 
   @doc """
   Renders an open modal dialog. Render it conditionally with `:if`; Escape and
@@ -510,7 +733,7 @@ defmodule WhoseJamWeb.CoreComponents do
   def modal(assigns) do
     ~H"""
     <div
-      class="modal modal-open bg-jam-ink/80 backdrop-blur-sm"
+      class="modal modal-open bg-jam-ink/[0.985] backdrop-blur-[24px]"
       phx-window-keydown={@on_close}
       phx-key="Escape"
     >
@@ -519,7 +742,7 @@ defmodule WhoseJamWeb.CoreComponents do
         role="dialog"
         aria-modal="true"
         phx-mounted={JS.focus_first(to: "#" <> @id)}
-        class={["modal-box border border-jam-cream/10", @class]}
+        class={["modal-box", @class]}
       >
         <div class={@body_class}>
           {render_slot(@inner_block)}

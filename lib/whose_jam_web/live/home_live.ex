@@ -60,7 +60,7 @@ defmodule WhoseJamWeb.HomeLive do
         {:noreply, push_navigate(socket, to: ~p"/host/#{code}")}
 
       {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Couldn't create that game. Please try again.")}
+        {:noreply, put_flash(socket, :error, "Couldn’t create that game. Please try again.")}
     end
   end
 
@@ -102,21 +102,28 @@ defmodule WhoseJamWeb.HomeLive do
 
     <main
       data-theme="jam"
-      class="jam-stage jam-home min-h-screen flex items-center px-6 sm:px-12 lg:px-20 py-12 lg:py-20"
+      class="jam-stage jam-home min-h-screen flex items-start px-6 pt-12 pb-10 sm:px-12 lg:items-center lg:px-20 lg:py-20"
     >
-      <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
-        <header class="flex flex-col items-center lg:items-start gap-6">
+      <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
+        <header class="flex flex-col items-center lg:items-start gap-4 lg:gap-6">
           <img
             src={~p"/images/whose-jam-logo.svg"}
             alt="Whose Jam"
-            class="w-72 sm:w-96 lg:w-full lg:max-w-[min(48rem,62vh*1.33)] lg:-ml-[4%]"
+            class="w-48 sm:w-80 lg:w-full lg:max-w-[min(48rem,62vh*1.33)] lg:-ml-[4%]"
           />
-          <p class="text-xl sm:text-2xl xl:text-3xl text-jam-cream/75 max-w-xl xl:max-w-2xl">
-            The party game where everyone picks a song and the room guesses whose jam it is.
+          <%!-- On a wide screen, lined up with the logo's speech bubble (not
+               the lines drawn either side of it). --%>
+          <p class="text-lg sm:text-2xl xl:text-3xl font-medium leading-snug text-jam-cream/70 max-w-xl xl:max-w-2xl text-balance lg:pl-[min(4.5rem,8.5vh)]">
+            <%!-- A sentence to a line, so "The" never dangles at a line's end. --%>
+            <span class="block">Everyone picks a song.</span>
+            <span class="block">The room guesses whose jam it is.</span>
           </p>
         </header>
 
-        <div class="space-y-6 xl:space-y-8">
+        <%!-- One main thing per screen: on a phone, joining; on a TV or a
+             laptop, hosting (it comes first there, and joining waits under
+             it). --%>
+        <div class="flex flex-col gap-5 xl:gap-7">
           <%!-- A phone that left its game by accident goes straight back. --%>
           <.link
             :if={@seat}
@@ -124,41 +131,82 @@ defmodule WhoseJamWeb.HomeLive do
             navigate={~p"/play/#{@seat}"}
             class="jam-btn w-full text-lg xl:text-2xl"
           >
-            <span>Back to your game · <span class="tracking-widest">{@seat}</span></span>
+            <span>Back to your game ({@seat})</span>
           </.link>
-          <section class="jam-panel p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5">
-            <h2 class="font-display text-3xl xl:text-5xl">
+          <%!-- Joining: the room code is typed onto a ticket, like the one the
+               TV shows it on. The main thing on a phone; a slim row under
+               hosting on a TV. --%>
+          <%!-- Straight on the stage (no card: the ticket is the prop), and
+               on a TV under a hairline. --%>
+          <section class="order-1 space-y-4 pt-2 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:border-t lg:border-jam-cream/12 lg:pt-10">
+            <h2 class="text-2xl font-extrabold tracking-[-0.015em] lg:shrink-0 lg:text-xl lg:font-bold lg:text-jam-cream/75 xl:text-2xl">
               {if @seat, do: "Join another game", else: "Join a game"}
             </h2>
-            <form phx-submit="join" phx-change="validate_join" class="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                name="code"
-                value={@join_code}
-                autocomplete="off"
-                autocapitalize="characters"
-                placeholder="Room code"
-                maxlength="4"
-                aria-label="Room code"
-                class="flex-1 min-w-0 rounded-2xl border-2 border-jam-cream/10 bg-jam-ink/60 px-5 py-4 text-center lg:text-left font-display text-3xl xl:text-5xl uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:text-xl xl:placeholder:text-3xl placeholder:text-jam-cream/30 focus:border-jam-pink focus:outline-none"
-              />
-              <button type="submit" class="jam-btn xl:text-2xl xl:px-10">Join</button>
+            <form
+              phx-submit="join"
+              phx-change="validate_join"
+              class="jam-ticket-wide flex flex-col gap-4 sm:flex-row lg:flex-1 lg:gap-0"
+            >
+              <%!-- The code is typed onto a ticket, like the one the TV shows
+                   it on. On a TV the Join button is that ticket's stub, past
+                   a perforation; on a phone it is the screen's pink button,
+                   under it. --%>
+              <%!-- Focus is a pink line under the code, inside the ticket,
+                   so it follows the ticket's cut ends. Flat on the stage:
+                   a lifting shadow would fall into its notches (dark dots)
+                   and onto the button under it. --%>
+              <div class="min-w-0 flex-1">
+                <div class="jam-ticket [--jam-notch:0.55rem] lg:bg-transparent lg:[mask:none]">
+                  <input
+                    type="text"
+                    name="code"
+                    value={@join_code}
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    placeholder="Room code"
+                    maxlength="4"
+                    aria-label="Room code"
+                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/60 placeholder-shown:pt-[1.4rem] placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:pt-[0.35rem] lg:placeholder-shown:text-xl"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                class="jam-btn lg:rounded-none lg:border-l-2 lg:border-dashed lg:border-jam-ink/25 lg:bg-transparent lg:px-8 lg:text-[1.5rem] lg:font-extrabold lg:text-jam-ink lg:hover:bg-jam-ink/5 xl:text-[1.6rem]"
+              >
+                Join
+              </button>
             </form>
           </section>
 
-          <section class="jam-panel p-6 sm:p-8 xl:p-10 space-y-4 xl:space-y-5">
-            <div class="space-y-1">
-              <h2 class="font-display text-3xl xl:text-5xl">Host a game</h2>
-              <p class="text-jam-cream/60 xl:text-xl">Put it on the TV and pick a theme.</p>
+          <%!-- Hosting, straight on the stage: its headline, a line and the
+               pink button, with no card round them. --%>
+          <section class="order-2 hidden space-y-5 lg:order-1 lg:block">
+            <div class="space-y-2">
+              <h2 class="font-display text-5xl xl:text-6xl">Host a game</h2>
+              <p class="font-medium text-balance text-jam-cream/70 xl:text-2xl">
+                Pick a theme here on the TV. Everyone joins on their phone.
+              </p>
             </div>
             <button
               type="button"
               phx-click="open_host"
-              class="jam-btn jam-btn-orange w-full xl:text-2xl"
+              class="jam-btn w-full text-xl xl:text-3xl"
             >
               Choose a theme
             </button>
           </section>
+
+          <%!-- On a phone, hosting is a line, not a second panel. --%>
+          <p class="order-3 text-sm font-medium text-jam-cream/65 lg:hidden">
+            Hosting? Open this page on the TV, or <button
+              type="button"
+              phx-click="open_host"
+              class="font-bold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 cursor-pointer"
+            >
+              host from here
+            </button>.
+          </p>
         </div>
       </div>
 
@@ -173,52 +221,59 @@ defmodule WhoseJamWeb.HomeLive do
       :if={@host_open?}
       id="host-game-modal"
       on_close="close_host"
-      class="max-w-3xl"
+      class="max-w-3xl !border-0 !bg-transparent !p-0 !shadow-none lg:!max-w-[min(66vw,64rem)]"
       body_class="space-y-6"
     >
+      <%!-- Read from the sofa on a TV: two-thirds of the screen wide, and
+           set a size up there. --%>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <p class="jam-eyebrow">Host a game</p>
-          <h2 class="font-display text-4xl">Pick a theme</h2>
+          <h2 class="font-display text-3xl leading-none lg:text-[2.75rem]">Pick a theme</h2>
         </div>
+        <%!-- The same light close as the settings sheet's. --%>
         <button
           type="button"
           phx-click="close_host"
           aria-label="Close"
-          class="jam-chip !px-2.5 cursor-pointer"
+          class="grid size-11 cursor-pointer place-items-center rounded-md bg-jam-cream/[0.08] text-jam-cream/85 transition-colors hover:bg-jam-cream/15 hover:text-jam-cream focus-visible:bg-jam-cream/15"
         >
-          <.icon name="hero-x-mark" class="size-5" />
+          <.icon name="hero-x-mark-mini" class="size-7" />
         </button>
       </div>
 
-      <ul class="space-y-3">
+      <%!-- The themes side by side, each a sheet of paper laid on the table:
+           its name, how it plays, and one of its prompts, with a "Host this"
+           button at its foot (the two level). The whole sheet is that button
+           (it stretches over it); it lifts under the pointer and is ringed
+           only on focus. --%>
+      <ul class="grid gap-8 pt-2 sm:grid-cols-2">
         <li
           :for={theme <- @themes}
-          class="rounded-box border border-jam-cream/10 bg-base-200 p-5 flex flex-col sm:flex-row gap-5 sm:items-center"
+          class="jam-paper jam-theme-card group relative flex flex-col gap-3 px-7 pb-6 pt-7 text-jam-ink lg:gap-4 lg:px-9 lg:pb-8 lg:pt-9"
         >
-          <div class="flex-1 min-w-0 space-y-2">
-            <div class="flex flex-wrap items-center gap-2">
-              <h3 class="font-display text-2xl">{theme.name}</h3>
-              <span
-                :if={multi_style?(theme.style_sequence)}
-                class="jam-chip !py-0.5 !px-2.5 text-xs"
-              >
-                {length(Enum.uniq(theme.style_sequence))} sub-rounds
-              </span>
-            </div>
-            <%!-- What the host is choosing, in a line: how this one is played. --%>
-            <p class="text-lg font-bold text-jam-cream">{how_it_plays(theme.style_sequence)}</p>
-            <p class="text-sm text-jam-cream/70">{theme.description}</p>
-            <p :if={theme.examples != []} class="text-base text-jam-cream/65">
-              Like: “{hd(theme.examples).prompt}”
-            </p>
-          </div>
+          <h3 class="font-display text-[2rem] leading-none lg:text-[2.6rem]">{theme.name}</h3>
+          <%!-- Two lines kept for it on every card, so the prompts start level. --%>
+          <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-pretty text-jam-ink/70 lg:text-[1.35rem]">
+            {no_widow(how_it_plays(theme.style_sequence))}
+          </p>
+          <%!-- One of its prompts, quoted, past a dashed rule as the
+               receipt's lines are. --%>
+          <p
+            :if={theme.examples != []}
+            class="border-t-2 border-dashed border-jam-ink/15 pt-4 text-[1.0625rem] font-semibold leading-[1.3] text-pretty text-jam-ink/85 lg:text-[1.35rem]"
+          >
+            “{hd(theme.examples).prompt}”
+          </p>
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="jam-btn shrink-0 self-start sm:self-center"
+            class="mt-auto flex h-11 w-fit cursor-pointer items-center gap-2 rounded-md bg-jam-ink px-5 text-[1.0625rem] font-bold text-jam-cream transition-colors after:absolute after:inset-0 after:content-[''] group-hover:bg-[#2c2b28] focus-visible:outline-none lg:h-14 lg:px-7 lg:text-[1.35rem]"
           >
             Host this
+            <.icon
+              name="hero-arrow-right-mini"
+              class="size-[1.1em] transition-transform duration-150 group-hover:translate-x-1"
+            />
           </button>
         </li>
       </ul>
@@ -226,15 +281,14 @@ defmodule WhoseJamWeb.HomeLive do
     """
   end
 
-  defp multi_style?(styles), do: styles |> Enum.uniq() |> length() > 1
-
-  # How a theme plays, from the styles of its rounds, in the order they come.
+  # How a theme plays, from the styles of its rounds, in the order they come
+  # (a theme of two styles plays them as two rounds).
   defp how_it_plays(styles) do
     case Enum.uniq(styles) do
       [:guess_who] -> "Guess who picked each song."
       [:guess_question] -> "Guess which prompt each song was picked for."
-      [:guess_question, :guess_who] -> "Guess the prompt, then guess the person."
-      [:guess_who, :guess_question] -> "Guess the person, then guess the prompt."
+      [:guess_question, :guess_who] -> "Two rounds: guess the prompt, then the person."
+      [:guess_who, :guess_question] -> "Two rounds: guess the person, then the prompt."
       _ -> "Pick songs, then guess."
     end
   end

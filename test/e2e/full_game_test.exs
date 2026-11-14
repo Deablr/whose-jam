@@ -84,7 +84,15 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # First place is held back for a couple of seconds, then the awards and
       # each phone's own result arrive; all of it needs long enough on film
       # to be read.
-      Stage.hold(to_timeout(second: 14))
+      # Once second place has landed, before the winner is named.
+      Stage.hold(4_000)
+      Stage.snap(devices, [:host], "winner")
+      Stage.hold(to_timeout(second: 3))
+      Stage.snap(devices, [:host], "winner-card")
+      Stage.hold(to_timeout(second: 6))
+      everyone = Enum.map(@players, &elem(&1, 0))
+      Stage.snap(devices, [:host | everyone], "final")
+      Stage.hold(to_timeout(second: 1))
       exit_game(devices)
       Stage.hold(to_timeout(second: 2))
     end)
@@ -96,10 +104,19 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     host
     |> visit(~p"/")
     |> assert_connected()
+    |> Stage.then_snap(:host, "home")
     |> click_button("Choose a theme")
+    |> assert_has("h2", text: "Pick a theme")
+    # Once the dialog has finished fading in.
+    |> Stage.then_hold(600)
+    |> Stage.then_snap(:host, "themes")
     |> within("li:has(h3:text-is('#{@theme}'))", &click_button(&1, "Host this"))
     |> assert_has("p", text: "Room code")
     |> assert_connected()
+    |> assert_has("#music-prompt-modal")
+    # Once the dialog has finished fading in.
+    |> Stage.then_hold(600)
+    |> Stage.then_snap(:host, "music-prompt")
     # Mock Music needs no account: one click connects it, and the top bar
     # says so without a notice to dismiss.
     |> within("#music-prompt-modal", &click_button(&1, nil, "Connect", exact: true))
@@ -108,12 +125,15 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> click_button("Settings")
     # The Mock player hook is running in this browser.
     |> assert_has("p", text: "This screen is ready to play the music.")
-    |> fill_in("Time to pick songs (s)", with: "120")
+    |> fill_in("Time to pick", with: "120")
     |> fill_in("Prompts per player", with: "1")
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
-    |> fill_in("Listen before voting opens (s)", with: "10")
+    |> fill_in("Voting opens after", with: "10")
+    # Once the sheet has finished fading in.
+    |> Stage.then_hold(600)
+    |> Stage.then_snap(:host, "settings")
     |> click_button("Close settings")
 
     "/host/" <> code = current_path(host)
@@ -140,6 +160,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
           |> visit(~p"/")
           |> assert_connected()
           |> type("input[name=code]", code, delay: 90)
+          |> snap_if(index == 1, key, "home-phone")
           |> click_button(nil, "Join", exact: true)
         end
 
@@ -147,20 +168,50 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       |> assert_has("h1", text: "Pick a name")
       |> assert_connected()
       |> type("input[name=name]", name, delay: 90)
+      |> snap_if(index == 0, key, "pick-name")
       |> click_button("Join game")
-      |> assert_has("h1", text: "You're in, #{name}")
+      |> assert_has("h1", text: "You’re in")
+      |> hold_if(index == 0, 500)
+      |> snap_if(index == 0, key, "joined")
 
       assert_has(devices.host, "#lobby-players li", text: name)
     end)
+
+    # Once the last seat has finished landing.
+    Stage.hold(600)
+    Stage.snap(devices, [:host, :ben, :eli, :gus], "lobby")
   end
 
   # --- answering -------------------------------------------------------------
 
   # Everyone searches at once, like a real room. The last pick ends the
-  # answering phase, so a phone may skip straight past "Locked in"; the first
+  # answering phase, so a phone may skip straight past "Song picked"; the first
   # round's "Round 1 of 8" is what proves all eight picks landed.
   defp pick_songs(devices) do
-    in_parallel(@players, fn {key, _name, _device, search, song} ->
+    # The first player picks alone, so the stills catch the search before
+    # anyone else has picked.
+    [{first, _name, _device, search, song} | others] = @players
+
+    devices
+    |> Map.fetch!(first)
+    |> assert_has("input[name=q]", timeout: @wait)
+
+    assert_has(devices.host, "h1", text: "Heads down", timeout: @wait)
+    Stage.hold(500)
+    Stage.snap(devices, [:host, first, :gus], "pick-song")
+
+    devices
+    |> Map.fetch!(first)
+    |> type("input[name=q]", search, delay: 90)
+    |> assert_has("button", text: song)
+    |> Stage.then_hold(400)
+    |> Stage.then_snap(first, "search-results")
+    |> click_button(song)
+    |> Stage.then_hold(800)
+
+    Stage.snap(devices, [:host, first], "song-picked")
+
+    in_parallel(others, fn {key, _name, _device, search, song} ->
       devices
       |> Map.fetch!(key)
       |> assert_has("input[name=q]", timeout: @wait)
@@ -182,9 +233,23 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       devices.host
       |> assert_has("p", text: "Round #{round} of #{@rounds}", timeout: @wait)
 
-      song = text_of(devices.host, "h1")
+      # (A poster keeps a title's closing parenthetical whole with no-break
+      # spaces; the song's name has plain ones.)
+      song = devices.host |> text_of("h1") |> String.replace("\u00A0", " ")
       {submitter, submitter_name, _, _, _} = List.keyfind!(@players, song, 4)
       votes = votes_for(round, submitter)
+      first? = round == 1
+
+      # The round's card, then the song once the card has cleared.
+      if first? do
+        Stage.hold(600)
+        Stage.snap(devices, [:host], "round-card")
+        Stage.hold(2_900)
+        listener = votes |> hd() |> elem(0)
+        # The laptop too, whoever's song it is: its two columns lay the
+        # round out differently from a phone's one.
+        Stage.snap(devices, Enum.uniq([:host, listener, submitter, :gus]), "listening")
+      end
 
       if round == 1 do
         devices.dev
@@ -208,46 +273,45 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       devices
       |> Map.fetch!(submitter)
       |> assert_has("#phone-voting h1",
-        text: "Who'll get the blame?",
+        text: "Who’ll get the blame?",
         timeout: @wait
       )
-      |> assert_has("#vote-hint", text: "Pick who the room will think chose it")
+      |> assert_has("#vote-hint",
+        text: "Pick who they’ll blame. +1 if you’re right."
+      )
       |> assert_has("#round-prompt blockquote", text: prompt)
       |> refute_has("#phone-voting button", text: submitter_name, exact: true)
+      |> snap_if(first?, submitter, "picker-vote")
       |> click_button(nil, name_of(bluff), exact: true)
       |> click_button("Lock in #{name_of(bluff)}")
       |> assert_has("#phone-voted h1", text: name_of(bluff), exact: true)
       |> assert_has("#locked-note", text: "Your prediction")
       |> refute_has("#phone-voted", text: "ecoy")
+      |> hold_if(first?, 500)
+      |> snap_if(first?, submitter, "picker-locked")
 
-      in_parallel(votes, fn {voter, choice} ->
-        {_, voter_name, _, _, _} = List.keyfind!(@players, voter, 0)
-        {_, choice_name, _, _, _} = List.keyfind!(@players, choice, 0)
+      # In the first round one voter goes first, alone, for the stills.
+      {lead, rest} = if first?, do: Enum.split(votes, 1), else: {[], votes}
+      Enum.each(lead, &cast_vote(devices, &1, true))
+      # With the TV, the smallest phone's vote screen while it is still
+      # choosing (unless it is the picker's, already locked in), so every run
+      # shows the vote on a small screen too.
+      small = if Enum.any?(rest, &match?({:cleo, _}, &1)), do: [:cleo], else: []
+      if first?, do: Stage.snap(devices, [:host | small], "tv-voting")
+      in_parallel(rest, &cast_vote(devices, &1, false))
 
-        devices
-        |> Map.fetch!(voter)
-        |> assert_has("#phone-voting h1", text: "Whose jam is this?", timeout: @wait)
-        # Nobody is offered their own name.
-        |> refute_has("#phone-voting button", text: voter_name, exact: true)
-        # A tap chooses; locking it in is the vote.
-        |> assert_has("#vote-hint", text: "Choose a name, then lock it in.")
-        |> refute_has("#phone-voting", text: "blame")
-        |> click_button(nil, choice_name, exact: true)
-        |> click_button("Lock in #{choice_name}")
-        # The phone says back what was picked.
-        |> assert_has("#phone-voted h1", text: choice_name, exact: true)
-        |> assert_has("#locked-note", text: "Locked in")
-      end)
-
-      # The TV names who is in, the picker among them (everyone has
-      # something to lock in, so the list gives nobody away).
+      # The TV shows who is in on the score strip, the picker among them
+      # (everyone has something to lock in, so it gives nobody away): their
+      # tape lands on their seat.
       devices.host
-      |> assert_has("#vote-progress", text: "#{length(@players)} of #{length(@players)}")
-      |> assert_has("#vote-chips li", text: submitter_name, exact: true)
+      |> assert_has("#vote-progress", text: "#{length(@players)}/#{length(@players)}")
+      |> assert_has("#score-strip li[data-in] .jam-tape", text: submitter_name, exact: true)
 
       devices.host
       |> assert_has("p", text: "It was", timeout: @wait)
       |> assert_has("p.font-display", text: submitter_name)
+
+      if first?, do: snap_reveal(devices, submitter, votes)
 
       assert_reveal(devices, submitter, votes, bluff)
 
@@ -259,11 +323,51 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # The default screen choices: the last reveal keeps the totals for the
       # final scores, and says so on the strip.
       if round == @rounds,
-        do: assert_has(devices.host, "#strip-label", text: "final scores next")
+        do: assert_has(devices.host, "#strip-label", text: "Final scores next.")
 
       fooled = Enum.count(votes, fn {_voter, choice} -> choice != submitter end)
       {tally(scores, submitter, votes, bluff), max(most_fooled, fooled)}
     end)
+  end
+
+  defp cast_vote(devices, {voter, choice}, snap?) do
+    {_, voter_name, _, _, _} = List.keyfind!(@players, voter, 0)
+    {_, choice_name, _, _, _} = List.keyfind!(@players, choice, 0)
+
+    devices
+    |> Map.fetch!(voter)
+    |> assert_has("#phone-voting h1", text: "Whose jam is this?", timeout: @wait)
+    # Nobody is offered their own name.
+    |> refute_has("#phone-voting button", text: voter_name, exact: true)
+    # A tap chooses; locking it in is the vote.
+    |> assert_has("#vote-hint", text: "Pick who chose it. +1 if you’re right.")
+    |> refute_has("#phone-voting", text: "blame")
+    |> snap_if(snap?, voter, "vote")
+    |> click_button(nil, choice_name, exact: true)
+    |> hold_if(snap?, 400)
+    |> snap_if(snap?, voter, "vote-chosen")
+    |> click_button("Lock in #{choice_name}")
+    # The phone says back what was picked.
+    |> assert_has("#phone-voted h1", text: choice_name, exact: true)
+    |> assert_has("#locked-note", text: "Locked in")
+    |> hold_if(snap?, 500)
+    |> snap_if(snap?, voter, "vote-locked")
+
+    :ok
+  end
+
+  # Once every beat of the reveal has landed: the TV, the picker's phone, and
+  # the phones of one voter who called it and one who was fooled.
+  defp snap_reveal(devices, submitter, votes) do
+    right = Enum.find_value(votes, fn {voter, choice} -> choice == submitter && voter end)
+    fooled = Enum.find_value(votes, fn {voter, choice} -> choice != submitter && voter end)
+    Stage.hold(4_500)
+
+    Stage.snap(
+      devices,
+      Enum.reject([:host, submitter, right, fooled], &(&1 in [nil, false])),
+      "reveal"
+    )
   end
 
   # The reveal groups the votes by who was named, sums the round up in two
@@ -284,11 +388,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # (A tie for the most wrong guesses names every one of them.)
       devices.host
       |> assert_has("#forecast", text: "+1")
-      |> assert_has("#forecast", text: "Called the blame: ")
+      |> assert_has("#forecast", text: "Predicted the blame on ")
       |> assert_has("#forecast", text: name_of(bluff))
 
       phone
-      |> assert_has("#my-blame", text: "+1 Called the blame: ")
+      |> assert_has("#my-blame", text: "+1 for predicting the blame on ")
       |> assert_has("#my-blame", text: name_of(bluff))
     else
       assert_missed_guess(devices.host, phone, name_of(bluff), fooled)
@@ -301,11 +405,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   defp assert_missed_guess(host, phone, guess, _fooled) do
     # A miss is said plainly, with no points to it.
     host
-    |> assert_has("#forecast", text: "Guessed #{guess} · ")
+    |> assert_has("#forecast", text: "Predicted #{guess}, but ")
     |> assert_has("#forecast", text: "took the blame")
     |> refute_has("#forecast", text: "+")
 
-    assert_has(phone, "#my-blame", text: "Guessed #{guess} · ")
+    assert_has(phone, "#my-blame", text: "Predicted #{guess}, but ")
   end
 
   # The TV's card for the player this voter named lists the voter (the right
@@ -475,13 +579,15 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     in_parallel(@players, fn {key, _name, _device, _search, _song} ->
       devices
       |> Map.fetch!(key)
-      |> assert_has("#game-ended", text: "That's the night.", timeout: @wait)
+      |> assert_has("#game-ended", text: "Room closed.", timeout: @wait)
       # The final scores stay on screen.
       |> assert_has("h1#my-place")
       |> assert_has("#final-scores li", count: length(@players))
     end)
 
-    Stage.hold(to_timeout(second: 3))
+    Stage.hold(to_timeout(second: 1))
+    Stage.snap(devices, [:host, :ava, :fern], "closing")
+    Stage.hold(to_timeout(second: 2))
 
     # The next game starts from the closing card, with the themes to choose.
     devices.host
@@ -490,6 +596,15 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
   end
 
   # --- helpers ---------------------------------------------------------------
+
+  # A still for the record (`Stage.snap/3`), when `snap?` says this is the
+  # moment to take it.
+  defp snap_if(session, true, key, name), do: Stage.then_snap(session, key, name)
+  defp snap_if(session, false, _key, _name), do: session
+
+  # Lets a tap's transition finish before a still (`Stage.then_hold/2`).
+  defp hold_if(session, true, ms), do: Stage.then_hold(session, ms)
+  defp hold_if(session, false, _ms), do: session
 
   # Interact only once LiveView has connected, or events are lost.
   defp assert_connected(session), do: assert_has(session, "[data-phx-main].phx-connected")
