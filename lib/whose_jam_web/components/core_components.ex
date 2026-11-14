@@ -519,6 +519,15 @@ defmodule WhoseJamWeb.CoreComponents do
     do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 3)}"
 
   @doc """
+  A clock's length in seconds as a countdown's numerals show it (`m:ss`), for
+  a clock that hasn't started yet: `clock_length(30)` is `"0:30"`.
+  """
+  @spec clock_length(non_neg_integer()) :: String.t()
+  def clock_length(seconds) when is_integer(seconds) and seconds >= 0 do
+    "#{div(seconds, 60)}:#{seconds |> rem(60) |> Integer.to_string() |> String.pad_leading(2, "0")}"
+  end
+
+  @doc """
   Where a row sits in its run of equal places in a ranked table (rows as
   `WhoseJam.Game.Standings.rank/2` returns them): `:first`, `:middle` or
   `:last`. A shared place is said once, at the run's first row, and the line

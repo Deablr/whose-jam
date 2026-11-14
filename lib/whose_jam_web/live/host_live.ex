@@ -1662,7 +1662,7 @@ defmodule WhoseJamWeb.HostLive do
           >
             <%!-- Balanced lines, and never one word alone on the last. --%>
             <p class="font-display text-[4.25rem] leading-[1.1] text-balance">
-              {no_widow(@view.round.prompt)}
+              {curly(no_widow(@view.round.prompt))}
             </p>
             <%!-- The round's one clue, said here, once. --%>
             <p
@@ -1863,7 +1863,7 @@ defmodule WhoseJamWeb.HostLive do
         </h1>
         <p class={[
           "mt-1.5 truncate font-semibold text-jam-ink/65",
-          if(@size == :reveal, do: "text-[1.2rem]", else: "text-[1.5rem]")
+          if(@size == :reveal, do: "text-[1.35rem]", else: "text-[1.5rem]")
         ]}>
           {@song.artist}
         </p>
@@ -2047,9 +2047,8 @@ defmodule WhoseJamWeb.HostLive do
            picker's too, so it says nothing about whose song this is). The
            audience, who have no seat there, are counted here. Never what
            anyone chose. --%>
-      <%!-- The count, as the song-picking screen keeps it, and beside it a
-           place kept for the clock, so nothing moves when it starts. --%>
-      <div class="jam-pop flex min-h-[4rem] items-end gap-12">
+      <%!-- The count, as the song-picking screen keeps it. --%>
+      <div class="jam-pop flex min-h-[4rem] items-end">
         <p
           id="vote-progress"
           class="flex items-baseline gap-3 text-[1.75rem] font-semibold text-jam-cream/70"
@@ -2062,35 +2061,44 @@ defmodule WhoseJamWeb.HostLive do
             (audience {@audience_in}/{@audience_total})
           </span>
         </p>
+      </div>
+      <%!-- The clock, as the phones show it: before it runs, what starts it
+           and its length in grey over a dashed slot (as everything that
+           hasn't happened yet is drawn); once it runs, the time left over a
+           bar that starts full and drains. Nothing moves when it starts. --%>
+      <div :if={!@all_in?} id="tv-vote-clock" class="jam-pop space-y-3">
         <.tv_timer
-          :if={!@all_in? and @view.round.deadline_ms}
+          :if={@view.round.deadline_ms}
           id="vote-countdown"
           label="Time left"
           deadline={@view.round.deadline_ms}
         />
-      </div>
-      <%!-- Until the clock runs, a line under the count says what starts it
-           (where its bar will run). --%>
-      <p
-        :if={!@all_in? and !@view.round.deadline_ms}
-        id="clock-note"
-        class="-mt-2 text-[1.5rem] font-medium leading-snug text-jam-cream/60"
-      >
-        The clock starts when most players lock in.
-      </p>
-      <%!-- The vote's length is known once its clock runs: a bar, as the
-           listening wait has. --%>
-      <div
-        :if={!@all_in? and @view.round.deadline_ms}
-        id={"vote-bar-#{@view.round.deadline_ms}"}
-        phx-hook="Progress"
-        phx-update="ignore"
-        data-deadline={@view.round.deadline_ms}
-        data-duration={@view.config.vote_timer_s * 1000}
-        class="jam-bar h-2 overflow-hidden bg-jam-cream/12"
-        aria-hidden="true"
-      >
-        <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
+        <div :if={!@view.round.deadline_ms} id="clock-note" class="flex items-baseline gap-4">
+          <p class="text-[1.75rem] font-semibold text-jam-cream/70">
+            Starts when most players lock in
+          </p>
+          <p class="font-display text-[3.5rem] leading-none tabular-nums text-jam-cream/40">
+            {clock_length(@view.config.vote_timer_s)}
+          </p>
+        </div>
+        <div
+          :if={@view.round.deadline_ms}
+          id={"vote-bar-#{@view.round.deadline_ms}"}
+          phx-hook="Progress"
+          phx-update="ignore"
+          data-deadline={@view.round.deadline_ms}
+          data-duration={@view.config.vote_timer_s * 1000}
+          class="jam-bar h-2 overflow-hidden bg-jam-cream/12"
+          aria-hidden="true"
+        >
+          <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
+        </div>
+        <div
+          :if={!@view.round.deadline_ms}
+          class="jam-bar h-2 border-2 border-dashed border-jam-cream/30"
+          aria-hidden="true"
+        >
+        </div>
       </div>
     </div>
     """
@@ -2841,13 +2849,14 @@ defmodule WhoseJamWeb.HostLive do
               >
                 {if @playlist_open?, do: "Back to the scores", else: "Tonight’s playlist"}
               </button>
-              <%!-- Leaving is the quiet one, set apart at the row's end. --%>
+              <%!-- Leaving is the quiet one: a text button kept with the
+                   others, a step apart, not adrift at the column's edge. --%>
               <button
                 id="exit-game"
                 type="button"
                 phx-click="exit_game"
                 data-confirm="End the game for everyone?"
-                class="ml-auto cursor-pointer px-2 text-[1.3rem] font-bold text-jam-cream/70 underline decoration-jam-cream/30 underline-offset-4 transition-colors hover:text-jam-cream"
+                class="ml-3 cursor-pointer px-2 text-[1.4rem] font-bold text-jam-cream/70 underline decoration-jam-cream/30 underline-offset-4 transition-colors hover:text-jam-cream"
               >
                 Exit game
               </button>
@@ -2885,7 +2894,7 @@ defmodule WhoseJamWeb.HostLive do
                     (row.tied? and tie_part(@board, row) != :first) && "sr-only"
                   ]}>
                     {Standings.ordinal(row.rank)}
-                    <span :if={row.tied?} class="text-[1.25rem] opacity-75">tied</span>
+                    <span :if={row.tied?} class="text-[1.4rem]">tied</span>
                   </span>
                 </span>
                 <%!-- A blank the width of a name, turned over with the rest. --%>
@@ -2919,7 +2928,7 @@ defmodule WhoseJamWeb.HostLive do
                       (row.tied? and tie_part(@board, row) != :first) && "sr-only"
                     ]}>
                       {Standings.ordinal(row.rank)}
-                      <span :if={row.tied?} class="font-body text-[1.25rem] font-semibold opacity-75">
+                      <span :if={row.tied?} class="font-body text-[1.4rem] font-semibold">
                         tied
                       </span>
                     </span>

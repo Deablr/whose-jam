@@ -878,10 +878,10 @@ defmodule WhoseJamWeb.PlayLive do
           />
           <.you_mark />
         </div>
-        <%!-- (On a tablet, four to a row in equal seats, each tape centred
-             in its seat, as the TV seats them; a laptop's narrower column
-             wraps them.) --%>
-        <div class="flex flex-wrap gap-x-2.5 gap-y-3 md:grid md:grid-cols-4 md:justify-items-center md:gap-y-3.5 lg:flex lg:justify-start">
+        <%!-- (On a tablet, four to a row in equal seats, each tape at its
+             seat's left edge, so the first column lines up under the
+             player's own tape; a laptop's narrower column wraps them.) --%>
+        <div class="flex flex-wrap gap-x-2.5 gap-y-3 md:grid md:grid-cols-4 md:justify-items-start md:gap-y-3.5 lg:flex lg:justify-start">
           <span
             :for={p <- Enum.reject(@view.players, &(&1.id == @player_id))}
             class="relative flex max-w-full items-center"
@@ -1046,7 +1046,10 @@ defmodule WhoseJamWeb.PlayLive do
               else: "font-display text-[1.5rem] leading-[1.15]"
             )
           ]}>
-            {@question.prompt}
+            <%!-- In Lilita, its apostrophes set as every headline's are. --%>
+            {if @question.submitted? and @edit_qid != @question.question_id,
+              do: @question.prompt,
+              else: curly(@question.prompt)}
           </h1>
         </div>
       </div>
@@ -1362,7 +1365,7 @@ defmodule WhoseJamWeb.PlayLive do
           class="jam-paper jam-lean px-6 pb-5 pt-5 text-jam-ink"
         >
           <p class="font-display text-[1.75rem] leading-[1.15] text-balance">
-            {no_widow(@round.prompt)}
+            {curly(no_widow(@round.prompt))}
           </p>
           <%!-- The round's one clue, said here, once. --%>
           <p :if={take_label(@round)} class="mt-3 text-sm font-semibold text-jam-ink/75">
@@ -1707,7 +1710,7 @@ defmodule WhoseJamWeb.PlayLive do
          place, which "Eyes on the TV" and the answer take after it. The same on every phone, the picker's included. --%>
       <div
         id="phone-voting"
-        class="mt-5 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-3 lg:mt-0 lg:after:hidden"
+        class="mt-4 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-3 lg:mt-0 lg:after:hidden"
       >
         <%!-- The question is the screen's headline, its how-to right under
              it in the same space on every phone (the picker's too), then the
@@ -2061,10 +2064,19 @@ defmodule WhoseJamWeb.PlayLive do
       <p class="flex h-6 items-baseline justify-between gap-3 text-[0.8125rem] font-medium leading-none text-jam-cream/65">
         <span>
           {cond do
-            is_nil(@round.deadline_ms) -> "The clock starts when most players lock in."
+            is_nil(@round.deadline_ms) -> "Starts when most players lock in"
             @round.all_in? -> "Reveal in"
             true -> "Time left"
           end}
+        </span>
+        <%!-- Before it runs, the clock's length in grey, where its numerals
+             will count down. --%>
+        <span
+          :if={is_nil(@round.deadline_ms)}
+          id="vote-clock-length"
+          class="font-display text-[1.375rem] leading-none tabular-nums text-jam-cream/40"
+        >
+          {clock_length(@view.config.vote_timer_s)}
         </span>
         <span
           :if={@round.deadline_ms}
@@ -2077,6 +2089,10 @@ defmodule WhoseJamWeb.PlayLive do
           --
         </span>
       </p>
+      <%!-- Not yet running, the bar is a dashed slot, as everything that
+           hasn't happened yet is (the Lock in slot, a name not yet in); once
+           it runs it starts full and drains; in the last seconds after
+           everyone is in, its place is kept empty. --%>
       <div
         :if={@round.deadline_ms && !@round.all_in?}
         id={"vote-bar-#{@round.deadline_ms}"}
@@ -2084,17 +2100,18 @@ defmodule WhoseJamWeb.PlayLive do
         phx-update="ignore"
         data-deadline={@round.deadline_ms}
         data-duration={@view.config.vote_timer_s * 1000}
-        class="jam-bar h-1 w-full overflow-hidden bg-jam-cream/15"
+        class="jam-bar h-1.5 w-full overflow-hidden bg-jam-cream/15"
         aria-hidden="true"
       >
         <span class="block h-full origin-left bg-jam-orange [transform:scaleX(1)]"></span>
       </div>
       <div
-        :if={!(@round.deadline_ms && !@round.all_in?)}
-        class="jam-bar h-1 w-full bg-jam-cream/10"
+        :if={is_nil(@round.deadline_ms)}
+        class="jam-bar h-1.5 w-full border border-dashed border-jam-cream/35"
         aria-hidden="true"
       >
       </div>
+      <div :if={@round.deadline_ms && @round.all_in?} class="h-1.5" aria-hidden="true"></div>
     </div>
     """
   end
@@ -2539,7 +2556,7 @@ defmodule WhoseJamWeb.PlayLive do
               <%!-- The winner's line wears its prize: an orange "1st" tape. --%>
               <div class={[
                 "flex flex-wrap items-center gap-x-3 gap-y-1",
-                if(@won?, do: "mt-5", else: "mt-1")
+                if(@won?, do: "mt-7", else: "mt-1")
               ]}>
                 <%!-- The winner's phone has its moment: the line larger, and
                      wearing the crown the TV drew on the winner's name, in
@@ -2554,7 +2571,7 @@ defmodule WhoseJamWeb.PlayLive do
                   <.marker_stroke
                     :if={@won?}
                     kind={:crown}
-                    class="absolute left-[0.01em] -top-[0.36em] h-[0.52em] w-[0.64em] -rotate-[9deg] text-jam-orange [--jam-stroke-w:0.24rem]"
+                    class="absolute -left-[0.06em] -top-[0.52em] h-[0.76em] w-[0.94em] -rotate-[12deg] text-jam-orange [--jam-stroke-w:0.26rem]"
                   />
                   {if @mine, do: finish_line(@mine, @role, length(@board)), else: "Game over"}
                 </h1>
