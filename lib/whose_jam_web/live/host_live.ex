@@ -2700,7 +2700,7 @@ defmodule WhoseJamWeb.HostLive do
           <%!-- What they did and how, a step down from the names: the
                points in orange, as every point is; the margin quieter under
                them. --%>
-          <p class="text-[3rem] font-bold leading-tight text-jam-cream">
+          <p class="text-[3rem] font-semibold leading-tight text-jam-cream">
             <.winner_points_line winners={@winners} verb={winner_verb(@winners, @board)} />
             <span
               :if={winner_margin(@winners, @board)}
@@ -2760,7 +2760,7 @@ defmodule WhoseJamWeb.HostLive do
                 :if={@winners != []}
                 id="winner-margin"
                 class={[
-                  "mt-1 text-3xl font-medium text-jam-cream/85",
+                  "mt-1 text-3xl font-semibold text-jam-cream/85",
                   @build? && "jam-rise jam-finale-after-1"
                 ]}
               >
@@ -2898,15 +2898,25 @@ defmodule WhoseJamWeb.HostLive do
                   "jam-rise #{count_class(row.rank, @count_steps)}"
               ]}>
                 <span class="flex min-w-0 shrink items-center gap-5">
+                  <%!-- A shared place is said once, at the head of its run,
+                       with a line down the run's rows bracketing them as
+                       one place (no order among them). --%>
                   <span class={[
-                    "flex w-[7.5rem] shrink-0 items-baseline gap-2 text-[1.6rem] font-semibold leading-none tabular-nums",
+                    "flex w-[7.5rem] shrink-0 items-baseline gap-2 self-stretch text-[1.6rem] font-semibold leading-none tabular-nums",
+                    row.tied? &&
+                      "relative before:absolute before:-inset-y-3 before:-left-4 before:w-0.5 before:bg-jam-cream/20 before:content-['']",
                     if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                   ]}>
-                    {Standings.ordinal(row.rank)}
-                    <%!-- A shared place says so, beside the place, a step
-                         smaller (as the phones' tables have it). --%>
-                    <span :if={row.tied?} class="font-body text-[1.25rem] font-semibold opacity-75">
-                      tied
+                    <%!-- (Said on every row for a screen reader; shown at the head
+                         of the run only.) --%>
+                    <span class={[
+                      "flex items-baseline gap-2 self-center",
+                      (row.tied? and not MapSet.member?(tie_heads(@board), row.id)) && "sr-only"
+                    ]}>
+                      {Standings.ordinal(row.rank)}
+                      <span :if={row.tied?} class="font-body text-[1.25rem] font-semibold opacity-75">
+                        tied
+                      </span>
                     </span>
                   </span>
                   <.name_tape
@@ -3168,7 +3178,7 @@ defmodule WhoseJamWeb.HostLive do
   # is the right guessers'). A miss is said as clearly
   # as a hit, with no points to it.
   defp prediction(guess, _took, true, _style),
-    do: "Correctly predicted #{guess} would take the blame"
+    do: "Called the blame on #{guess}"
 
   defp prediction(guess, took, false, _style),
     do: "Predicted #{guess}, but #{join_names(took)} took the blame"
@@ -3376,7 +3386,7 @@ defmodule WhoseJamWeb.HostLive do
             # The bluff last, so its song's row follows it.
             [
               {"Sharpest ears", "guessed #{awards.sharpest.called} right"},
-              {"Best bluff", "fooled #{players(awards.best_bluff.fooled)} with"}
+              {"Best bluff", "fooled #{players(awards.best_bluff.fooled)}"}
             ],
             played_song(view, id, song)
           }
@@ -3441,6 +3451,9 @@ defmodule WhoseJamWeb.HostLive do
   defp sharpest_line(_view, nil), do: nil
 
   defp winner_rows(board), do: Enum.filter(board, &(&1.rank == 1))
+
+  # The rows that open a run of equal places: a shared place is said once.
+  defp tie_heads(rows), do: rows |> Enum.chunk_by(& &1.rank) |> MapSet.new(&hd(&1).id)
 
   defp winner_headline([], _board), do: "Game over"
   defp winner_headline([winner], _board), do: "#{winner.name} wins"

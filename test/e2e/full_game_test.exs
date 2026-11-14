@@ -388,11 +388,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # (A tie for the most wrong guesses names every one of them.)
       devices.host
       |> assert_has("#forecast", text: "+1")
-      |> assert_has("#forecast", text: " would take the blame")
+      |> assert_has("#forecast", text: "Called the blame on ")
       |> assert_has("#forecast", text: name_of(bluff))
 
       phone
-      |> assert_has("#my-blame", text: "+1 for predicting ")
+      |> assert_has("#my-blame", text: "+1 for calling the blame on ")
       |> assert_has("#my-blame", text: name_of(bluff))
     else
       assert_missed_guess(devices.host, phone, name_of(bluff), fooled)

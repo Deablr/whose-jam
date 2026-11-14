@@ -2387,7 +2387,7 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The TV's words: who took the blame (most of the wrong guesses).
   defp prediction(_choice, took, true, _round),
-    do: "for predicting #{join_names(took)} would take the blame"
+    do: "for calling the blame on #{join_names(took)}"
 
   defp prediction(choice, took, false, round),
     do: "Predicted #{guess_name(round, choice)}, but #{join_names(took)} took the blame."
@@ -2698,14 +2698,22 @@ defmodule WhoseJamWeb.PlayLive do
                   <span
                     :if={list_id == "final-scores" or length(rows) > 1}
                     class={[
-                      "flex w-[4.75rem] shrink-0 items-baseline gap-1.5 text-[0.9375rem] font-semibold leading-none tabular-nums",
+                      "flex w-[4.75rem] shrink-0 items-baseline gap-1.5 self-stretch text-[0.9375rem] font-semibold leading-none tabular-nums",
+                      row.tied? &&
+                        "relative before:absolute before:-inset-y-1.5 before:-left-2 before:w-0.5 before:bg-jam-cream/20 before:content-['']",
                       if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
                     ]}
                   >
-                    {Standings.ordinal(row.rank)}
-                    <%!-- A shared place says so, beside the place. --%>
-                    <span :if={row.tied?} class="font-body text-xs font-semibold">
-                      tied
+                    <%!-- A shared place is said once, at the head of its run,
+                         with a line down the run bracketing its rows. --%>
+                    <%!-- (Said on every row for a screen reader; shown at the head
+                         of the run only.) --%>
+                    <span class={[
+                      "flex items-baseline gap-1.5 self-center",
+                      (row.tied? and not MapSet.member?(tie_heads(rows), row.id)) && "sr-only"
+                    ]}>
+                      {Standings.ordinal(row.rank)}
+                      <span :if={row.tied?} class="font-body text-xs font-semibold">tied</span>
                     </span>
                   </span>
                   <.name_tape
@@ -2883,6 +2891,9 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp players(1), do: "player"
   defp players(_n), do: "players"
+
+  # The rows that open a run of equal places: a shared place is said once.
+  defp tie_heads(rows), do: rows |> Enum.chunk_by(& &1.rank) |> MapSet.new(&hd(&1).id)
 
   # An award held with others says whom with, as the TV does.
   defp shared_note(view, ids) do
