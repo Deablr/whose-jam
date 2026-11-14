@@ -1656,20 +1656,12 @@ defmodule WhoseJamWeb.HostLive do
           <p :if={@view.round.prompt} class="text-[1.75rem] font-bold text-jam-cream/70">
             Round {@view.round.index + 1} of {@view.round.total}<span :if={second_take?(@view.round)}>: another song for</span>
           </p>
-          <%!-- A long prompt gets a wider slip and a size down, so it sets in
-               about three even lines rather than a tall block. --%>
           <div
             :if={@view.round.prompt}
-            class={[
-              "jam-paper jam-lean px-10 pb-9 pt-10 text-jam-ink",
-              round_card_width(@view.round.prompt)
-            ]}
+            class="jam-paper jam-lean max-w-[52rem] px-10 pb-9 pt-10 text-jam-ink"
           >
             <%!-- Balanced lines, and never one word alone on the last. --%>
-            <p class={[
-              "font-display leading-[1.1] text-balance",
-              round_card_text(@view.round.prompt)
-            ]}>
+            <p class="font-display text-[4.25rem] leading-[1.1] text-balance">
               {curly(no_widow(@view.round.prompt))}
             </p>
             <%!-- The round's one clue, said here, once. --%>
@@ -2123,18 +2115,6 @@ defmodule WhoseJamWeb.HostLive do
     </div>
     """
   end
-
-  # A prompt too long for the round card's slip at full size (more than about
-  # three lines of it) gets a wider slip and a size down.
-  defp round_card_width(prompt) when is_binary(prompt) and byte_size(prompt) > 64,
-    do: "max-w-[62rem]"
-
-  defp round_card_width(_prompt), do: "max-w-[52rem]"
-
-  defp round_card_text(prompt) when is_binary(prompt) and byte_size(prompt) > 64,
-    do: "text-[3.75rem]"
-
-  defp round_card_text(_prompt), do: "text-[4.25rem]"
 
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -2696,20 +2676,30 @@ defmodule WhoseJamWeb.HostLive do
         >
           <div :for={song <- @winner_songs} class="relative flex flex-col items-center">
             <.poster song={song} heading?={false} />
-            <%!-- The night's best bluff wears a sticker saying so. --%>
+            <%!-- The night's best bluff wears a sticker saying so (on a tied
+                 winner's smaller print, just its name, so it stays within
+                 the print). --%>
             <p
               :if={song.caption}
-              class="jam-tape jam-tape-orange jam-tilt-4 absolute -right-10 -top-5 whitespace-nowrap text-[1.6rem]"
+              class={[
+                "jam-tape jam-tape-orange jam-tilt-4 absolute -top-5 whitespace-nowrap",
+                if(length(@winner_songs) > 1,
+                  do: "-right-3 text-[1.35rem]",
+                  else: "-right-10 text-[1.6rem]"
+                )
+              ]}
             >
-              {song.caption}
+              {if length(@winner_songs) > 1,
+                do: song.caption,
+                else: "#{song.caption}: fooled #{song.fooled}"}
             </p>
             <%!-- Tied winners' songs each say whose they are, on the prize's
-                 orange tape, taped over the print's foot. --%>
+                 orange tape, under the print and clear of its words. --%>
             <.name_tape
               :if={length(@winner_songs) > 1}
               player_id={song.owner_id}
               name={song.owner}
-              class="jam-tape-orange relative z-10 -mt-6 max-w-52 text-[1.85rem]"
+              class="jam-tape-orange relative z-10 mt-3 max-w-52 text-[1.85rem]"
             />
           </div>
         </div>
@@ -3076,7 +3066,7 @@ defmodule WhoseJamWeb.HostLive do
   defp bluff_song(covered, {song_name, fooled}) do
     case Enum.find(covered, &(&1.song_name == song_name)) do
       nil -> nil
-      song -> Map.put(song, :caption, "Best bluff: fooled #{fooled}")
+      song -> song |> Map.put(:caption, "Best bluff") |> Map.put(:fooled, fooled)
     end
   end
 
