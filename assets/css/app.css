@@ -522,6 +522,12 @@
   stroke-linejoin: round;
 }
 
+/* A second pass of the pen (the underline's under-stroke, the arrow's
+   barbs) presses lighter than the first. */
+.jam-stroke path + path {
+  stroke-width: calc(var(--jam-stroke-w, 0.2rem) * 0.7);
+}
+
 .jam-stroke-draw {
   clip-path: inset(-30% 105% -30% -5%);
   animation: jam-draw 520ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards;

@@ -2183,7 +2183,7 @@ defmodule WhoseJamWeb.HostLive do
          the name alone; then what it was worth to the picker, each line led
          by its points; then who said whom, with the points landing in the
          strip (`.jam-beat-1`, `-2`, `-2c` in app.css). --%>
-    <div id="tv-results" class="space-y-4">
+    <div id="tv-results" class="space-y-6">
       <%!-- One column, read down in the reveal's beats: the name, then what
            it was worth to the picker right under it, then who said whom. --%>
       <div class="flex flex-col items-start gap-y-3">
@@ -2626,14 +2626,20 @@ defmodule WhoseJamWeb.HostLive do
         "flex items-center",
         if(length(@winner_songs) == 1,
           do: "gap-20 text-left",
-          else: "flex-col gap-10 text-center"
+          else: "flex-col-reverse gap-12 text-center"
         )
       ]}>
-        <%!-- The winner's song beside their name (each winner's, above their
-             names, in a tie): their best bluff, when the night's best was
-             theirs, and it says so. --%>
-        <div :if={@winner_songs != []} class="flex shrink-0 items-start gap-8">
-          <div :for={song <- @winner_songs} class="relative flex flex-col items-center gap-4">
+        <%!-- The winner's song beside their name (in a tie, the names first
+             and each winner's song, smaller, under them): their best bluff,
+             when the night's best was theirs, and it says so. --%>
+        <div
+          :if={@winner_songs != []}
+          class={[
+            "flex shrink-0 items-start gap-10",
+            length(@winner_songs) > 1 && "[&_figure]:!w-52"
+          ]}
+        >
+          <div :for={song <- @winner_songs} class="relative flex flex-col items-center">
             <.poster song={song} heading?={false} />
             <%!-- The night's best bluff wears a sticker saying so. --%>
             <p
@@ -2643,12 +2649,12 @@ defmodule WhoseJamWeb.HostLive do
               {song.caption}
             </p>
             <%!-- Tied winners' songs each say whose they are, on the prize's
-                 orange tape. --%>
+                 orange tape, taped over the print's foot. --%>
             <.name_tape
               :if={length(@winner_songs) > 1}
               player_id={song.owner_id}
               name={song.owner}
-              class="jam-tape-orange max-w-64 text-[2rem]"
+              class="jam-tape-orange relative z-10 -mt-6 max-w-52 text-[1.85rem]"
             />
           </div>
         </div>

@@ -2568,7 +2568,7 @@ defmodule WhoseJamWeb.PlayLive do
                   id="my-place"
                   class={[
                     "relative font-display leading-[1.05] text-balance",
-                    if(@won?, do: "text-[2.6rem]", else: "text-[1.75rem]")
+                    if(@won?, do: "text-[2.25rem]", else: "text-[1.75rem]")
                   ]}
                 >
                   <.marker_stroke
