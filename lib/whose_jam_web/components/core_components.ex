@@ -533,6 +533,87 @@ defmodule WhoseJamWeb.CoreComponents do
   end
 
   @doc """
+  Renders the game's name as a one-line wordmark in its own lettering, for a
+  screen's header: the speech-bubble logo is for the front door, and shrunk
+  to a header it stops reading. Its size is its font size.
+  """
+  attr :class, :any, default: nil
+
+  def wordmark(assigns) do
+    ~H"""
+    <span
+      class={["whitespace-nowrap font-display leading-none text-jam-cream", @class]}
+      role="img"
+      aria-label="Whose Jam"
+    >
+      <span aria-hidden="true">Whose <span class="text-jam-pink">Jam</span></span>
+    </span>
+    """
+  end
+
+  @doc """
+  Renders a stroke of pink marker (`.jam-stroke` in `app.css`), drawn by hand
+  in the same hand as the names, and only where it says something: a ring
+  round the name a player locked in (`:circle`), a line under the revealed
+  name (`:underline`), the winner's crown (`:crown`), and the arrow that
+  points a player to their own name (`:arrow`). It takes its colour from the
+  text colour and its size from its box; `.jam-stroke-draw` draws it in.
+  """
+  attr :kind, :atom, required: true, values: [:circle, :underline, :crown, :arrow]
+  attr :class, :any, default: nil
+
+  def marker_stroke(assigns) do
+    assigns = assign(assigns, :shape, stroke_shape(assigns.kind))
+
+    ~H"""
+    <svg
+      class={["jam-stroke", @class]}
+      viewBox={@shape.box}
+      preserveAspectRatio={@shape.aspect}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path :for={d <- @shape.paths} d={d} vector-effect="non-scaling-stroke" />
+    </svg>
+    """
+  end
+
+  # A loop that overshoots where it started, as a ring drawn in one go does.
+  defp stroke_shape(:circle),
+    do: %{
+      box: "0 0 200 100",
+      aspect: "none",
+      paths: [
+        "M112 9C160 8 194 24 193 50C192 79 146 93 99 92C50 91 7 77 8 49C9 22 50 7 101 8C128 8 152 13 170 21"
+      ]
+    }
+
+  # A quick line and a shorter one back under it.
+  defp stroke_shape(:underline),
+    do: %{
+      box: "0 0 200 24",
+      aspect: "none",
+      paths: ["M4 12C52 6 118 4 196 8", "M40 19C86 15 132 14 172 16"]
+    }
+
+  defp stroke_shape(:crown),
+    do: %{
+      box: "0 0 64 46",
+      aspect: "xMidYMid meet",
+      paths: [
+        "M9 40C8 31 6 21 5 12L19 26L32 5L45 26L59 12C58 21 56 31 55 40C40 42 24 42 9 40Z"
+      ]
+    }
+
+  # From the word to the name on its left, curving up into it.
+  defp stroke_shape(:arrow),
+    do: %{
+      box: "0 0 40 24",
+      aspect: "xMidYMid meet",
+      paths: ["M37 18C27 21 14 18 5 9", "M5 9L14 8", "M5 9L7 18"]
+    }
+
+  @doc """
   Renders an open modal dialog. Render it conditionally with `:if`; Escape and
   a backdrop click both push the `on_close` event. The box is a
   `role="dialog"` / `aria-modal` element wrapped in `<.focus_wrap>`, so Tab

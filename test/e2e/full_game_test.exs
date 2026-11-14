@@ -271,7 +271,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         timeout: @wait
       )
       |> assert_has("#vote-hint",
-        text: "Predict the most popular wrong guess. +1 if you call it."
+        text: "Call the room’s top wrong guess for +1."
       )
       |> assert_has("#round-prompt blockquote", text: prompt)
       |> refute_has("#phone-voting button", text: submitter_name, exact: true)
@@ -313,7 +313,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # The default screen choices: the last reveal keeps the totals for the
       # final scores, and says so on the strip.
       if round == @rounds,
-        do: assert_has(devices.host, "#strip-label", text: "final scores next")
+        do: assert_has(devices.host, "#strip-label", text: "Final scores next.")
 
       fooled = Enum.count(votes, fn {_voter, choice} -> choice != submitter end)
       {tally(scores, submitter, votes, bluff), max(most_fooled, fooled)}
@@ -330,7 +330,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     # Nobody is offered their own name.
     |> refute_has("#phone-voting button", text: voter_name, exact: true)
     # A tap chooses; locking it in is the vote.
-    |> assert_has("#vote-hint", text: "Pick who you think chose it. +1 if you’re right.")
+    |> assert_has("#vote-hint", text: "Pick who chose it. +1 if you’re right.")
     |> refute_has("#phone-voting", text: "blame")
     |> snap_if(snap?, voter, "vote")
     |> click_button(nil, choice_name, exact: true)

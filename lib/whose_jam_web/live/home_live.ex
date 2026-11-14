@@ -147,7 +147,9 @@ defmodule WhoseJamWeb.HomeLive do
                    it on. On a TV the Join button is that ticket's stub, past
                    a perforation; on a phone it is the screen's pink button,
                    under it. --%>
-              <div class="jam-lift min-w-0 flex-1 rounded-sm focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-jam-pink lg:filter-none lg:focus-within:outline-none">
+              <%!-- Focus is a pink line under the code, inside the ticket,
+                   so it follows the ticket's cut ends. --%>
+              <div class="jam-lift min-w-0 flex-1 lg:filter-none">
                 <div class="jam-ticket [--jam-notch:0.55rem] lg:bg-transparent lg:[mask:none]">
                   <input
                     type="text"
@@ -158,7 +160,7 @@ defmodule WhoseJamWeb.HomeLive do
                     placeholder="Room code"
                     maxlength="4"
                     aria-label="Room code"
-                    class="w-full bg-transparent px-7 py-2.5 text-center lg:text-left font-display text-[2.5rem] leading-tight uppercase tracking-[0.12em] text-jam-ink placeholder:font-body placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-ink/45 focus:outline-none lg:text-[2.25rem] lg:py-3"
+                    class="h-[4.4rem] w-full bg-transparent px-7 py-0 text-center lg:text-left font-display text-[2.5rem] leading-none uppercase tracking-[0.12em] text-jam-ink placeholder:text-jam-ink/45 placeholder-shown:pt-3 placeholder-shown:font-body placeholder-shown:text-xl placeholder-shown:font-semibold placeholder-shown:normal-case placeholder-shown:tracking-normal focus:outline-none focus:shadow-[inset_0_-0.2rem_0_var(--color-jam-pink)] lg:text-[2.25rem] lg:placeholder-shown:text-xl"
                   />
                 </div>
               </div>
@@ -231,37 +233,29 @@ defmodule WhoseJamWeb.HomeLive do
         </button>
       </div>
 
-      <%!-- Each theme a flat card: its name, how it plays in a line, and one
-           of its prompts on the slip the players will get. --%>
-      <ul class="space-y-4">
+      <%!-- The themes side by side, each a flat card: its name, how it
+           plays in a line, one of its prompts on the slip the players will
+           get, and the way in at its foot, so the two cards' buttons line
+           up. --%>
+      <ul class="grid gap-5 sm:grid-cols-2">
         <li
           :for={theme <- @themes}
-          class="flex flex-col gap-5 rounded-lg bg-[#2c2b28] px-6 py-5 sm:flex-row sm:items-center"
+          class="flex flex-col gap-4 rounded-lg bg-[#2c2b28] p-6 lg:gap-5 lg:p-7"
         >
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-3">
-              <h3 class="font-display text-[1.75rem] leading-none lg:text-[2rem]">{theme.name}</h3>
-              <span
-                :if={multi_style?(theme.style_sequence)}
-                class="rounded-sm bg-jam-cream/10 px-2 py-0.5 text-xs font-bold text-jam-cream/75"
-              >
-                {length(Enum.uniq(theme.style_sequence))} sub-rounds
-              </span>
-            </div>
-            <p class="mt-2 text-[1.0625rem] font-bold leading-snug text-jam-cream lg:text-[1.4rem]">
-              {how_it_plays(theme.style_sequence)}
-            </p>
-            <p
-              :if={theme.examples != []}
-              class="jam-paper jam-lean mt-3.5 w-fit max-w-[34ch] px-4 py-2.5 font-display text-base leading-snug text-pretty text-jam-ink lg:text-[1.4rem]"
-            >
-              {hd(theme.examples).prompt}
-            </p>
-          </div>
+          <h3 class="font-display text-[1.75rem] leading-none lg:text-[2.25rem]">{theme.name}</h3>
+          <p class="text-[1.0625rem] font-semibold leading-snug text-jam-cream/85 lg:text-[1.35rem]">
+            {how_it_plays(theme.style_sequence)}
+          </p>
+          <p
+            :if={theme.examples != []}
+            class="jam-paper jam-lean w-fit px-4 py-2.5 font-display text-base leading-snug text-pretty text-jam-ink lg:text-[1.4rem]"
+          >
+            {hd(theme.examples).prompt}
+          </p>
           <button
             phx-click="create"
             phx-value-theme={theme.id}
-            class="jam-btn jam-btn-cream shrink-0 self-start sm:self-center lg:text-xl"
+            class="jam-btn jam-btn-cream mt-auto w-full lg:text-xl"
           >
             Host this
           </button>
@@ -271,15 +265,14 @@ defmodule WhoseJamWeb.HomeLive do
     """
   end
 
-  defp multi_style?(styles), do: styles |> Enum.uniq() |> length() > 1
-
-  # How a theme plays, from the styles of its rounds, in the order they come.
+  # How a theme plays, from the styles of its rounds, in the order they come
+  # (a theme of two styles plays them as two rounds).
   defp how_it_plays(styles) do
     case Enum.uniq(styles) do
       [:guess_who] -> "Guess who picked each song."
       [:guess_question] -> "Guess which prompt each song was picked for."
-      [:guess_question, :guess_who] -> "Guess the prompt, then the person."
-      [:guess_who, :guess_question] -> "Guess the person, then the prompt."
+      [:guess_question, :guess_who] -> "Two rounds: guess the prompt, then the person."
+      [:guess_who, :guess_question] -> "Two rounds: guess the person, then the prompt."
       _ -> "Pick songs, then guess."
     end
   end

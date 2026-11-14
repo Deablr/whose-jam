@@ -151,8 +151,8 @@
   --color-jam-cream: #f2eee4;
   /* Paper: a step down from egg white, so a sheet never glares in a dark
      room. Tape is a touch lighter than the paper it is stuck on. */
-  --color-jam-paper: #e8e2d4;
-  --color-jam-tape: #f3eddf;
+  --color-jam-paper: #efe9dc;
+  --color-jam-tape: #faf7ef;
   --color-jam-mint: #4fe3bd;
   /* Mint dark enough to read on egg white. */
   --color-jam-mint-deep: #0b8f6d;
@@ -333,6 +333,11 @@
   opacity: 0.6;
 }
 
+/* At the end of the game the tint sits behind a table: half as strong. */
+.jam-ambient-soft > img {
+  opacity: 0.38;
+}
+
 .jam-ambient::after {
   content: "";
   position: absolute;
@@ -479,6 +484,42 @@
   to { transform: none; }
 }
 
+/* A stroke of marker (`<.marker_stroke>`): round-ended, in the text colour,
+   as thick as a felt tip whatever its size. `.jam-stroke-draw` draws it in
+   from the left, as a hand would; `.jam-stroke-after-name` waits for the
+   revealed name to land first. (A wipe, not a dash offset: a stroke that
+   keeps its width as the box stretches measures its dashes on screen, so
+   a dash the path's length would come out short.) */
+.jam-stroke {
+  overflow: visible;
+  pointer-events: none;
+}
+
+.jam-stroke path {
+  stroke: currentColor;
+  stroke-width: var(--jam-stroke-w, 0.2rem);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.jam-stroke-draw {
+  clip-path: inset(-30% 105% -30% -5%);
+  animation: jam-draw 520ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+}
+
+.jam-stroke-after-name { animation-delay: 1400ms; }
+
+@keyframes jam-draw {
+  to { clip-path: inset(-30% -5% -30% -5%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jam-stroke-draw {
+    animation: none;
+    clip-path: none;
+  }
+}
+
 /* A reveal's beats. "It was…" comes up as the vote closes and holds the
    room for a breath (about a second) before the name lands; then, once the
    room has had the name to itself, what it meant (who said whom, the
@@ -562,6 +603,7 @@
    phones with it), and the ending names its winner after one short count
    and holds them two seconds. Same order, same places, less ceremony. */
 .jam-quick .jam-beat-1 { animation-delay: 0ms; }
+.jam-quick .jam-stroke-after-name { animation-delay: 450ms; }
 .jam-quick .jam-beat-2,
 .jam-quick .jam-beat-2c { animation-delay: 450ms; }
 .jam-quick .jam-beat-3 { animation-delay: 700ms; }
@@ -658,18 +700,22 @@
   /* A paper's tooth: the faintest grain, on paper props only. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.09 0 0 0 0 0.09 0 0 0 0 0.08 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
   border-radius: 0.125rem;
-  box-shadow: 0 0.3rem 0.9rem rgb(0 0 0 / 0.3);
+  /* Where it touches the table, and the softer lift around it. */
+  box-shadow:
+    0 0.06rem 0.12rem rgb(0 0 0 / 0.3),
+    0 0.35rem 1rem rgb(0 0 0 / 0.26);
 }
 
-/* Tape stuck on paper lies flat on it, a shade darker than the sheet with
-   a hairline at its edge, so it shows without a shadow of its own. */
+/* Tape stuck on paper lies flat on it: brighter than the sheet and a touch
+   see-through, as tape is, with a hairline at its edge, so it shows
+   without a shadow of its own. */
 .jam-paper .jam-tape {
   filter: none;
 }
 
 .jam-paper .jam-tape:not(.jam-tape-orange)::before {
-  background: #d9d1bd;
-  box-shadow: inset 0 0 0 1px rgb(23 23 21 / 0.08);
+  background: rgb(255 253 247 / 0.88);
+  box-shadow: inset 0 0 0 1px rgb(23 23 21 / 0.07);
 }
 
 .jam-paper:nth-child(3n + 1) { rotate: -0.7deg; }
@@ -805,11 +851,6 @@
       radial-gradient(circle 0.55rem at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat,
       radial-gradient(circle 0.55rem at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
   }
-
-  .jam-ticket-wide:focus-within {
-    outline: 2px solid var(--color-jam-pink);
-    outline-offset: 3px;
-  }
 }
 
 /* A mask clips a box shadow, so a ticket is lifted from outside. */
@@ -828,14 +869,15 @@
 }
 
 .jam-tv .modal-box .fieldset .label {
+  font-size: 1.0625rem;
   font-weight: 600;
   white-space: normal;
-  color: rgb(242 238 228 / 0.78);
+  color: rgb(242 238 228 / 0.8);
 }
 
 .jam-tv .modal-box :is(.input, .select) {
-  height: 2.6rem;
-  font-size: 1.1rem;
+  height: 2.9rem;
+  font-size: 1.25rem;
 }
 
 /* A field in a game screen's form is filled, one step up from its panel,
@@ -856,28 +898,42 @@
 /* A switch: a filled track with the UI's corner and a square knob; on is a
    lit track with an egg-white knob (mint is kept for "right"), off a quiet
    track with a grey one, so it reads at a glance. */
+/* A switch reads at a glance: off is a dark, outlined slot with a grey knob
+   on the left; on is a mint slot with an ink knob on the right. Light against
+   dark, and the knob's side, say it before the colour does. */
 [data-theme="jam"] .modal-box .toggle {
   --radius-selector: 0.25rem;
   border: none;
-  background-color: #3a3935;
+  background-color: #2f2e2b;
+  box-shadow: inset 0 0 0 1px rgb(242 238 228 / 0.22);
   color: #8f8a7e;
 }
 
 [data-theme="jam"] .modal-box .toggle:checked {
-  background-color: #6b675e;
-  color: var(--color-jam-cream);
+  background-color: var(--color-jam-mint);
+  box-shadow: none;
+  color: var(--color-jam-ink);
 }
 
 .jam-tv .modal-box :is(.checkbox, .toggle) {
-  --size: 1.45rem;
+  --size: 1.6rem;
+}
+
+/* A sheet that scrolls shows that it does. */
+[data-theme="jam"] .modal-box {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(242 238 228 / 0.3) transparent;
 }
 
 /* A switch's row: its words on the left, the switch on the right. */
 .jam-tv .modal-box .fieldset .label:has(> .toggle) {
   width: 100%;
+  min-height: 2.75rem;
   flex-direction: row-reverse;
   justify-content: space-between;
-  padding-block: 0.35rem;
+  padding-block: 0.4rem;
+  font-size: 1.125rem;
+  cursor: pointer;
 }
 
 /* A number with its unit written in the field (`data-unit`). */
