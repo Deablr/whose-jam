@@ -156,8 +156,9 @@
   --color-jam-mint: #4fe3bd;
   /* Mint dark enough to read on egg white. */
   --color-jam-mint-deep: #0b8f6d;
-  /* Orange dark enough to read on paper (points written on a result). */
-  --color-jam-orange-deep: #a85a00;
+  /* The points' orange, deep enough to read on paper (as large numerals)
+     and still orange, not brown. */
+  --color-jam-orange-deep: #c45a06;
   --color-jam-red: #ff4d6d;
 }
 

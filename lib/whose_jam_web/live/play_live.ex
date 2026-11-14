@@ -725,7 +725,7 @@ defmodule WhoseJamWeb.PlayLive do
           value={@code}
           placeholder="Room code"
           aria-label="Room code"
-          class="rounded-full border-2 border-jam-cream/10 bg-jam-night px-6 py-3.5 text-center text-3xl font-extrabold uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-cream/35 focus:border-jam-pink focus:outline-none"
+          class="rounded-full border-2 border-transparent bg-[#2b2a26] px-6 py-3.5 text-center text-3xl font-extrabold uppercase tracking-[0.3em] text-jam-cream placeholder:normal-case placeholder:tracking-normal placeholder:font-semibold placeholder:text-xl placeholder:text-jam-cream/55 focus:border-jam-pink focus:outline-none"
         />
         <button type="submit" class="jam-btn">Try code</button>
       </form>
@@ -764,7 +764,7 @@ defmodule WhoseJamWeb.PlayLive do
           maxlength="24"
           placeholder="Your name"
           aria-label="Your name"
-          class="w-full rounded-full border-2 border-jam-cream/10 bg-jam-night px-6 py-3.5 text-lg font-semibold text-jam-cream placeholder:font-medium placeholder-jam-cream/40 focus:border-jam-pink focus:outline-none"
+          class="w-full rounded-full border-2 border-transparent bg-[#2b2a26] px-6 py-3.5 text-lg font-semibold text-jam-cream placeholder:font-medium placeholder-jam-cream/55 focus:border-jam-pink focus:outline-none"
         />
         <p :if={@join_error} class="text-sm text-jam-red">{@join_error}</p>
         <button
@@ -811,7 +811,7 @@ defmodule WhoseJamWeb.PlayLive do
          screen but never past 5rem (the rest is at the foot); on a laptop the
          two columns sit in the middle of the screen, the welcome and how to
          score on the left. --%>
-    <div class="flex flex-1 flex-col pt-3 before:block before:max-h-20 before:flex-1 before:content-[''] after:block after:flex-[1.6] after:content-[''] lg:my-auto lg:grid lg:flex-none lg:grid-cols-2 lg:items-start lg:gap-x-12 lg:pb-[6vh] lg:pt-0 lg:before:hidden lg:after:hidden">
+    <div class="flex flex-1 flex-col pt-3 before:block before:max-h-20 before:flex-1 md:before:max-h-10 before:content-[''] after:block after:flex-[1.6] after:content-[''] lg:my-auto lg:grid lg:flex-none lg:grid-cols-2 lg:items-start lg:gap-x-12 lg:pb-[6vh] lg:pt-0 lg:before:hidden lg:after:hidden">
       <div>
         <%!-- Straight on the stage, as the TV's lobby is: no card. --%>
         <div>
@@ -865,7 +865,8 @@ defmodule WhoseJamWeb.PlayLive do
         <%!-- Everyone's name on its strip of tape, as the TV has them. --%>
         <%!-- Their own first, pointed out in marker under it: the mark takes
              no room in the row, so the names wrap as they would without it. --%>
-        <div class="flex flex-wrap gap-x-2.5 gap-y-7">
+        <%!-- (On a tablet, four to a row, as the TV seats them.) --%>
+        <div class="flex flex-wrap gap-x-2.5 gap-y-7 md:grid md:grid-cols-4 md:justify-items-start">
           <span
             :for={p <- mine_first(@view.players, @player_id)}
             class="relative flex max-w-full items-center"
@@ -1189,7 +1190,7 @@ defmodule WhoseJamWeb.PlayLive do
             phx-debounce={search_debounce(@view)}
             placeholder={search_placeholder(@view)}
             aria-label="Search for a song"
-            class="peer w-full rounded-full border-2 border-jam-cream/10 bg-jam-night py-3.5 pl-12 pr-5 font-medium text-jam-cream placeholder-jam-cream/70 focus:border-jam-pink focus:outline-none"
+            class="peer w-full rounded-full border-2 border-transparent bg-[#2b2a26] py-3.5 pl-12 pr-5 font-medium text-jam-cream placeholder-jam-cream/70 focus:border-jam-pink focus:outline-none"
           />
           <%!-- From the first letter typed: the search is on its way (the
                server waits for typing to pause before it searches). --%>
@@ -1260,21 +1261,6 @@ defmodule WhoseJamWeb.PlayLive do
             Clear search
           </button>
         </div>
-
-        <%!-- Before a search, one quiet row where the results will be: a
-             cover's outline drawn in dashes (as a tape's slot is) and a line
-             saying what comes next. --%>
-        <div
-          :if={@search_results == [] and @search_query == "" and is_nil(@search_error)}
-          id="pick-slot"
-          class="mt-3 flex items-center gap-3 px-2.5 py-2.5"
-          aria-hidden="true"
-        >
-          <span class="size-12 shrink-0 rounded-sm border-2 border-dashed border-jam-cream/20"></span>
-          <p class="text-sm font-medium text-jam-cream/55">
-            Your pick shows up here as a poster.
-          </p>
-        </div>
       </div>
     </div>
     """
@@ -1308,8 +1294,8 @@ defmodule WhoseJamWeb.PlayLive do
 
     case others do
       0 -> "Everyone’s done. Here comes the music."
-      1 -> "Waiting on 1 more."
-      n -> "Waiting on #{n} more."
+      1 -> "Waiting for 1 more player."
+      n -> "Waiting for #{n} more players."
     end
   end
 
