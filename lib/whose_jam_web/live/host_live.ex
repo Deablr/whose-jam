@@ -1153,7 +1153,7 @@ defmodule WhoseJamWeb.HostLive do
                       phx-value-key="min_players"
                       phx-value-to={n}
                       class={[
-                        "h-[3.1rem] min-w-0 flex-1 cursor-pointer rounded-md text-[1.4rem] font-bold tabular-nums transition-colors disabled:cursor-default",
+                        "h-[3.1rem] min-w-0 flex-1 cursor-pointer rounded-md text-[1.4rem] font-semibold tabular-nums transition-colors disabled:cursor-default",
                         if(n == @view.config.min_players,
                           do: "bg-jam-cream text-jam-ink",
                           else:
@@ -1856,7 +1856,7 @@ defmodule WhoseJamWeb.HostLive do
       <%!-- The words sit at the foot of the sheet, as a print's do. --%>
       <figcaption class="mt-3.5 min-w-0 px-0.5">
         <h1 class={[
-          "font-display leading-[1.02] line-clamp-2 text-balance break-keep",
+          "font-display leading-[1.02] line-clamp-2 text-balance break-keep [line-break:strict]",
           if(@size == :reveal, do: "text-[2.4rem]", else: "text-[3rem]")
         ]}>
           {poster_title(@song.name)}
@@ -2569,7 +2569,7 @@ defmodule WhoseJamWeb.HostLive do
              the total under the name, so "1" and "+1" never read as a sum. --%>
         <span
           :if={@seat.score && @gain > 0}
-          class="jam-sticker absolute -right-3 -top-3 z-10 rotate-[8deg] bg-jam-orange px-[0.35rem] py-[0.12rem] font-display text-[1.05rem] leading-none text-jam-ink"
+          class="jam-sticker absolute -right-4 -top-4 z-10 rotate-[3deg] bg-jam-orange px-[0.4rem] py-[0.2rem] font-display text-[1.3rem] leading-none text-jam-ink"
         >
           +{@gain}
         </span>

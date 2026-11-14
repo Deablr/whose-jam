@@ -1015,9 +1015,15 @@
   cursor: pointer;
 }
 
-/* A number with its unit written in the field (`data-unit`). */
+/* A number with its unit written in the field (`data-unit`): the number
+   at the weight every value in the sheet has, the unit a step quieter. */
 .jam-unit {
   position: relative;
+}
+
+.jam-unit .input {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .jam-unit::after {
@@ -1027,7 +1033,7 @@
   bottom: calc(0.5rem + 0.15rem + 1.55rem);
   translate: 0 50%;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 400;
   color: rgb(242 238 228 / 0.6);
   pointer-events: none;
 }
@@ -1079,7 +1085,7 @@
 .jam-stepper .input {
   padding-inline: 3.25rem;
   text-align: center;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   appearance: textfield;
 }

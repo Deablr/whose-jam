@@ -594,7 +594,7 @@ defmodule WhoseJamWeb.PlayLive do
          else: assigns
 
     ~H"""
-    <div class="mb-5 flex items-center justify-between gap-3 short:mb-3">
+    <div class="mb-5 flex items-center justify-between gap-3 short:mb-2">
       <.wordmark class="shrink-0 text-[1.5rem] short:text-[1.3rem]" />
       <div class="flex min-w-0 items-center gap-3">
         <span
@@ -1417,7 +1417,7 @@ defmodule WhoseJamWeb.PlayLive do
         <figure
           :if={@round.prompt}
           id="round-prompt"
-          class="jam-paper jam-lean mt-3 w-full px-3.5 py-2.5 text-jam-ink short:mt-2 lg:w-fit lg:max-w-full"
+          class="jam-paper jam-lean mt-3 w-full px-3.5 py-2.5 text-jam-ink short:mt-2 short:py-2 lg:w-fit lg:max-w-full"
         >
           <%!-- A strip the width of the screen, under the song: what it was
                picked for. The round card gave it its moment in large type;
@@ -1457,7 +1457,9 @@ defmodule WhoseJamWeb.PlayLive do
             </span>
           </div>
           <figcaption class="mt-2 px-0.5">
-            <p class="line-clamp-2 font-display text-lg leading-tight text-balance">
+            <%!-- A word is never split (a Japanese title included): lines
+                 break only at spaces. --%>
+            <p class="line-clamp-2 break-words break-keep font-display text-lg leading-tight text-balance [line-break:strict]">
               {poster_title(@round.song.name)}
             </p>
             <p class="mt-0.5 truncate text-sm font-semibold text-jam-ink/65">
@@ -1623,7 +1625,7 @@ defmodule WhoseJamWeb.PlayLive do
           </span>
         </div>
         <figcaption class="mt-2.5 px-0.5">
-          <p class="line-clamp-2 break-words break-keep font-display text-xl leading-tight text-balance">
+          <p class="line-clamp-2 break-words break-keep font-display text-xl leading-tight text-balance [line-break:strict]">
             {poster_title(@round.song.name)}
           </p>
           <p class="mt-0.5 line-clamp-2 text-base font-medium leading-[1.2] text-balance text-jam-ink/70 short:text-[0.9375rem]">
@@ -1711,7 +1713,7 @@ defmodule WhoseJamWeb.PlayLive do
          place, which "Eyes on the TV" and the answer take after it. The same on every phone, the picker's included. --%>
       <div
         id="phone-voting"
-        class="mt-3 flex flex-1 flex-col after:block after:grow after:content-[''] lg:mt-0 lg:after:hidden"
+        class="mt-3 flex flex-1 flex-col after:block after:grow after:content-[''] short:mt-2 lg:mt-0 lg:after:hidden"
       >
         <%!-- The question is the screen's headline, its how-to right under
              it in the same space on every phone (the picker's too), then the
@@ -1750,7 +1752,7 @@ defmodule WhoseJamWeb.PlayLive do
             end}
           </p>
           <p :if={@vote_error} class="text-sm text-jam-red">{@vote_error}</p>
-          <div class="pt-2">{vote_clock(assigns)}</div>
+          <div class="pt-2 short:pt-1">{vote_clock(assigns)}</div>
         </div>
 
         <%!-- Names are short, so they sit two to a row and all fit on a
@@ -2064,7 +2066,7 @@ defmodule WhoseJamWeb.PlayLive do
   defp vote_clock(assigns) do
     ~H"""
     <div id="vote-clock" class="space-y-1.5">
-      <p class="flex h-6 items-baseline justify-between gap-3 text-[0.8125rem] font-medium leading-none text-jam-cream/65">
+      <p class="flex h-6 items-baseline justify-between gap-3 text-[0.8125rem] font-medium leading-none text-jam-cream/65 short:h-5">
         <span>
           {cond do
             is_nil(@round.deadline_ms) -> "Starts when most players lock in"
@@ -2655,14 +2657,15 @@ defmodule WhoseJamWeb.PlayLive do
           </p>
         <% end %>
 
-        <%!-- The night's songs are further down than a glance goes. --%>
+        <%!-- The night's songs are further down than a glance goes: a link
+             on a row of its own, a step clear of the button above it. --%>
         <a
           :if={@playlist != []}
           id="to-playlist"
           href="#my-playlist"
-          class="mt-1.5 flex items-center gap-1.5 px-1 text-sm font-bold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
+          class="mt-2 flex min-h-11 items-center gap-1.5 px-1 text-sm font-semibold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
         >
-          See tonight’s playlist ({songs(length(@playlist))})
+          Tonight’s playlist ({songs(length(@playlist))})
           <.icon name="hero-arrow-down-mini" class="size-4" />
         </a>
 
@@ -2671,10 +2674,11 @@ defmodule WhoseJamWeb.PlayLive do
              (this player's included) is in view without scrolling. On a
              tablet or laptop the tables keep to a reading width (their root
              is scaled up, so the width is set per size), so a name and its
-             score stay close; on a laptop, centred in their column. --%>
+             score stay close; on a laptop, at their column's right edge, in
+             line with the name tape in the header above. --%>
         <div
           id="final-lists"
-          class="w-full md:max-w-[26rem] lg:!col-start-2 lg:row-span-6 lg:row-start-1 lg:mx-auto lg:max-w-[20rem]"
+          class="w-full md:max-w-[26rem] lg:!col-start-2 lg:row-span-6 lg:row-start-1 lg:ml-auto lg:max-w-[20rem]"
         >
           <%= for {title, rows, list_id} <- score_lists(@role, @players_board, @board) do %>
             <h2 class="mb-2 mt-6 px-1 text-sm font-semibold text-jam-cream/65 short:mb-1.5 short:mt-4 lg:mt-0">

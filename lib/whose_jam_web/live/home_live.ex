@@ -114,7 +114,9 @@ defmodule WhoseJamWeb.HomeLive do
           <%!-- On a wide screen, lined up with the logo's speech bubble (not
                the lines drawn either side of it). --%>
           <p class="text-lg sm:text-2xl xl:text-3xl font-medium leading-snug text-jam-cream/70 max-w-xl xl:max-w-2xl text-balance lg:pl-[min(4.5rem,8.5vh)]">
-            Everyone picks a song. The room guesses whose jam it is.
+            <%!-- A sentence to a line, so "The" never dangles at a line's end. --%>
+            <span class="block">Everyone picks a song.</span>
+            <span class="block">The room guesses whose jam it is.</span>
           </p>
         </header>
 
