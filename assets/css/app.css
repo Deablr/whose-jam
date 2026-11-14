@@ -131,11 +131,12 @@
 
 @theme {
   /* Each face has a Japanese partner of a matching weight, for the songs
-     and names written in it: Lilita's is M PLUS Rounded 1c at 800, as heavy
-     and as round; Figtree's and Shantell's, Noto Sans JP at the same
-     weight. */
+     and names written in it: M PLUS Rounded 1c, so a title reads in one
+     rounded voice on every screen (at 800 behind Lilita, as heavy and as
+     round; at 400–800 behind Figtree); Noto Sans JP behind that, and
+     behind Shantell, for anything it lacks. */
   --font-display: "Lilita One", "M PLUS Rounded 1c", "Figtree", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Figtree", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Figtree", "M PLUS Rounded 1c", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
   /* Marker: a player's name, as it is written on their `.jam-tape` strip
      (and on the vote tiles that name them). */
   --font-marker: "Shantell Sans", "Noto Sans JP", "Figtree", ui-sans-serif, system-ui, sans-serif;
@@ -207,7 +208,7 @@
    a step back in colour. */
 .jam-eyebrow {
   font-size: 0.875rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0;
   color: rgb(242 238 228 / 0.7);
 }
@@ -821,28 +822,38 @@
   line-height: 1.1;
 }
 
-/* Three ways a strip comes off the roll, one per player (`.jam-cut-N`,
+/* Five ways a strip comes off the roll, one per player (`.jam-cut-N`,
    from their id, like the tilt): torn at the right end, torn at the left,
-   or snipped on the slant at both. A tear's nicks are shallow and unevenly
-   spaced, as paper tears, never an even zigzag. */
+   snipped on the slant at both, torn a little at both, or cut straight. A
+   tear is one or two uneven steps, as paper tears, never a row of nicks,
+   and five shapes keep a full roster from repeating one. */
 .jam-tape,
 .jam-cut-0 {
   --jam-cut: polygon(
-    0 0, calc(100% - 0.05em) 0, 100% 9%, calc(100% - 0.07em) 21%,
-    calc(100% - 0.03em) 27%, calc(100% - 0.1em) 46%, calc(100% - 0.02em) 58%,
-    calc(100% - 0.06em) 74%, 100% 88%, calc(100% - 0.04em) 100%, 0 100%
+    0 0, calc(100% - 0.04em) 0, 100% 34%, calc(100% - 0.1em) 57%,
+    calc(100% - 0.02em) 78%, calc(100% - 0.06em) 100%, 0 100%
   );
 }
 
 .jam-cut-1 {
   --jam-cut: polygon(
-    0.06em 0, 100% 0, 100% 100%, 0.03em 100%, 0 91%, 0.08em 77%,
-    0.04em 70%, 0.11em 49%, 0.01em 33%, 0.06em 18%, 0 7%
+    0.05em 0, 100% 0, 100% 100%, 0.02em 100%, 0.09em 64%, 0 41%
   );
 }
 
 .jam-cut-2 {
   --jam-cut: polygon(0.14em 0, 100% 0, calc(100% - 0.14em) 100%, 0 100%);
+}
+
+.jam-cut-3 {
+  --jam-cut: polygon(
+    0.03em 0, calc(100% - 0.05em) 0, 100% 45%, calc(100% - 0.07em) 100%,
+    0.06em 100%, 0 58%
+  );
+}
+
+.jam-cut-4 {
+  --jam-cut: polygon(0 0, 100% 0, 100% 100%, 0 100%);
 }
 
 /* Orange tape: a label stuck on a prize (an award, the winner). */

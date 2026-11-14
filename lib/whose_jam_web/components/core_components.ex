@@ -511,12 +511,12 @@ defmodule WhoseJamWeb.CoreComponents do
 
   @doc """
   How a player's tape lies and how its strip was cut (`.jam-tilt-0` to
-  `.jam-tilt-4` and `.jam-cut-0` to `.jam-cut-2` in `app.css`): the same for
+  `.jam-tilt-4` and `.jam-cut-0` to `.jam-cut-4` in `app.css`): the same for
   the same id, on every screen.
   """
   @spec tilt_class(term()) :: String.t()
   def tilt_class(id),
-    do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 3)}"
+    do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 5)}"
 
   @doc """
   A clock's length in seconds as a countdown's numerals show it (`m:ss`), for

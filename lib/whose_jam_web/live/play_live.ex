@@ -2668,7 +2668,7 @@ defmodule WhoseJamWeb.PlayLive do
           href="#my-playlist"
           class="mt-0.5 flex min-h-11 items-center gap-1.5 px-1 text-sm font-semibold text-jam-cream/85 underline decoration-jam-cream/30 underline-offset-4 lg:hidden"
         >
-          Tonight’s playlist ({songs(length(@playlist))})
+          {playlist_jump(length(@playlist))}
           <.icon name="hero-arrow-down-mini" class="size-4" />
         </a>
 
@@ -2711,7 +2711,7 @@ defmodule WhoseJamWeb.PlayLive do
                     class={[
                       "flex w-[4.75rem] shrink-0 items-baseline gap-1.5 self-stretch text-[0.9375rem] font-semibold leading-none tabular-nums",
                       row.tied? && tie_bracket(rows, row),
-                      if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/60")
+                      if(row.rank == 1, do: "text-jam-orange", else: "text-jam-cream/70")
                     ]}
                   >
                     <%!-- A shared place is said once, at the head of its run,
@@ -2825,8 +2825,10 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp recap_stats(_me, _role, _mine), do: []
 
-  defp songs(1), do: "1 song"
-  defp songs(n), do: "#{n} songs"
+  # The jump to the night's songs, said as an action (the playlist's own
+  # heading is below it, so it doesn't say that twice).
+  defp playlist_jump(1), do: "View the song"
+  defp playlist_jump(n), do: "View all #{n} songs"
 
   # Who won, for the cards of everyone who didn't.
   defp winner_line(board) do
