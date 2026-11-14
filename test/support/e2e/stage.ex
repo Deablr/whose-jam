@@ -14,6 +14,9 @@ defmodule WhoseJamWeb.E2E.Stage do
   `WhoseJamWeb.E2E.Video` — even when the body fails, so a failing run still
   leaves a video to watch.
 
+  The body can also save stills of chosen screens at chosen moments
+  (`snap/3`), for looking at each screen on its own, at full resolution.
+
   Before the body runs, every screen flashes white at the same instant. A
   recording starts whenever its page first paints, not when its browser opens,
   so that flash is what the recordings are lined up on; the combined video
@@ -22,6 +25,7 @@ defmodule WhoseJamWeb.E2E.Stage do
 
   alias PhoenixTest.Playwright
   alias PlaywrightEx.BrowserContext
+  alias PlaywrightEx.Page
   alias WhoseJamWeb.E2E.Video
 
   @typedoc """
@@ -140,6 +144,8 @@ defmodule WhoseJamWeb.E2E.Stage do
   # Long enough for the instruction to reach all nine browsers first.
   @flash_lead_ms 1_000
   @caption_px 14
+  # Where `snap/3` keeps its directory and count, in the test process.
+  @stills {__MODULE__, :stills}
 
   @doc """
   Opens a recorded session for each role, runs `fun` with a map of
@@ -156,6 +162,7 @@ defmodule WhoseJamWeb.E2E.Stage do
     # A failed run must never leave the previous run's video looking current.
     File.rm(video_path)
 
+    Process.put(@stills, %{dir: Path.join(raw_dir, "stills"), count: 1})
     started_ms = System.monotonic_time(:millisecond)
     stage = Enum.map(assign_slots(roles), &open(&1, raw_dir, started_ms, context))
     sessions = Map.new(stage, &{&1.key, &1.session})
@@ -197,6 +204,57 @@ defmodule WhoseJamWeb.E2E.Stage do
   def then_hold(session, ms) do
     hold(ms)
     session
+  end
+
+  @doc """
+  Saves a still of what the devices named by `keys` show right now, one PNG
+  each at the device's full pixel density and without its caption, for
+  looking at the screens one at a time rather than in the combined video.
+
+  Stills go to a `stills` directory beside the per-device recordings, named
+  `NN-name-key.png` with `NN` counting up through the run, so they sort in
+  the order the game showed them. Only for the record, as `hold/1` is: call it
+  after asserting the screen is in the state the still should show.
+  """
+  @spec snap(%{atom() => Playwright.t()}, [atom()], String.t()) :: :ok
+  def snap(devices, keys, name) when is_list(keys) and is_binary(name) do
+    case Process.get(@stills) do
+      nil ->
+        :ok
+
+      %{dir: dir, count: count} = stills ->
+        Process.put(@stills, %{stills | count: count + 1})
+        File.mkdir_p!(dir)
+        prefix = count |> Integer.to_string() |> String.pad_leading(2, "0")
+
+        keys
+        |> Task.async_stream(
+          &still(Map.fetch!(devices, &1), Path.join(dir, "#{prefix}-#{name}-#{&1}.png")),
+          timeout: :infinity
+        )
+        |> Stream.run()
+    end
+  end
+
+  @doc """
+  `snap/3` for one device in the middle of a pipeline: saves a still of
+  `session`'s screen (named for `key`), then hands `session` on.
+  """
+  @spec then_snap(Playwright.t(), atom(), String.t()) :: Playwright.t()
+  def then_snap(session, key, name) do
+    snap(%{key => session}, [key], name)
+    session
+  end
+
+  defp still(session, path) do
+    case Page.screenshot(session.page_id,
+           timeout: Playwright.Config.global(:timeout),
+           caret: "hide",
+           style: "#e2e-device-caption { display: none !important; }"
+         ) do
+      {:ok, png} -> File.write!(path, Base.decode64!(png))
+      {:error, reason} -> IO.warn("no still #{Path.basename(path)}: #{inspect(reason)}")
+    end
   end
 
   defp finish(stage, video_path, on_error) do

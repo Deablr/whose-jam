@@ -10,7 +10,9 @@
 
   <!-- speech bubble + burst lines -->
   <g fill="none" stroke-linecap="round" stroke-width="12">
-    <path d="M124 98H516Q560 98 560 142V364Q560 408 516 408H340L276 462L288 408H124Q80 408 80 364V142Q80 98 124 98Z" stroke="url(#wj-grad)" stroke-linejoin="round"/>
+    <!-- The word breaks the frame: the bubble's top edge stops short of
+         "Whose" on either side, so no sliver of it shows through the letters. -->
+    <path d="M522 98Q560 98 560 142V364Q560 408 516 408H340L276 462L288 408H124Q80 408 80 364V142Q80 98 118 98" stroke="url(#wj-grad)" stroke-linejoin="round"/>
     <g stroke="#ff3fa8"><path d="M18 196L46 214"/><path d="M12 252H44"/><path d="M20 306L48 290"/></g>
     <g stroke="#ff9f1c"><path d="M622 196L594 214"/><path d="M628 252H596"/><path d="M620 306L592 290"/></g>
   </g>

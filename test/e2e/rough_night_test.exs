@@ -89,18 +89,18 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> within("#music-prompt-modal", &click_button(&1, nil, "Connect", exact: true))
     |> refute_has("#music-prompt-modal")
     |> click_button("Settings")
-    |> fill_in("Time to pick songs (s)", with: "120")
+    |> fill_in("Time to pick", with: "120")
     |> fill_in("Prompts per player", with: "1")
-    |> fill_in("Listen before voting opens (s)", with: "10")
-    |> fill_in("Voting time (s)", with: Integer.to_string(@vote_timer_s))
+    |> fill_in("Voting opens after", with: "10")
+    |> fill_in("Voting time", with: Integer.to_string(@vote_timer_s))
     # Votes can be changed until the clock runs out: a tap is the vote.
     |> check("Allow changing a vote")
     # This host likes every screen choice the other way: quick reveals,
     # nobody named for missing a vote, every place on the score strip, and
     # the last round's totals shown as they land.
     |> check("Quick reveals: everything at once")
-    |> uncheck("Name who didn't vote")
-    |> check("Show every place on the score strip")
+    |> uncheck("Name who didn’t vote")
+    |> check("Show everyone’s rank")
     |> uncheck("Hide totals during the final round")
     |> Stage.then_hold(to_timeout(second: 2))
     |> click_button("Close settings")
@@ -142,7 +142,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> assert_connected()
     |> type("input[name=name]", name, delay: 60)
     |> click_button("Join game")
-    |> assert_has("h1", text: "You're in")
+    |> assert_has("h1", text: "You’re in")
   end
 
   # The game has started, so the latecomer joins the audience.
@@ -152,7 +152,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> assert_has("h1", text: "Pick a name", timeout: @wait)
     |> assert_connected()
     # Told before the name goes in that this joins the audience.
-    |> assert_has("#audience-join-note", text: "you'll join the audience")
+    |> assert_has("#audience-join-note", text: "you’ll join the audience")
     |> type("input[name=name]", name, delay: 60)
     |> click_button("Join the audience")
     |> assert_has("body", text: "Audience", timeout: @wait)
@@ -228,7 +228,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
       # "everyone" who saw through it. Every place shows on the strip.
       if round == 1 do
         devices.host
-        |> assert_has("#said-none", text: "1 didn't vote")
+        |> assert_has("#said-none", text: "1 didn’t vote")
         |> refute_has("#said-none", text: name_of(slacker))
         |> assert_has("#reveal-summary", text: "Nobody fell for it.")
         |> assert_has("#score-strip", text: "1st")
@@ -244,7 +244,9 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
   end
 
   defp submitter_on_screen(host) do
-    song = text_of(host, "h1")
+    # (A poster keeps a title's closing parenthetical whole with no-break
+    # spaces; the song's name has plain ones.)
+    song = host |> text_of("h1") |> String.replace("\u00A0", " ")
     {key, _steps} = Enum.find(@picks, fn {_key, steps} -> last_song(steps) == song end)
     key
   end
@@ -269,7 +271,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
 
     picker
     |> assert_has("#phone-voting h1",
-      text: "Who'll get the blame?",
+      text: "Who’ll get the blame?",
       timeout: @wait
     )
     |> click_button(nil, name_of(guess), exact: true)
@@ -299,7 +301,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
 
       session
       |> click_button(nil, name_of(wrong), exact: true)
-      |> assert_has("p", text: "Vote's in.")
+      |> assert_has("p", text: "Vote’s in.")
       |> Stage.then_hold(to_timeout(second: 2))
       |> click_button(nil, name_of(choice), exact: true)
     else
@@ -339,7 +341,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     assert length(winners) == 2
 
     host
-    |> assert_has("p", text: "It's a tie", timeout: @wait)
+    |> assert_has("#winner-margin", text: "share the win", timeout: @wait)
     |> then(fn host -> Enum.reduce(winners, host, &assert_has(&2, "h1#winner", text: &1)) end)
   end
 
@@ -354,11 +356,11 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> assert_has("#lobby-players li", text: "Dev")
 
     devices.dev
-    |> assert_has("h1", text: "You're in, Dev", timeout: @wait)
-    |> assert_has("#promoted", text: "A seat opened up. You're playing this time.")
+    |> assert_has("h1", text: "You’re in", timeout: @wait)
+    |> assert_has("#promoted", text: "A seat opened up. You’re playing this time.")
 
     devices.ava
-    |> assert_has("h1", text: "You're in", timeout: @wait)
+    |> assert_has("h1", text: "You’re in", timeout: @wait)
 
     Stage.hold(to_timeout(second: 4))
 

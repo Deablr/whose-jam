@@ -358,6 +358,8 @@ defmodule WhoseJam.Game.ServerTest do
       view = Game.get_state(code)
       assert view.phase == :answering
       assert is_integer(view.answering.deadline_ms)
+      # The window's length, for the screens' draining bars.
+      assert view.answering.duration_ms == view.config.answer_timer_s * 1000
       # Progress counts are exposed; the songs themselves are not.
       assert view.answering.progress[p1] == %{submitted: 0, total: 1}
 
@@ -519,10 +521,11 @@ defmodule WhoseJam.Game.ServerTest do
       Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
       for pid <- ids, do: submit_all(code, pid)
 
-      # Still picking, with everyone shown as done...
+      # Still picking, with everyone shown as done, for the pause's length...
       view = Game.get_state(code)
       assert view.phase == :answering
       assert Enum.all?(view.answering.progress, fn {_id, p} -> p.submitted == p.total end)
+      assert view.answering.duration_ms == 150
 
       # ...then the first round starts by itself.
       assert_receive {:game_state, %{phase: :playing, round: %{index: 0}}}, 2000
@@ -1593,6 +1596,8 @@ defmodule WhoseJam.Game.ServerTest do
       span = view.answering.deadline_ms - before_ms
       assert span > 8_000
       assert span <= 10_500
+      # ...and the view says how long the window is, for the screens' bars.
+      assert view.answering.duration_ms == 10_000
     end
   end
 
