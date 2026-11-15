@@ -2468,7 +2468,7 @@ defmodule WhoseJamWeb.HostLive do
       id="score-strip"
       aria-label="Scores"
       class={[
-        "jam-panel relative flex h-24 shrink-0 justify-center gap-1.5 p-1.5",
+        "jam-panel relative flex min-h-24 shrink-0 justify-center gap-1.5 p-1.5",
         @final_reveal? && "pt-8"
       ]}
     >
@@ -2542,7 +2542,7 @@ defmodule WhoseJamWeb.HostLive do
   # 0.375rem gap) and its words (`longest_name_em/1`). It starts a size down
   # on the last reveal, whose strip makes room for its label, and when every
   # place is shown (each takes a row of its own); a name still too long at
-  # the smallest size wraps.
+  # the smallest size wraps, and the strip (6rem at least) grows to hold it.
   @strip_sizes [
     {1.7, "text-[1.7rem]"},
     {1.55, "text-[1.55rem]"},
@@ -3739,8 +3739,6 @@ defmodule WhoseJamWeb.HostLive do
   defp points(1), do: "1 point"
   defp points(n), do: "#{n} points"
 
-  # Eight rows still leave room for the buttons under them; first place has
-  # a row a little taller than the rest.
   # The final table's names at their rows' own size while the longest fits
   # its 20rem at the first row's 2.3rem; else every name a size or more down
   # (one that still doesn't fit wraps).
@@ -3755,6 +3753,8 @@ defmodule WhoseJamWeb.HostLive do
     end
   end
 
+  # Eight rows still leave room for the buttons under them; first place has
+  # a row a little taller than the rest.
   defp final_row_size(board, true = _first?) when length(board) > 6,
     do: "py-2.5 text-[2.05rem] leading-tight"
 

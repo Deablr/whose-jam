@@ -1322,7 +1322,7 @@ defmodule WhoseJamWeb.PlayLive do
       id="own-song-explainer"
       class="mt-3 text-base leading-[1.4] text-jam-cream/75"
     >
-      <.inline_points text="When your song plays, predict the most common wrong guess. +1 if you’re right." />
+      <.inline_points text="When your song plays, predict the most common wrong guess, or pick yourself if nobody will fall for it. +1 if you’re right." />
     </p>
     """
   end

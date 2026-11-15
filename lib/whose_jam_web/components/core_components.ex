@@ -95,8 +95,9 @@ defmodule WhoseJamWeb.CoreComponents do
       </div>
     </div>
     <%!-- Closes the notice as its close button would, once it has had its
-         time (`data-clear-after`; a notice without one stays); a new
-         message in it starts the time again. --%>
+         time (`data-clear-after`; a notice without one stays); a different
+         message in it starts the time again (the same one again changes
+         nothing on the page, so it keeps the time it has). --%>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".ClearsItself">
       export default {
         mounted() { this.start() },
