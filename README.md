@@ -473,10 +473,14 @@ mix test.e2e
 It starts a throwaway `postgres:16` container (Testcontainers), runs the
 migrations and seeds, builds the assets, copies in the Mock provider's real
 songs if their folder is there (see "Music providers" above), serves the app on
-`E2E_PORT` (default 4012) and runs `mix test --only e2e`; extra arguments pass through to
-`mix test`. It takes about two minutes. The combined 1920x1080 video of every
-screen lands in `tmp/e2e/full_game.mp4` (raw per-device recordings in
-`tmp/e2e/full_game/<player>/`), and is written even when the test fails. The
+`E2E_PORT` (default 4012) at `E2E_HOST` (default `whose-jam-e2e.localhost`, an
+address as long as a deployed one; Chromium sends any `*.localhost` name to this
+machine) and runs `mix test --only e2e`; extra arguments pass through to
+`mix test`. It takes about seven minutes. Each test writes a combined 1920x1080
+video of every screen it uses to `tmp/e2e/<test>.mp4` (the full game's is
+`tmp/e2e/full_game.mp4`; the others are `rough_night.mp4` and `fit_*.mp4`),
+with raw per-device recordings in `tmp/e2e/<test>/<player>/`, and is written
+even when the test fails. The
 video needs `ffmpeg` on your PATH; without it the pinned
 `linuxserver/ffmpeg:version-7.1-cli` Docker image is used.
 

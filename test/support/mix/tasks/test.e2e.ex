@@ -16,7 +16,10 @@ defmodule Mix.Tasks.Test.E2e do
     2. points `WhoseJam.Repo` at it, runs the real migrations and
        `priv/repo/seeds.exs`,
     3. builds the JS/CSS bundles and serves the app over HTTP on
-       `E2E_PORT` (default `4012`),
+       `E2E_PORT` (default `4012`), at `E2E_HOST` (default
+       `whose-jam-e2e.localhost`: as long as a deployed address, so the
+       screens that show it are tested with one; Chromium sends any
+       `*.localhost` name to this machine),
     4. copies the Mock provider's real songs (NoCopyrightSounds downloads)
        into `priv/static/audio/mock/`, from the folder in `MOCK_AUDIO_DIR`
        (default `../whose-jam-mock`, beside this checkout), so those songs
@@ -42,6 +45,7 @@ defmodule Mix.Tasks.Test.E2e do
 
   @postgres_image "postgres:16"
   @default_port 4012
+  @default_host "whose-jam-e2e.localhost"
 
   @impl Mix.Task
   def run(args) do
@@ -132,11 +136,17 @@ defmodule Mix.Tasks.Test.E2e do
         _ -> @default_port
       end
 
+    host =
+      case System.get_env("E2E_HOST", "") do
+        "" -> @default_host
+        host -> host
+      end
+
     endpoint_config =
       :whose_jam
       |> Application.fetch_env!(WhoseJamWeb.Endpoint)
       |> Keyword.merge(server: true, http: [ip: {127, 0, 0, 1}, port: port])
-      |> Keyword.put(:url, host: "localhost", port: port)
+      |> Keyword.put(:url, host: host, port: port)
 
     Application.put_env(:whose_jam, WhoseJamWeb.Endpoint, endpoint_config, persistent: true)
   end

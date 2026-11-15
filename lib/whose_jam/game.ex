@@ -146,8 +146,8 @@ defmodule WhoseJam.Game do
 
   @doc """
   Cast a vote in the current round. From the round's submitter the choice is
-  not a vote but their forecast of the wrong answer the room will fall for
-  (worth a point if it comes true). Rejects a choice the round doesn't offer
+  not a vote but their forecast of the wrong answer the room will fall for,
+  or, naming themselves, that nobody will (worth a point if it comes true). Rejects a choice the round doesn't offer
   and double votes (unless `allow_vote_change?` is enabled).
   """
   @spec cast_vote(String.t(), String.t(), term()) :: :ok | {:error, term()}

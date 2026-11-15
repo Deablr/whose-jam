@@ -11,7 +11,8 @@ defmodule WhoseJamWeb.CoreComponentsTest do
       tie_part: 2,
       tie_band_corners: 2,
       tie_bracket: 3,
-      clock_length: 1
+      clock_length: 1,
+      room_code_size: 1
     ]
 
   describe "curly/1" do
@@ -84,6 +85,25 @@ defmodule WhoseJamWeb.CoreComponentsTest do
       assert [_, "before:top-2 before:-bottom-3"] = tie_bracket(@rows, first, :tv)
       assert [_, "before:-inset-y-3"] = tie_bracket(@rows, middle, :tv)
       assert [_, "before:-top-1.5 before:bottom-1.5"] = tie_bracket(@rows, last, :phone)
+    end
+  end
+
+  describe "room_code_size/1" do
+    test "keeps most codes at the lobby's full size" do
+      for code <- ["U763", "MPQE", "ABCD", "2345"],
+          do: assert(room_code_size(code) == "text-[7rem]", code)
+    end
+
+    test "steps a code with wide letters down, so it never runs off the ticket" do
+      # Over 20rem at 7rem: XHFW 20.3, QQQQ 21.0; WMXA 21.0 even at 6.25rem.
+      assert room_code_size("XHFW") == "text-[6.25rem]"
+      assert room_code_size("QQQQ") == "text-[6.25rem]"
+      assert room_code_size("WMXA") == "text-[5rem]"
+      assert room_code_size("WWWW") == "text-[5rem]"
+    end
+
+    test "counts a letter outside the alphabet as the widest" do
+      assert room_code_size("????") == room_code_size("WWWW")
     end
   end
 
