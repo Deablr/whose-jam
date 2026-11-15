@@ -35,6 +35,11 @@ defmodule WhoseJamWeb.CoreComponents do
   @doc """
   Renders flash notices.
 
+  A notice from the flash map clears itself once it has been on screen long
+  enough to read (`clear_after/1`): on a TV across the room nobody is close
+  enough to close it. One given as a slot (the reconnecting notices) stays
+  for as long as its own commands keep it.
+
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
@@ -56,13 +61,18 @@ defmodule WhoseJamWeb.CoreComponents do
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
-    assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
+    assigns =
+      assigns
+      |> assign_new(:id, fn -> "flash-#{assigns.kind}" end)
+      |> assign(:clear_after, if(assigns.inner_block == [], do: clear_after(assigns.kind)))
 
     ~H"""
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      phx-hook=".ClearsItself"
+      data-clear-after={@clear_after}
       role="alert"
       class="toast toast-top toast-center z-50"
       {@rest}
@@ -84,8 +94,33 @@ defmodule WhoseJamWeb.CoreComponents do
         </button>
       </div>
     </div>
+    <%!-- Closes the notice as its close button would, once it has had its
+         time (`data-clear-after`; a notice without one stays); a new
+         message in it starts the time again. --%>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".ClearsItself">
+      export default {
+        mounted() { this.start() },
+        updated() { this.start() },
+        destroyed() { clearTimeout(this.timer) },
+        start() {
+          clearTimeout(this.timer)
+          const ms = Number(this.el.dataset.clearAfter)
+          if (ms > 0) {
+            this.timer = setTimeout(() => this.js().exec(this.el.getAttribute("phx-click")), ms)
+          }
+        }
+      }
+    </script>
     """
   end
+
+  @doc """
+  How long, in milliseconds, a flash notice of `kind` stays before it clears
+  itself: long enough to read a line, longer for an error.
+  """
+  @spec clear_after(:info | :error) :: pos_integer()
+  def clear_after(:info), do: 5_000
+  def clear_after(:error), do: 8_000
 
   @doc """
   Renders a button with navigation support.
@@ -466,13 +501,23 @@ defmodule WhoseJamWeb.CoreComponents do
   attr :player_id, :string, required: true
   attr :name, :string, required: true
   attr :class, :any, default: nil
+
+  attr :wrap?, :boolean,
+    default: false,
+    doc: "a name too long for the strip wraps onto another line, rather than being cut short"
+
   attr :rest, :global
   slot :inner_block, doc: "anything written on the strip after the name (a mark)"
 
   def name_tape(assigns) do
     ~H"""
     <span class={["jam-tape", tilt_class(@player_id), @class]} {@rest}>
-      <span class="min-w-0 truncate">{@name}</span>
+      <span class={[
+        "min-w-0",
+        if(@wrap?, do: "text-center [overflow-wrap:anywhere]", else: "truncate")
+      ]}>
+        {@name}
+      </span>
       {render_slot(@inner_block)}
     </span>
     """
@@ -486,6 +531,62 @@ defmodule WhoseJamWeb.CoreComponents do
   @spec tilt_class(term()) :: String.t()
   def tilt_class(id),
     do: "jam-tilt-#{:erlang.phash2(id, 5)} jam-cut-#{:erlang.phash2({:cut, id}, 5)}"
+
+  # Lilita One's advance widths, in em, for the room-code alphabet
+  # (`WhoseJam.Game.Codes.alphabet/0`): from E's 0.49 to W's 0.95.
+  @code_glyph_em %{
+    ?A => 0.66,
+    ?B => 0.59,
+    ?C => 0.56,
+    ?D => 0.62,
+    ?E => 0.49,
+    ?F => 0.47,
+    ?G => 0.62,
+    ?H => 0.64,
+    ?J => 0.46,
+    ?K => 0.62,
+    ?M => 0.91,
+    ?N => 0.65,
+    ?P => 0.57,
+    ?Q => 0.71,
+    ?R => 0.59,
+    ?S => 0.53,
+    ?T => 0.50,
+    ?U => 0.63,
+    ?V => 0.66,
+    ?W => 0.95,
+    ?X => 0.68,
+    ?Y => 0.61,
+    ?Z => 0.56,
+    ?2 => 0.53,
+    ?3 => 0.53,
+    ?4 => 0.60,
+    ?5 => 0.52,
+    ?6 => 0.57,
+    ?7 => 0.50,
+    ?8 => 0.57,
+    ?9 => 0.56
+  }
+
+  @doc """
+  The size class for the room code on the lobby's ticket: as large as the
+  ticket's 20rem for it allows, from the widths of the code's own letters
+  (with its 0.04em tracking). Most codes keep the full 7rem; one heavy in Ms
+  and Ws steps down. An unknown character counts as the widest.
+  """
+  @spec room_code_size(String.t()) :: String.t()
+  def room_code_size(code) when is_binary(code) do
+    em =
+      code
+      |> String.to_charlist()
+      |> Enum.reduce(0.0, fn char, sum -> sum + Map.get(@code_glyph_em, char, 0.95) + 0.04 end)
+
+    cond do
+      em * 7 <= 20 -> "text-[7rem]"
+      em * 6.25 <= 20 -> "text-[6.25rem]"
+      true -> "text-[5rem]"
+    end
+  end
 
   @doc """
   A clock's length in seconds as a countdown's numerals show it (`m:ss`), for

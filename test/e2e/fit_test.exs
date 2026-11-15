@@ -10,6 +10,8 @@ defmodule WhoseJamWeb.E2E.FitTest do
   use PhoenixTest.Playwright.Case, async: false
   use WhoseJamWeb, :verified_routes
 
+  import WhoseJamWeb.E2E.Fit, only: [assert_whole: 3, assert_inside: 4]
+
   alias WhoseJamWeb.E2E.Fit
   alias WhoseJamWeb.E2E.Stage
 
@@ -145,10 +147,11 @@ defmodule WhoseJamWeb.E2E.FitTest do
         assert_has(devices.host, "#lobby-players li", text: name)
       end
 
-      # The lobby: the address on the ticket, every name whole.
+      # The lobby: the code and the address on the ticket, every name whole.
       at_every_tv_size(devices.host, fn host, size ->
         host
         |> assert_inside("#join-url", ".jam-ticket", size)
+        |> assert_inside("#lobby-code", ".jam-ticket", size)
         |> assert_whole("#lobby-players", size)
       end)
 
@@ -304,23 +307,6 @@ defmodule WhoseJamWeb.E2E.FitTest do
     Enum.reduce(@tv_sizes, host, fn size, host -> check.(Fit.resize(host, size), size) end)
   end
 
-  defp assert_whole(session, scope, where) do
-    cut = Fit.cut_off(session, scope)
-    assert cut != nil, "nothing on the page matches #{scope} (#{inspect(where)})"
-    assert cut == [], "#{scope} cuts these short at #{inspect(where)}: #{inspect(cut)}"
-    session
-  end
-
-  defp assert_inside(session, selector, frame, size) do
-    spills = Fit.spills(session, selector, frame)
-    assert spills != nil, "nothing on the page matches #{selector} at #{inspect(size)}"
-
-    assert spills == [],
-           "#{selector} runs outside #{frame} at #{inspect(size)}: #{inspect(spills)}"
-
-    session
-  end
-
   defp assert_join_ticket_fits(session, size) do
     session
     |> assert_input_fits(size, "the placeholder")
@@ -331,10 +317,10 @@ defmodule WhoseJamWeb.E2E.FitTest do
   end
 
   defp assert_input_fits(session, size, what) do
-    %{"need" => need, "room" => room} = Fit.input_text(session, "input[name=code]")
+    %{"need" => need, "room" => room, "box" => box} = Fit.input_text(session, "input[name=code]")
 
     assert need <= room,
-           "at #{inspect(size)} #{what} needs #{need}px, the room code input has #{room}px"
+           "at #{inspect(size)} #{what} needs #{need}px, the room code input has #{room}px (#{box})"
 
     session
   end

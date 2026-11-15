@@ -1302,12 +1302,16 @@ defmodule WhoseJamWeb.HostLive do
   defp lobby(assigns) do
     player_count = length(assigns.view.players)
 
+    {seat_cols, seat_size} = lobby_grid(assigns.view.players)
+
     assigns =
       assign(assigns,
         player_count: player_count,
         max_players: Game.max_players(),
         open_seats: max(Game.max_players() - player_count, 0),
-        min_players: assigns.view.config.min_players
+        min_players: assigns.view.config.min_players,
+        seat_cols: seat_cols,
+        seat_size: seat_size
       )
 
     ~H"""
@@ -1351,21 +1355,30 @@ defmodule WhoseJamWeb.HostLive do
             <div class="shrink-0 p-5 pl-7 [&>svg]:size-56">
               <.qr_code svg={@qr_svg} />
             </div>
-            <%!-- The code clear of the ticket's notch, however wide its
-                 letters. --%>
-            <div class="flex flex-col justify-center border-l-[3px] border-dashed border-jam-ink/20 py-6 pl-8 pr-14">
+            <%!-- The code clear of the ticket's notch, as large as its
+                 letters allow in the 20rem the ticket has for it; the
+                 address under it, its host and its path on lines of their
+                 own when it is too long for one. --%>
+            <div class="flex flex-col justify-center border-l-[3px] border-dashed border-jam-ink/20 py-6 pl-8 pr-10">
               <p class="text-2xl font-bold text-jam-ink/55">Room code</p>
-              <p class="font-display text-[7rem] leading-[0.95] tracking-[0.04em] whitespace-nowrap">
+              <p
+                id="lobby-code"
+                class={[
+                  "font-display leading-[0.95] tracking-[0.04em] whitespace-nowrap",
+                  room_code_size(@view.code)
+                ]}
+              >
                 {@view.code}
               </p>
               <p class="mt-2 text-[1.4rem] font-semibold text-jam-ink/65">
                 Scan to join, or go to
                 <span
                   id="join-url"
-                  class="block whitespace-nowrap text-2xl font-extrabold text-jam-ink"
-                >
-                  {display_url(@join_url)}
-                </span>
+                  class={[
+                    "block font-extrabold text-jam-ink [overflow-wrap:anywhere]",
+                    join_url_size(@join_url)
+                  ]}
+                >{join_host(@join_url)}<wbr />{join_path(@join_url)}</span>
               </p>
             </div>
           </div>
@@ -1387,10 +1400,14 @@ defmodule WhoseJamWeb.HostLive do
              sound desk, large, four to a row in the seats the picking screen
              keeps them in (each tape its own width and tilt, centred in its
              seat, so the columns line up); the seats still free are dashed
-             in. --%>
+             in. Fewer to a row, and a size down, when a name is too long
+             for a quarter of the room: every name is read whole. --%>
         <ul
           id="lobby-players"
-          class="grid grid-cols-4 content-start items-center justify-items-center gap-x-4 gap-y-5"
+          class={[
+            "grid content-start items-center justify-items-center gap-x-4 gap-y-5",
+            @seat_cols
+          ]}
         >
           <li
             :for={p <- @view.players}
@@ -1402,7 +1419,8 @@ defmodule WhoseJamWeb.HostLive do
             <.name_tape
               player_id={p.id}
               name={p.name}
-              class="jam-tape-paper max-w-full px-4 py-3 text-[2.45rem]"
+              wrap?
+              class={["jam-tape-paper max-w-full px-4 py-3", @seat_size]}
             />
           </li>
           <li
@@ -1474,6 +1492,77 @@ defmodule WhoseJamWeb.HostLive do
   # The join address as someone would type it: no scheme.
   defp display_url(url), do: String.replace(url, ~r{^https?://}, "")
 
+  # The join address in two parts, its host and its path ("/play/CODE"), so
+  # a long one breaks between them rather than inside either.
+  defp join_host(url), do: url |> display_url() |> String.split("/play/", parts: 2) |> hd()
+
+  defp join_path(url),
+    do: String.replace_prefix(display_url(url), join_host(url), "")
+
+  # How the lobby seats its names (see name_grid/5): in the 38rem column,
+  # each tape 2rem of padding round its name.
+  defp lobby_grid(players) do
+    name_grid(players, 38, 2, 0, [
+      {2.45, "text-[2.45rem]"},
+      {2.1, "text-[2.1rem]"},
+      {1.8, "text-[1.8rem]"},
+      {1.5, "text-[1.5rem]"},
+      {1.25, "text-[1.25rem]"}
+    ])
+  end
+
+  # How the picking screen seats its names: the lobby's grid in its 37.5rem
+  # column, each tape with 2rem of padding and gap and its 0.75em check.
+  defp picking_grid(seats) do
+    name_grid(seats, 37.5, 2, 0.75, [
+      {2.1, "text-[2.1rem]"},
+      {1.8, "text-[1.8rem]"},
+      {1.5, "text-[1.5rem]"},
+      {1.25, "text-[1.25rem]"}
+    ])
+  end
+
+  # A grid of name tapes for a column `room` rem wide, as {columns, size}
+  # classes: four to a row (1rem apart) while the longest name fits a quarter
+  # of the room at the largest size or the next, else three at those, else
+  # two at the largest size that fits (or the smallest; a name that still
+  # doesn't fit wraps). `fixed` is a tape's width in rem besides its words,
+  # `extra` in em (a mark after the name); `sizes` are {rem, class}, largest
+  # first.
+  defp name_grid(people, room, fixed, extra, sizes) do
+    em = longest_name_em(people) + extra
+    [first, second | _] = sizes
+
+    tries =
+      for(cols <- [4, 3], size <- [first, second], do: {cols, size}) ++
+        for(size <- sizes, do: {2, size})
+
+    {cols, {_rem, class}} =
+      Enum.find(tries, {2, List.last(sizes)}, fn {cols, {rem, _class}} ->
+        fixed + em * rem <= (room - (cols - 1)) / cols
+      end)
+
+    {Map.fetch!(%{4 => "grid-cols-4", 3 => "grid-cols-3", 2 => "grid-cols-2"}, cols), class}
+  end
+
+  # How wide the longest of these names is in the marker face, in em: 0.6em
+  # a character and 0.3em more (short names run wider a letter, for their
+  # capital), which no common name exceeds.
+  defp longest_name_em(people),
+    do: 0.6 * Enum.reduce(people, 0, &max(String.length(&1.name), &2)) + 0.3
+
+  # The lobby's address as large as its host still fits a line of the
+  # ticket (about 20rem, at most 0.52em a character in its weight); a host
+  # longer still breaks where it must.
+  defp join_url_size(url) do
+    case String.length(join_host(url)) do
+      n when n <= 25 -> "text-2xl"
+      n when n <= 31 -> "text-xl"
+      n when n <= 34 -> "text-lg"
+      _ -> "text-base"
+    end
+  end
+
   # ---- answering ----------------------------------------------------------
 
   # The same seats as the lobby: each fills in as its player locks in.
@@ -1487,9 +1576,16 @@ defmodule WhoseJamWeb.HostLive do
       end
 
     done = Enum.count(seats, & &1.done?)
+    {seat_cols, seat_size} = picking_grid(seats)
 
     assigns =
-      assign(assigns, seats: seats, done: done, all_in?: seats != [] and done == length(seats))
+      assign(assigns,
+        seats: seats,
+        done: done,
+        all_in?: seats != [] and done == length(seats),
+        seat_cols: seat_cols,
+        seat_size: seat_size
+      )
 
     ~H"""
     <%!-- The headline and the room's names side by side, their tops level;
@@ -1531,17 +1627,19 @@ defmodule WhoseJamWeb.HostLive do
         <%!-- The lobby's names, laid out as the lobby lays them (side by
              side, as a cluster): each pencilled into its slot, and taped
              down where it was as its player locks in their songs. --%>
-        <%!-- A fixed grid, four to a row: every name keeps its place as the
-             tapes land, so nothing reflows when one turns into a tape; the
-             check is written on the tape after the name, as the score
-             strip's and the phones' are. --%>
-        <ul id="answering-players" class="grid grid-cols-4 gap-x-4 gap-y-5">
+        <%!-- A fixed grid, four to a row (fewer, and a size down, when a
+             name is too long for a quarter of the room): every name keeps
+             its place as the tapes land, so nothing reflows when one turns
+             into a tape; the check is written on the tape after the name,
+             as the score strip's and the phones' are. --%>
+        <ul id="answering-players" class={["grid gap-x-4 gap-y-5", @seat_cols]}>
           <li :for={seat <- @seats} id={"picking-#{seat.id}"} class="relative flex min-w-0">
             <.name_tape
               :if={seat.done?}
               player_id={seat.id}
               name={seat.name}
-              class="jam-bump w-full gap-2 py-3 px-3 text-[2.1rem]"
+              wrap?
+              class={["jam-bump w-full gap-2 py-3 px-3", @seat_size]}
             >
               <.icon
                 name="hero-check-circle-solid"
@@ -1549,15 +1647,18 @@ defmodule WhoseJamWeb.HostLive do
               />
             </.name_tape>
             <%!-- Pencilled into the tape's slot until their tape lands. --%>
+            <%!-- With several prompts each, how many are picked sits on the
+                 slot's edge like a tab, so it takes none of the name's
+                 room. --%>
             <div
               :if={!seat.done?}
-              class={[
-                "jam-tape-slot relative w-full gap-2 overflow-hidden py-3 px-3 text-[2.1rem]",
-                seat.prog.total > 1 && "justify-between"
-              ]}
+              class={["jam-tape-slot relative w-full py-3 px-3", @seat_size]}
             >
-              <span class="min-w-0 truncate whitespace-nowrap">{seat.name}</span>
-              <span :if={seat.prog.total > 1} class="shrink-0 text-2xl tabular-nums">
+              <span class="min-w-0 text-center [overflow-wrap:anywhere]">{seat.name}</span>
+              <span
+                :if={seat.prog.total > 1}
+                class="absolute -top-[0.55em] right-2 bg-jam-ink px-1.5 text-[1.35rem] leading-none tabular-nums"
+              >
                 {seat.prog.submitted}/{seat.prog.total}
               </span>
               <%!-- With several prompts each, a thin bar shows how far along. --%>
@@ -2435,18 +2536,39 @@ defmodule WhoseJamWeb.HostLive do
 
   defp lock_in(_view, _player, false = _voting?), do: %{in?: true, locked?: false}
 
-  # One size for every name in the strip: smaller for all when one is long,
-  # and on the last reveal, whose strip makes room for its label.
-  defp strip_name_class(_view, true = _final_reveal?), do: "text-[1.55rem]"
+  # One size for every name in the strip, the largest at which the longest
+  # name fits its seat whole: a seat is its share of the strip's 86rem, and a
+  # name's tape is its padding (1.7em), the vote's check (0.95em and a
+  # 0.375rem gap) and its words (`longest_name_em/1`). It starts a size down
+  # on the last reveal, whose strip makes room for its label, and when every
+  # place is shown (each takes a row of its own); a name still too long at
+  # the smallest size wraps.
+  @strip_sizes [
+    {1.7, "text-[1.7rem]"},
+    {1.55, "text-[1.55rem]"},
+    {1.4, "text-[1.4rem]"},
+    {1.25, "text-[1.25rem]"},
+    {1.1, "text-[1.1rem]"},
+    {0.95, "text-[0.95rem]"}
+  ]
 
-  # Every place shown takes a row of its own: the names a size down to make
-  # it room.
-  defp strip_name_class(%{config: %{show_places?: true}}, false), do: "text-[1.4rem]"
+  defp strip_name_class(%{players: players} = view, final_reveal?) do
+    largest =
+      cond do
+        final_reveal? -> 1.55
+        view.config[:show_places?] -> 1.4
+        true -> 1.7
+      end
 
-  defp strip_name_class(%{players: players}, false) do
-    if length(players) > 5 and Enum.any?(players, &(String.length(&1.name) > 11)),
-      do: "text-[1.5rem]",
-      else: "text-[1.7rem]"
+    count = max(length(players), 1)
+    seat = (86 - 0.75 - 0.375 * (count - 1)) / count - 0.75
+    em = longest_name_em(players) + 1.7 + 0.95
+    sizes = Enum.filter(@strip_sizes, fn {size, _} -> size <= largest end)
+
+    {_size, class} =
+      Enum.find(sizes, List.last(sizes), fn {size, _} -> em * size + 0.375 <= seat end)
+
+    class
   end
 
   # What the seats said before this round's points: at a reveal, the scores
@@ -2548,6 +2670,7 @@ defmodule WhoseJamWeb.HostLive do
           :if={@in?}
           player_id={@player_id}
           name={@name}
+          wrap?
           class={[
             "jam-bump max-w-full",
             if(@seat.ring? and !@away?, do: "jam-tape-orange", else: "jam-tape-paper"),
@@ -2562,7 +2685,7 @@ defmodule WhoseJamWeb.HostLive do
           />
         </.name_tape>
         <span :if={!@in?} class="jam-tape-slot max-w-full">
-          <span class="min-w-0 truncate">{@name}</span>
+          <span class="min-w-0 text-center [overflow-wrap:anywhere]">{@name}</span>
         </span>
         <%!-- What this round added: a small orange sticker slapped on the
              tape's corner, as a phone's result wears its points, away from
@@ -2619,7 +2742,8 @@ defmodule WhoseJamWeb.HostLive do
         playlist: playlist,
         playlist_more: playlist_more,
         winner_songs: winner_songs(assigns.view),
-        count_steps: count_steps(assigns.board)
+        count_steps: count_steps(assigns.board),
+        name_size: final_name_size(assigns.board)
       )
 
     ~H"""
@@ -2945,8 +3069,10 @@ defmodule WhoseJamWeb.HostLive do
                   <.name_tape
                     player_id={row.id}
                     name={row.name}
+                    wrap?
                     class={[
                       "max-w-[22rem]",
+                      @name_size,
                       (@crowned? and row.rank == 1) && "jam-tape-orange"
                     ]}
                   />
@@ -3181,7 +3307,21 @@ defmodule WhoseJamWeb.HostLive do
   # The picker's prediction (which wrong answer the room would fall for), and
   # whether it came true: `{text, right?}` (with nobody fooled, nobody took the
   # blame, and it says so), or nil when they made none. One sentence, the
-  # same words as the picker's phone, whichever way it went.
+  # same words as the picker's phone, whichever way it went. A picker who
+  # named themselves predicted that nobody would fall for it.
+  defp forecast_line(
+         %{round: %{forecast: %{choice: choice, right?: right?}, correct_choice: choice} = round} =
+           view
+       ) do
+    nobody = "Predicted nobody would fall for it"
+
+    case blamed(view, round) do
+      _nobody when right? -> {nobody, true}
+      [] -> {"#{nobody}, but no player voted", false}
+      took -> {"#{nobody}, but #{join_names(took)} took the blame", false}
+    end
+  end
+
   defp forecast_line(%{round: %{forecast: %{choice: choice, right?: right?}} = round} = view) do
     case blamed(view, round) do
       # Nobody was fooled, so nobody took any blame: the prediction says so.
@@ -3601,6 +3741,20 @@ defmodule WhoseJamWeb.HostLive do
 
   # Eight rows still leave room for the buttons under them; first place has
   # a row a little taller than the rest.
+  # The final table's names at their rows' own size while the longest fits
+  # its 20rem at the first row's 2.3rem; else every name a size or more down
+  # (one that still doesn't fit wraps).
+  defp final_name_size(board) do
+    em = longest_name_em(board) + 1.7
+
+    cond do
+      em * 2.3 <= 20 -> nil
+      em * 1.8 <= 20 -> "text-[1.8rem]"
+      em * 1.5 <= 20 -> "text-[1.5rem]"
+      true -> "text-[1.25rem]"
+    end
+  end
+
   defp final_row_size(board, true = _first?) when length(board) > 6,
     do: "py-2.5 text-[2.05rem] leading-tight"
 
