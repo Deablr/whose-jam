@@ -240,4 +240,67 @@ defmodule WhoseJam.Game.ScoringTest do
       refute Scoring.forecast_right?(guess_who_round("sub"), votes)
     end
   end
+
+  # Switching a way of scoring off -------------------------------------------
+
+  describe "score_round/3 with a way of scoring switched off" do
+    # p1 and p2 call it; p3 and a1 (audience) are fooled; the picker forecast
+    # p3, whom most of the fooled players blamed.
+    defp mixed_round do
+      round = Map.put(guess_who_round("sub"), :forecast, "p3")
+
+      votes = [
+        vote("p1", "sub"),
+        vote("p2", "sub"),
+        vote("p3", "p3"),
+        vote("p4", "p3"),
+        vote("a1", "p3", :audience)
+      ]
+
+      {round, votes}
+    end
+
+    test "everything on is the default" do
+      {round, votes} = mixed_round()
+
+      assert Scoring.score_round(round, votes) ==
+               %{"p1" => 1, "p2" => 1, "sub" => 3}
+
+      assert Scoring.score_round(round, votes, %{
+               correct?: true,
+               fooled?: true,
+               predictions?: true
+             }) ==
+               Scoring.score_round(round, votes)
+    end
+
+    test "without correct guesses, callers score nothing and the picker is unchanged" do
+      {round, votes} = mixed_round()
+      assert Scoring.score_round(round, votes, %{correct?: false}) == %{"sub" => 3}
+    end
+
+    test "without fooling, the picker keeps only the prediction" do
+      {round, votes} = mixed_round()
+
+      assert Scoring.score_round(round, votes, %{fooled?: false}) ==
+               %{"p1" => 1, "p2" => 1, "sub" => 1}
+    end
+
+    test "without predictions, a forecast that came true scores nothing" do
+      {round, votes} = mixed_round()
+
+      assert Scoring.score_round(round, votes, %{predictions?: false}) ==
+               %{"p1" => 1, "p2" => 1, "sub" => 2}
+    end
+
+    test "with everything off nobody scores" do
+      {round, votes} = mixed_round()
+
+      assert Scoring.score_round(round, votes, %{
+               correct?: false,
+               fooled?: false,
+               predictions?: false
+             }) == %{}
+    end
+  end
 end

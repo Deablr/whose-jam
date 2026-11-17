@@ -49,16 +49,38 @@ defmodule WhoseJam.Game.Scoring do
           choice: term()
         }
 
+  @typedoc """
+  Which of the three ways to score are on (all of them, unless said
+  otherwise): `correct?` (+1 to a right guess), `fooled?` (+1 to the picker per
+  player fooled) and `predictions?` (+1 to the picker for a right forecast).
+  """
+  @type opts :: %{
+          optional(:correct?) => boolean(),
+          optional(:fooled?) => boolean(),
+          optional(:predictions?) => boolean()
+        }
+
   @doc """
   Scores a single round.
 
-  See the module doc for the full ruleset and return shape.
+  `opts` switches a way of scoring off (see `t:opts/0`); a switched-off way
+  scores nothing, and the others are unchanged. See the module doc for the
+  full ruleset and return shape.
   """
-  @spec score_round(round(), [vote()]) :: %{id() => non_neg_integer()}
-  def score_round(%{submitter_id: submitter_id, correct_choice: correct_choice} = round, votes)
-      when is_list(votes) do
-    deltas = Enum.reduce(votes, %{}, &tally(&1, &2, submitter_id, correct_choice))
-    if forecast_right?(round, votes), do: add(deltas, submitter_id, 1), else: deltas
+  @spec score_round(round(), [vote()], opts()) :: %{id() => non_neg_integer()}
+  def score_round(
+        %{submitter_id: submitter_id, correct_choice: correct_choice} = round,
+        votes,
+        opts \\ %{}
+      )
+      when is_list(votes) and is_map(opts) do
+    on = Map.merge(%{correct?: true, fooled?: true, predictions?: true}, opts)
+
+    deltas = Enum.reduce(votes, %{}, &tally(&1, &2, submitter_id, correct_choice, on))
+
+    if on.predictions? and forecast_right?(round, votes),
+      do: add(deltas, submitter_id, 1),
+      else: deltas
   end
 
   @doc """
@@ -89,13 +111,14 @@ defmodule WhoseJam.Game.Scoring do
 
   def forecast_right?(_round, _votes), do: false
 
-  defp tally(vote, acc, submitter_id, correct_choice) do
+  defp tally(vote, acc, submitter_id, correct_choice, on) do
     cond do
       # Correct guess: +1 to the voter (player or audience).
-      vote.choice == correct_choice -> add(acc, vote.voter_id, 1)
+      vote.choice == correct_choice -> if on.correct?, do: add(acc, vote.voter_id, 1), else: acc
       # Incorrect guess: submitter is fooled only by non-audience voters.
       vote.voter_role == :audience -> acc
-      true -> add(acc, submitter_id, 1)
+      on.fooled? -> add(acc, submitter_id, 1)
+      true -> acc
     end
   end
 

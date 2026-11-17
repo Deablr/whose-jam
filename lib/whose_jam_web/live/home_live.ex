@@ -64,6 +64,24 @@ defmodule WhoseJamWeb.HomeLive do
     end
   end
 
+  # Seats this phone saved for games it joined (`SeatFinder`): the way back
+  # to one that is still on, when the session cookie has lost its own.
+  def handle_event("saved_seats", %{"tokens" => tokens}, socket) when is_list(tokens) do
+    seat =
+      Enum.find_value(Enum.take(tokens, 10), fn token ->
+        with {:ok, code, player_id} <- PlayerToken.seat_of(token),
+             %{me: %{}} <- Game.player_view(code, player_id) do
+          code
+        else
+          _ -> nil
+        end
+      end)
+
+    {:noreply, if(seat, do: assign(socket, seat: socket.assigns.seat || seat), else: socket)}
+  end
+
+  def handle_event("saved_seats", _params, socket), do: {:noreply, socket}
+
   def handle_event("open_host", _params, socket) do
     {:noreply, assign(socket, host_open?: true)}
   end
@@ -99,6 +117,8 @@ defmodule WhoseJamWeb.HomeLive do
     ~H"""
     <%!-- In the game's own colours, like every other screen's notices. --%>
     <div data-theme="jam"><Layouts.flash_group flash={@flash} /></div>
+    <%!-- Finds the seats this phone saved (assets/js/hooks/player.js). --%>
+    <div id="seat-finder" phx-hook="SeatFinder" class="hidden"></div>
 
     <main
       data-theme="jam"

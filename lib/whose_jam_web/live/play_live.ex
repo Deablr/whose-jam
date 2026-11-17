@@ -48,11 +48,16 @@ defmodule WhoseJamWeb.PlayLive do
   defp mount_existing_game(code, session, socket) do
     case valid_token(session, code) do
       {:ok, player_id} ->
-        if connected?(socket) do
-          Game.rejoin(code, player_id)
-          Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
-          Presence.track_player(self(), code, player_id)
-        end
+        socket =
+          if connected?(socket) do
+            Game.rejoin(code, player_id)
+            Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+            Presence.track_player(self(), code, player_id)
+            # Keep the seat on the device itself, too (see `SeatKeeper`).
+            push_event(socket, "seat:save", %{code: code, token: session["player_token"]})
+          else
+            socket
+          end
 
         socket = socket |> assign(player_id: player_id, status: :joined) |> refresh_view()
 
@@ -131,6 +136,28 @@ defmodule WhoseJamWeb.PlayLive do
         do_join(socket, name)
     end
   end
+
+  # The phone found a seat it saved for this game (`SeatKeeper`), while the
+  # session cookie has none for it: back in, as the same player, not as a
+  # stranger who would join the audience.
+  def handle_event("resume_seat", %{"token" => token}, %{assigns: %{status: :join}} = socket)
+      when is_binary(token) do
+    code = socket.assigns.code
+
+    with {:ok, ^code, player_id} <- PlayerToken.seat_of(token),
+         {:ok, _seat} <- Game.rejoin(code, player_id) do
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      Presence.track_player(self(), code, player_id)
+
+      socket = socket |> assign(player_id: player_id) |> refresh_view()
+
+      {:noreply, assign(socket, skip_card: round_key(socket.assigns.view))}
+    else
+      _ -> {:noreply, push_event(socket, "seat:forget", %{code: code})}
+    end
+  end
+
+  def handle_event("resume_seat", _params, socket), do: {:noreply, socket}
 
   # Every search may cost the music service's quota, so only someone who has
   # songs to pick can search (see can_search?/1), and never with a query longer
@@ -242,6 +269,26 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   def handle_event("try_code", _params, socket), do: {:noreply, socket}
+
+  # A player the host made a host starts the game (the server checks both).
+  def handle_event("start_game", _params, socket) do
+    case Game.start_game(socket.assigns.code, socket.assigns.player_id) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, :not_eligible} ->
+        {:noreply, put_flash(socket, :error, "The music service can’t play yet. Check the TV.")}
+
+      {:error, :not_authenticated} ->
+        {:noreply, put_flash(socket, :error, "The TV needs a music service connected first.")}
+
+      {:error, :not_enough_players} ->
+        {:noreply, put_flash(socket, :error, "Not enough players have joined yet.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn’t start the game.")}
+    end
+  end
 
   def handle_event("dismiss_times_up", _params, socket) do
     {:noreply, assign(socket, show_times_up: false, times_up_dismissed: true)}
@@ -407,8 +454,11 @@ defmodule WhoseJamWeb.PlayLive do
 
       %{me: nil} ->
         # Token points at a player the server no longer knows (e.g. a brand-new
-        # game under the same code). Fall back to the join form.
-        assign(socket, status: :join, view: nil, me: nil, player_id: nil)
+        # game under the same code). Fall back to the join form, and forget
+        # the seat the phone saved.
+        socket
+        |> assign(status: :join, view: nil, me: nil, player_id: nil)
+        |> push_event("seat:forget", %{code: code})
 
       view ->
         me = view.me
@@ -525,6 +575,16 @@ defmodule WhoseJamWeb.PlayLive do
     ~H"""
     <%!-- Inside the theme, so a notice wears the game's colours. --%>
     <div data-theme="jam"><Layouts.flash_group flash={@flash} /></div>
+    <%!-- Keeps this phone's seat in the game on the phone, and takes it back
+         (see assets/js/hooks/player.js). --%>
+    <div
+      id="seat-keeper"
+      phx-hook="SeatKeeper"
+      data-code={@code}
+      data-seated={to_string(@status == :joined)}
+      class="hidden"
+    >
+    </div>
     <div
       data-theme="jam"
       class={
@@ -750,7 +810,7 @@ defmodule WhoseJamWeb.PlayLive do
         id="audience-join-note"
         class="mt-3 rounded-2xl bg-jam-cream/5 px-4 py-3 text-jam-cream/85"
       >
-        This game has started, so you’ll join the audience: guess every song, +1 for each one you call.
+        This game has started, so you’ll join the audience: guess every song and see how many you call.
       </p>
 
       <form phx-submit="join" class="mt-6 space-y-4">
@@ -838,6 +898,22 @@ defmodule WhoseJamWeb.PlayLive do
               {@view.theme.name}
             </p>
           </div>
+          <%!-- The host made this player a host: they can start the game from
+               here. The same rules as the TV's button (the server answers
+               what is missing). --%>
+          <div :if={@role == :player and @player_id in @view.phone_hosts} class="mt-5">
+            <p id="phone-host-note" class="mb-2 text-sm font-semibold text-jam-cream/65">
+              You’re a host. Start the game when everyone’s in.
+            </p>
+            <button
+              id="phone-start"
+              type="button"
+              phx-click="start_game"
+              class="jam-btn w-full text-lg"
+            >
+              Start the game
+            </button>
+          </div>
         </div>
       </div>
       <%!-- The one rule that changes how you pick: fooling people scores.
@@ -847,15 +923,15 @@ defmodule WhoseJamWeb.PlayLive do
           id="how-to-score"
           class="mt-5 space-y-1.5 px-1 text-base leading-[1.45] text-jam-cream/80 lg:mt-8"
         >
-          <li class="flex gap-3">
+          <li :if={@view.config.score_correct?} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
             <span class="text-balance">for each correct guess</span>
           </li>
-          <li :if={@role == :player} class="flex gap-3">
+          <li :if={@role == :player and @view.config.score_fooled?} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
             <span class="text-balance">for each player your song fools</span>
           </li>
-          <li :if={@role == :player} class="flex gap-3">
+          <li :if={@role == :player and @view.config.score_predictions?} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
             <span class="text-balance">for predicting the most common wrong guess</span>
           </li>
@@ -952,7 +1028,9 @@ defmodule WhoseJamWeb.PlayLive do
         {curly(if @ready?, do: "Everyone’s ready", else: "You’re in the audience")}
       </h1>
       <div :if={!@ready?} class="space-y-1">
-        <p class="font-medium text-jam-cream">Guess who picked each song. +1 for each you call.</p>
+        <p class="font-medium text-jam-cream">
+          Guess who picked each song.{if @view.config.score_correct?, do: " +1 for each you call."}
+        </p>
         <p class="text-sm text-jam-cream/70">The game had started when you joined.</p>
       </div>
       <%!-- Only once there is a time to show; it says what it counts down to. --%>
@@ -1304,10 +1382,16 @@ defmodule WhoseJamWeb.PlayLive do
       id="own-song-explainer"
       class="mt-3 text-base leading-[1.4] text-jam-cream/75"
     >
-      <.inline_points text="When your song plays, predict the most common wrong guess. +1 if you’re right." />
+      <.inline_points text={own_song_explanation(@view.config)} />
     </p>
     """
   end
+
+  defp own_song_explanation(%{score_predictions?: true}),
+    do: "When your song plays, predict the most common wrong guess. +1 if you’re right."
+
+  defp own_song_explanation(_config),
+    do: "When your song plays, sit tight and keep a straight face."
 
   defp all_picked?(%{answering: %{progress: progress}}),
     do: Enum.all?(progress, fn {_id, p} -> p.submitted >= p.total end)
@@ -1654,20 +1738,23 @@ defmodule WhoseJamWeb.PlayLive do
   # own_song_explainer/1).
   defp voting_body(assigns) do
     picked = assigns.me.vote
-    assigns = assign(assigns, picked: picked, own?: own_round?(assigns))
+    idle? = no_prediction?(assigns)
+    assigns = assign(assigns, picked: picked, own?: own_round?(assigns), idle?: idle?)
 
-    if not is_nil(picked) and not assigns.view.config.allow_vote_change? do
+    if idle? or (not is_nil(picked) and not assigns.view.config.allow_vote_change?) do
       assigns =
-        assign(assigns, picked_label: choice_label(assigns.round, picked))
+        assign(assigns,
+          picked_label: picked && choice_label(assigns.round, picked)
+        )
 
       ~H"""
       <%!-- A lock, not a tick: the vote is in, not yet right. The same card
            on every phone; the picker's says what they locked in. --%>
       <.locked_card
         id="phone-voted"
-        label={locked_label(@own?)}
+        label={locked_label(@own?, @idle?)}
         label_id="locked-note"
-        name={@picked_label || "Vote locked in"}
+        name={if @idle?, do: "Keep a straight face", else: @picked_label || "Vote locked in"}
         tape_id={@round.style == :guess_who && @picked_label && @picked}
         note="Eyes on the TV"
         class="flex-1"
@@ -1751,7 +1838,7 @@ defmodule WhoseJamWeb.PlayLive do
             id="vote-hint"
             class="text-[0.9375rem] font-normal leading-[1.4] text-jam-cream/75 max-[359px]:min-h-[2.8em]"
           >
-            <.inline_points text={vote_hint(@round, @own?, @change?)} />
+            <.inline_points text={vote_hint(@round, @own?, @change?, @view.config.score_correct?)} />
           </p>
           <p :if={@change?} class={["text-sm text-jam-mint", !@picked && "invisible"]}>
             {cond do
@@ -1836,7 +1923,13 @@ defmodule WhoseJamWeb.PlayLive do
              and stuck to the foot of the screen, so it is never below the
              fold. Always there, so the names above never move when one is
              tapped. --%>
-        <div :if={!@change?} class="sticky bottom-5 z-10 pt-6">
+        <%!-- On the stage's own colour (with a short fade above it), so the
+             names scrolling under it on a long list (eight players) never
+             show through the empty slot of a button not yet filled. --%>
+        <div
+          :if={!@change?}
+          class="sticky bottom-0 z-10 bg-jam-ink pb-5 pt-3 before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-linear-to-t before:from-jam-ink before:to-transparent before:content-['']"
+        >
           <button
             id="lock-vote"
             type="button"
@@ -1977,15 +2070,18 @@ defmodule WhoseJamWeb.PlayLive do
   # reports: where most of the wrong guesses land.
   # As short as everyone else's, so both fit one line on any phone (the
   # headline has asked whom the room will blame).
-  defp vote_hint(_round, true, _change?),
+  defp vote_hint(_round, true, _change?, _correct?),
     do: "Pick who they’ll blame. +1 if you’re right."
 
-  defp vote_hint(round, false, true), do: "Tap a #{choice_noun(round)}. Tap another to switch."
+  defp vote_hint(round, false, true, _correct?),
+    do: "Tap a #{choice_noun(round)}. Tap another to switch."
 
-  defp vote_hint(%{style: :guess_who}, false, false),
+  defp vote_hint(%{style: :guess_who}, false, false, true),
     do: "Pick who chose it. +1 if you’re right."
 
-  defp vote_hint(_round, false, false), do: "Pick its prompt. +1 if you’re right."
+  defp vote_hint(%{style: :guess_who}, false, false, false), do: "Pick who chose it."
+  defp vote_hint(_round, false, false, true), do: "Pick its prompt. +1 if you’re right."
+  defp vote_hint(_round, false, false, false), do: "Pick its prompt."
 
   # What the round asks: the room, whose song it is; the picker, where the
   # blame will land (see vote_hint/3).
@@ -1997,6 +2093,15 @@ defmodule WhoseJamWeb.PlayLive do
   # What a locked-in screen calls the choice on it.
   defp locked_label(true), do: "Your prediction"
   defp locked_label(false), do: "Locked in"
+
+  # The picker with no prediction to make (it isn't scored) has nothing to
+  # lock in: their card says whose song it is.
+  defp locked_label(true, true), do: "Your song"
+  defp locked_label(own?, false), do: locked_label(own?)
+
+  # Whether this phone's player is the picker and isn't asked to predict.
+  defp no_prediction?(assigns),
+    do: own_round?(assigns) and not assigns.view.config.score_predictions?
 
   # What a round's choices are: players, or prompts.
   defp choice_noun(%{style: :guess_who}), do: "name"
@@ -2141,6 +2246,7 @@ defmodule WhoseJamWeb.PlayLive do
       |> assign(:gain, my_delta(assigns))
       |> assign(:standing, round_standing(assigns))
       |> assign(:guessed, guessed(assigns))
+      |> then(&assign(&1, :idle?, no_prediction?(&1)))
 
     ~H"""
     <div
@@ -2154,7 +2260,7 @@ defmodule WhoseJamWeb.PlayLive do
       <.locked_card
         id={"eyes-up-#{@round.index}"}
         icon={if @guessed, do: "hero-lock-closed-solid", else: "hero-clock-solid"}
-        label={if @guessed, do: locked_label(@own?), else: "Time’s up"}
+        label={if @guessed, do: locked_label(@own?, @idle?), else: "Time’s up"}
         name={@guessed || "No vote"}
         tape_id={@round.style == :guess_who && @guessed && @me.vote}
         draw?={false}
@@ -2295,7 +2401,9 @@ defmodule WhoseJamWeb.PlayLive do
   defp guessed(%{round: round, me: %{vote: choice}}) when not is_nil(choice),
     do: choice_label(round, choice)
 
-  defp guessed(_assigns), do: nil
+  defp guessed(assigns) do
+    if no_prediction?(assigns), do: "Keep a straight face", else: nil
+  end
 
   # What the round meant for the person holding this phone.
   defp outcome(%{round: round} = assigns) do
@@ -2374,7 +2482,7 @@ defmodule WhoseJamWeb.PlayLive do
       bluff?: true,
       headline: headline,
       # The fooled are named in the headline; the points line needn't again.
-      detail: "+#{fooling} for the bluff",
+      detail: if(fooling > 0, do: "+#{fooling} for the bluff"),
       blame: blame
     }
   end
@@ -2426,7 +2534,7 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # A right guess, and how much company it had.
-  defp called(round, delta, player_id) do
+  defp called(round, _delta, player_id) do
     others =
       Enum.count(
         round.votes || [],
@@ -2441,16 +2549,9 @@ defmodule WhoseJamWeb.PlayLive do
       end
 
     # The points are on the sheet's sticker; the words say who else got it.
-    case win("You called it", delta) do
-      %{win?: true} = won -> %{won | detail: company}
-      missed -> missed
-    end
+    # (Right is right, with a point or, when guesses aren't scored, without.)
+    %{win?: true, headline: "You called it", detail: company}
   end
-
-  defp win(headline, delta) when delta > 0,
-    do: %{win?: true, headline: headline, detail: "+" <> points(delta)}
-
-  defp win(headline, _delta), do: miss(headline)
 
   # No points: the sheet has no sticker, and the headline says how it went.
   defp miss(headline), do: %{win?: false, headline: headline, detail: nil}

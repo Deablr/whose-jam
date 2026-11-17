@@ -77,6 +77,17 @@ defmodule WhoseJam.Music.Providers.YouTube do
   @impl true
   def search_debounce_ms, do: 600
 
+  # https://www.youtube.com/watch?v=LDU_Txk06tM
+  @impl true
+  def default_background do
+    %{
+      uri: "youtube:video:LDU_Txk06tM",
+      name: "Default background track",
+      artist: "",
+      album_art_url: "https://i.ytimg.com/vi/LDU_Txk06tM/hqdefault.jpg"
+    }
+  end
+
   @impl true
   def valid_uri?(uri), do: Regex.match?(@uri_regex, uri)
 

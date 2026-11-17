@@ -159,7 +159,16 @@ defmodule WhoseJam.Music.Provider do
   @doc "Host-facing warning when playback works but is degraded, or `nil`."
   @callback warning(auth()) :: String.t() | nil
 
+  @doc """
+  The song the TV plays under the lobby and the song-picking until the host
+  chooses another: autoselected when the host connects this service. A song
+  as `t:track/0`; the facade validates it like any other. Optional; without
+  it a service starts with no background music.
+  """
+  @callback default_background() :: track()
+
   @optional_callbacks authorize_url: 2,
+                      default_background: 0,
                       redirect_host: 0,
                       refresh: 1,
                       playback_error_message: 1,

@@ -93,4 +93,61 @@ const Progress = {
   },
 }
 
-export default { Countdown, Progress }
+// SeatKeeper — keeps a phone's seat in a game on the phone. The session
+// cookie holds one seat (the latest game joined) and is lost with the browser
+// session; local storage keeps one per room code, so a phone that comes back
+// to a game by the back button, a reload or a closed tab is the same player,
+// not a stranger who would join the audience, and a game it has since left
+// for another stays its own.
+//
+//   * "seat:save" {code, token}  — the server has this phone seated: keep it.
+//   * "seat:forget" {code}       — the game no longer knows the seat.
+//   * on mount, a phone with no seat on screen offers the saved one back
+//     ("resume_seat"), once per mount.
+const SEAT_PREFIX = "whose-jam:seat:"
+
+function seatKey(code) { return SEAT_PREFIX + String(code).toUpperCase() }
+
+function readSeat(code) {
+  try { return window.localStorage.getItem(seatKey(code)) } catch (_e) { return null }
+}
+
+function writeSeat(code, token) {
+  try { window.localStorage.setItem(seatKey(code), token) } catch (_e) {}
+}
+
+function dropSeat(code) {
+  try { window.localStorage.removeItem(seatKey(code)) } catch (_e) {}
+}
+
+const SeatKeeper = {
+  mounted() {
+    this.handleEvent("seat:save", ({code, token}) => {
+      if (code && typeof token === "string" && token) writeSeat(code, token)
+    })
+    this.handleEvent("seat:forget", ({code}) => { if (code) dropSeat(code) })
+
+    if (this.el.dataset.seated !== "true") {
+      const token = readSeat(this.el.dataset.code)
+      if (token) this.pushEvent("resume_seat", {token})
+    }
+  },
+}
+
+// SeatFinder — on the home page: offers every seat this phone saved
+// ("saved_seats"), so the page can show the way back to a game that is on.
+const SeatFinder = {
+  mounted() {
+    const tokens = []
+    try {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i)
+        if (key && key.startsWith(SEAT_PREFIX)) tokens.push(window.localStorage.getItem(key))
+      }
+    } catch (_e) {}
+
+    if (tokens.length > 0) this.pushEvent("saved_seats", {tokens: tokens.slice(0, 10)})
+  },
+}
+
+export default { Countdown, Progress, SeatKeeper, SeatFinder }

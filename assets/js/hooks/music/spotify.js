@@ -42,6 +42,7 @@ export default {
     let wasPlaying = false
     let lastPos = 0
     let destroyed = false
+    let volume = 0.8
 
     const initPlayer = () => {
       // The hook can be torn down while the SDK script is still loading.
@@ -55,7 +56,7 @@ export default {
       player = new window.Spotify.Player({
         name: "whose-jam TV",
         getOAuthToken: (cb) => cb(token),
-        volume: 0.8,
+        volume,
       })
 
       const fail = (reason) => (e) => ctx.onError(reason, (e && e.message) || "")
@@ -121,6 +122,12 @@ export default {
       pause() {
         wasPlaying = false
         if (player) player.pause().catch(() => {})
+      },
+
+      // 0 to 1; the game's songs are a little under full volume.
+      setVolume(level) {
+        volume = Math.min(1, Math.max(0, level * 0.8))
+        if (player) player.setVolume(volume).catch(() => {})
       },
 
       updateConfig(next) { token = next.token || token },

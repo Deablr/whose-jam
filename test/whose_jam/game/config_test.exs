@@ -8,8 +8,8 @@ defmodule WhoseJam.Game.ConfigTest do
   @band_high round(@target_s * 1.2)
 
   describe "build/2 defaults" do
-    test "vote timer defaults to 30s" do
-      assert Config.build(%{}, 5).vote_timer_s == 30
+    test "vote timer defaults to 60s" do
+      assert Config.build(%{}, 5).vote_timer_s == 60
     end
 
     test "allow_vote_change? defaults to false and subrounds_enabled? defaults to true" do
@@ -38,20 +38,37 @@ defmodule WhoseJam.Game.ConfigTest do
       end
     end
 
-    test "answer timer scales with the resolved questions per player" do
+    test "each question gets 45 seconds, so the answer phase scales with the questions per player" do
       for n <- 3..8 do
         config = Config.build(%{}, n)
-        # 30s of answering budget per assigned question.
-        assert config.answer_timer_s == config.questions_per_player * 30
+        assert config.answer_s_per_question == 45
+        assert Config.answer_window_s(config) == config.questions_per_player * 45
       end
+    end
+
+    test "the vote countdown defaults to a minute" do
+      assert Config.build(%{}, 5).vote_timer_s == 60
+    end
+
+    test "every way of scoring is on unless switched off" do
+      config = Config.build(%{}, 5)
+      assert Config.scoring_opts(config) == %{correct?: true, fooled?: true, predictions?: true}
+
+      off =
+        Config.build(
+          %{"score_fooled?" => "false", score_correct?: false, score_predictions?: false},
+          5
+        )
+
+      assert Config.scoring_opts(off) == %{correct?: false, fooled?: false, predictions?: false}
     end
 
     test "derived timings at representative player counts (3, 5, 8)" do
       for n <- [3, 5, 8] do
         config = Config.build(%{}, n)
-        assert config.vote_timer_s == 30
+        assert config.vote_timer_s == 60
         assert config.questions_per_player >= 2
-        assert config.answer_timer_s > 0
+        assert config.answer_s_per_question > 0
       end
     end
   end
@@ -83,7 +100,7 @@ defmodule WhoseJam.Game.ConfigTest do
       config =
         Config.build(
           %{
-            answer_timer_s: 90,
+            answer_s_per_question: 90,
             vote_timer_s: 45,
             questions_per_player: 7,
             subrounds_enabled?: false,
@@ -92,7 +109,7 @@ defmodule WhoseJam.Game.ConfigTest do
           5
         )
 
-      assert config.answer_timer_s == 90
+      assert config.answer_s_per_question == 90
       assert config.vote_timer_s == 45
       assert config.questions_per_player == 7
       assert config.subrounds_enabled? == false
@@ -103,7 +120,7 @@ defmodule WhoseJam.Game.ConfigTest do
       config =
         Config.build(
           %{
-            "answer_timer_s" => 90,
+            "answer_s_per_question" => 90,
             "vote_timer_s" => 45,
             "questions_per_player" => 7,
             "subrounds_enabled?" => false,
@@ -112,7 +129,7 @@ defmodule WhoseJam.Game.ConfigTest do
           5
         )
 
-      assert config.answer_timer_s == 90
+      assert config.answer_s_per_question == 90
       assert config.vote_timer_s == 45
       assert config.questions_per_player == 7
       assert config.subrounds_enabled? == false
@@ -137,15 +154,16 @@ defmodule WhoseJam.Game.ConfigTest do
       assert config.subrounds_enabled? == false
     end
 
-    test "answer timer follows an overridden questions_per_player when not set directly" do
+    test "the answer window follows an overridden questions_per_player" do
       config = Config.build(%{questions_per_player: 8}, 4)
       assert config.questions_per_player == 8
-      assert config.answer_timer_s == 8 * 30
+      assert Config.answer_window_s(config) == 8 * 45
     end
 
-    test "a direct answer_timer_s override beats the questions-per-player derivation" do
-      config = Config.build(%{questions_per_player: 8, answer_timer_s: 60}, 4)
-      assert config.answer_timer_s == 60
+    test "an answer_s_per_question override sets the time for each question" do
+      config = Config.build(%{questions_per_player: 8, answer_s_per_question: 60}, 4)
+      assert config.answer_s_per_question == 60
+      assert Config.answer_window_s(config) == 8 * 60
     end
 
     test "vote_delay_s defaults to 10, is overridable, and never goes negative" do
@@ -177,11 +195,16 @@ defmodule WhoseJam.Game.ConfigTest do
     test "timer and volume overrides are clamped to safe ranges" do
       low =
         Config.build(
-          %{answer_timer_s: -5, vote_delay_s: -4, vote_timer_s: -5, questions_per_player: -1},
+          %{
+            answer_s_per_question: -5,
+            vote_delay_s: -4,
+            vote_timer_s: -5,
+            questions_per_player: -1
+          },
           5
         )
 
-      assert low.answer_timer_s == 1
+      assert low.answer_s_per_question == 1
       assert low.vote_delay_s == 0
       assert low.vote_timer_s == 1
       assert low.questions_per_player == 1
@@ -191,7 +214,7 @@ defmodule WhoseJam.Game.ConfigTest do
       high =
         Config.build(
           %{
-            "answer_timer_s" => "#{huge}",
+            "answer_s_per_question" => "#{huge}",
             "vote_delay_s" => huge,
             "vote_timer_s" => huge,
             "questions_per_player" => huge
@@ -199,14 +222,14 @@ defmodule WhoseJam.Game.ConfigTest do
           5
         )
 
-      assert high.answer_timer_s == 1800
+      assert high.answer_s_per_question == 300
       assert high.vote_delay_s == 60
       assert high.vote_timer_s == 300
       assert high.questions_per_player == 10
     end
 
     test "range/1 exposes each host-facing integer clamp range" do
-      assert Config.range(:answer_timer_s) == 1..1800
+      assert Config.range(:answer_s_per_question) == 1..300
       assert Config.range(:vote_delay_s) == 0..60
       assert Config.range(:vote_timer_s) == 1..300
       assert Config.range(:questions_per_player) == 1..10
@@ -216,7 +239,7 @@ defmodule WhoseJam.Game.ConfigTest do
 
     test "range edges are kept and their out-of-range neighbours are clamped" do
       for key <- [
-            :answer_timer_s,
+            :answer_s_per_question,
             :vote_delay_s,
             :vote_timer_s,
             :questions_per_player,
@@ -242,8 +265,9 @@ defmodule WhoseJam.Game.ConfigTest do
       assert Config.build(%{}, 1).questions_per_player == 10
     end
 
-    test "a derived answer timer follows the clamped questions_per_player" do
-      assert Config.build(%{questions_per_player: 99}, 5).answer_timer_s == 10 * 30
+    test "the answer window follows the clamped questions_per_player" do
+      config = Config.build(%{questions_per_player: 99}, 5)
+      assert Config.answer_window_s(config) == 10 * 45
     end
 
     test "internal estimator fields are not overridable and stay at their constant defaults" do
@@ -296,7 +320,7 @@ defmodule WhoseJam.Game.ConfigTest do
 
     test "a longer vote timer lengthens the estimate" do
       base = Config.build(%{}, 5)
-      slower = Config.build(%{vote_timer_s: 60}, 5)
+      slower = Config.build(%{vote_timer_s: 120}, 5)
       assert Config.estimated_runtime_s(slower, 5) > Config.estimated_runtime_s(base, 5)
     end
 
@@ -318,23 +342,22 @@ defmodule WhoseJam.Game.ConfigTest do
       assert Config.estimated_runtime_s(config, 5) == Config.estimated_runtime_s(config, 5, 1)
     end
 
-    test "with sub-rounds enabled, each extra sub-round adds exactly one answer phase" do
+    test "each extra style adds exactly one answering window" do
       config = Config.build(%{subrounds_enabled?: true}, 5)
 
       one = Config.estimated_runtime_s(config, 5, 1)
       two = Config.estimated_runtime_s(config, 5, 2)
 
-      assert two - one == config.answer_timer_s
-      # Only the answer phases multiply; the round count (and thus per-round
-      # time) is unchanged, so the delta is exactly one answer phase.
-      assert two == one + config.answer_timer_s
+      # Only the answering multiplies; the round count (and thus per-round
+      # time) is unchanged.
+      assert two - one == Config.answer_window_s(config)
     end
 
-    test "with sub-rounds disabled, subround_count is ignored" do
-      config = Config.build(%{subrounds_enabled?: false}, 5)
+    test "sub-rounds on or off, the answering takes as long in all" do
+      on = Config.build(%{subrounds_enabled?: true}, 5)
+      off = Config.build(%{subrounds_enabled?: false}, 5)
 
-      assert Config.estimated_runtime_s(config, 5, 3) ==
-               Config.estimated_runtime_s(config, 5, 1)
+      assert Config.estimated_runtime_s(on, 5, 2) == Config.estimated_runtime_s(off, 5, 2)
     end
   end
 end

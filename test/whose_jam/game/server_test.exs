@@ -20,7 +20,7 @@ defmodule WhoseJam.Game.ServerTest do
   # override.
   @fast_overrides %{
     questions_per_player: 1,
-    answer_timer_s: 1,
+    answer_s_per_question: 1,
     vote_timer_s: 1
   }
 
@@ -359,7 +359,9 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.phase == :answering
       assert is_integer(view.answering.deadline_ms)
       # The window's length, for the screens' draining bars.
-      assert view.answering.duration_ms == view.config.answer_timer_s * 1000
+      assert view.answering.duration_ms ==
+               view.config.answer_s_per_question * view.config.questions_per_player * 1000
+
       # Progress counts are exposed; the songs themselves are not.
       assert view.answering.progress[p1] == %{submitted: 0, total: 1}
 
@@ -529,6 +531,173 @@ defmodule WhoseJam.Game.ServerTest do
 
       # ...then the first round starts by itself.
       assert_receive {:game_state, %{phase: :playing, round: %{index: 0}}}, 2000
+    end
+  end
+
+  describe "scoring switches" do
+    defp start_voting_with(overrides) do
+      put_test_env(:all_voted_countdown_ms, 20)
+      {code, ids} = lobby_with_players(guess_who_theme(), 3, overrides)
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      :ok = Game.song_ended(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      {code, Game.get_state(code)}
+    end
+
+    test "the switches are in the view, on by default" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 3)
+      config = Game.get_state(code).config
+
+      assert %{score_correct?: true, score_fooled?: true, score_predictions?: true} = config
+
+      assert config.answer_s_per_question == 1
+    end
+
+    test "without correct-guess points a right guess scores nothing" do
+      {code, view} = start_voting_with(%{score_correct?: false})
+      submitter = submitter_of(view)
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      :ok = Game.cast_vote(code, submitter, b)
+      :ok = Game.cast_vote(code, a, b)
+      :ok = Game.cast_vote(code, b, submitter)
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 1000
+      # a fell for it (+1 fooled), the forecast came true (+1); b called it for nothing.
+      assert round.deltas == %{submitter => 2}
+    end
+
+    test "without fooling points the picker keeps only the prediction" do
+      {code, view} = start_voting_with(%{score_fooled?: false})
+      submitter = submitter_of(view)
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      :ok = Game.cast_vote(code, submitter, b)
+      :ok = Game.cast_vote(code, a, b)
+      :ok = Game.cast_vote(code, b, submitter)
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 1000
+      assert round.deltas == %{submitter => 1, b => 1}
+    end
+
+    test "without predictions the picker is not asked, and counts as in" do
+      {code, view} = start_voting_with(%{score_predictions?: false})
+      submitter = submitter_of(view)
+      [a, b] = for p <- view.players, p.id != submitter, do: p.id
+
+      # Already in from the start, so the lock-in list still doesn't give them
+      # away, and the round waits for nobody else on their account.
+      assert submitter in view.round.voters
+      assert view.round.eligible_voters == 3
+      assert view.round.votes_received == 1
+
+      assert Game.cast_vote(code, submitter, a) == {:error, :not_predicting}
+
+      :ok = Game.cast_vote(code, a, b)
+      :ok = Game.cast_vote(code, b, submitter)
+
+      assert_receive {:game_state, %{round_state: :results, round: round}}, 1000
+      assert round.forecast == nil
+      assert round.deltas == %{submitter => 1, b => 1}
+    end
+  end
+
+  describe "phone hosts" do
+    test "a player the host made a host can start the game; no one else can" do
+      {code, [host, other, _third]} = lobby_with_players(guess_who_theme(), 3)
+
+      assert Game.start_game(code, host) == {:error, :not_host}
+      assert Game.get_state(code).phone_hosts == []
+
+      assert Game.set_phone_host(code, host, true) == :ok
+      assert Game.get_state(code).phone_hosts == [host]
+
+      assert Game.start_game(code, other) == {:error, :not_host}
+      assert Game.get_state(code).phase == :lobby
+
+      assert Game.start_game(code, host) == :ok
+      assert Game.get_state(code).phase == :answering
+    end
+
+    test "a phone host starts under the same rules as the TV" do
+      {code, [host | _]} = lobby_with_players(guess_who_theme(), 3, %{min_players: 4})
+      :ok = Game.set_phone_host(code, host, true)
+
+      assert Game.start_game(code, host) == {:error, :not_enough_players}
+    end
+
+    test "the host can take it back" do
+      {code, [host | _]} = lobby_with_players(guess_who_theme(), 3)
+      :ok = Game.set_phone_host(code, host, true)
+      :ok = Game.set_phone_host(code, host, false)
+
+      assert Game.get_state(code).phone_hosts == []
+      assert Game.start_game(code, host) == {:error, :not_host}
+    end
+
+    test "only a player can be a host, and only in the lobby" do
+      {code, [host | _]} = lobby_with_players(guess_who_theme(), 3)
+      {:ok, %{player_id: watcher}} = Game.join(code, "Watcher")
+      # (The lobby seats it as a player: fill the seats so the next is audience.)
+      for i <- 1..8, do: Game.join(code, "X#{i}")
+      {:ok, %{player_id: audience, role: :audience}} = Game.join(code, "Late")
+
+      assert Game.set_phone_host(code, audience, true) == {:error, :unknown_player}
+      assert Game.set_phone_host(code, "nobody", true) == {:error, :unknown_player}
+      assert Game.set_phone_host(code, watcher, true) == :ok
+
+      :ok = Game.start_game(code)
+      assert Game.set_phone_host(code, host, true) == {:error, :not_lobby}
+    end
+  end
+
+  describe "background music" do
+    test "connecting a service picks its default track" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 3)
+
+      assert Game.get_state(code).background.uri == "spotify:track:4qDHt2ClApBBzDAvhNGWFd"
+    end
+
+    test "the host can pick another track, or turn it off, in the lobby" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 3)
+
+      assert Game.set_background(code, song("other")) == :ok
+      assert Game.get_state(code).background.name == "other"
+
+      assert Game.set_background(code, nil) == :ok
+      assert Game.get_state(code).background == nil
+
+      # A token refresh (same service) doesn't bring it back.
+      assert Game.set_music(code, :spotify, @premium) == :ok
+      assert Game.get_state(code).background == nil
+    end
+
+    test "a track of another service is refused" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 3)
+      before = Game.get_state(code).background
+
+      assert Game.set_background(code, %{uri: "youtube:video:LDU_Txk06tM", name: "x"}) ==
+               {:error, :invalid_song}
+
+      assert Game.get_state(code).background == before
+    end
+
+    test "there is nothing to pick before a service is connected, and no changing it mid-game" do
+      theme = guess_who_theme()
+      {:ok, code} = Game.create_game(theme.id)
+      assert Game.set_background(code, song("x")) == {:error, :no_music}
+
+      {code, _ids} = lobby_with_players(theme, 3)
+      :ok = Game.start_game(code)
+      assert Game.set_background(code, song("y")) == {:error, :not_lobby}
+    end
+
+    test "switching service replaces the track with the new service's default" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 3)
+      assert Game.set_music(code, :mock, %{}) == :ok
+
+      assert Game.get_state(code).background.uri == "mock:track:003"
     end
   end
 
@@ -1439,7 +1608,7 @@ defmodule WhoseJam.Game.ServerTest do
     test "answering advances early when the last non-submitter disconnects" do
       theme = guess_who_theme()
       # A long answer timer proves the advance is early, not a timer expiry.
-      {code, [p1, p2, p3]} = lobby_with_players(theme, 3, %{answer_timer_s: 60})
+      {code, [p1, p2, p3]} = lobby_with_players(theme, 3, %{answer_s_per_question: 60})
       :ok = Game.start_game(code)
 
       # Two players submit everything; the third never submits.
@@ -1581,9 +1750,14 @@ defmodule WhoseJam.Game.ServerTest do
       insert_questions(theme, :guess_who, 6)
       insert_questions(theme, :guess_question, 6)
 
-      # Collapsed: one sub-round spanning both styles, answer_timer_s = 5.
+      # Collapsed: one sub-round spanning both styles, 5s a question, one question
+      # each.
       {code, _ids} =
-        lobby_with_players(theme, 3, %{subrounds_enabled?: false, answer_timer_s: 5})
+        lobby_with_players(theme, 3, %{
+          subrounds_enabled?: false,
+          answer_s_per_question: 5,
+          questions_per_player: 1
+        })
 
       before_ms = System.system_time(:millisecond)
       :ok = Game.start_game(code)

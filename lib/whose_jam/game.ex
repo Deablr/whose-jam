@@ -131,6 +131,33 @@ defmodule WhoseJam.Game do
   def start_game(code), do: command(code, :start_game)
 
   @doc """
+  Start the game on behalf of `player_id`, a player the host made a host
+  (`set_phone_host/3`). The same checks as `start_game/1`, and
+  `{:error, :not_host}` for anyone else.
+  """
+  @spec start_game(String.t(), String.t()) :: :ok | {:error, term()}
+  def start_game(code, player_id), do: command(code, {:start_game, player_id})
+
+  @doc """
+  Host action (lobby only): let `player_id` start the game from their phone
+  (`host?` true), or take that back. Only a player can be one:
+  `{:error, :unknown_player}` for an audience member or a stranger.
+  """
+  @spec set_phone_host(String.t(), String.t(), boolean()) :: :ok | {:error, term()}
+  def set_phone_host(code, player_id, host?),
+    do: command(code, {:set_phone_host, player_id, host?})
+
+  @doc """
+  Host action (lobby only): the song the TV plays under the lobby and the
+  song-picking, or `nil` for none. `song` is validated like a submitted song
+  (`submit_song/4`), against the room's music service.
+  Errors: `:no_music`, `:invalid_song`, `:not_lobby`. Connecting a service
+  already picks that service's default (`WhoseJam.Music.default_background/1`).
+  """
+  @spec set_background(String.t(), map() | nil) :: :ok | {:error, term()}
+  def set_background(code, song), do: command(code, {:set_background, song})
+
+  @doc """
   Submit (or re-submit, until the answer timer ends) a song for `question_id`.
   `song` is `%{uri, name, artist, album_art_url}`. `uri` must be a well-formed
   song URI of the room's music provider (e.g. `spotify:track:<22 alphanumerics>`),

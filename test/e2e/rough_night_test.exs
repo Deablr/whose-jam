@@ -60,9 +60,18 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
       join(devices.ben, join_url, "Ben")
       join(devices.cleo, join_url, "Cleo")
 
+      # The host makes Ben a host; the game starts from Ben's phone.
       devices.host
       |> assert_has("#player-count", text: "4/")
-      |> click_button("Start game")
+      |> within("#lobby-players li:has-text('Ben')", &click_button(&1, "Make host"))
+      |> assert_has("#lobby-players li:has-text('Ben') button", text: "Host")
+
+      devices.ben
+      |> assert_has("#phone-host-note", text: "You’re a host")
+      |> Stage.then_hold(to_timeout(second: 2))
+      |> click_button("Start the game")
+
+      assert_has(devices.host, "#answering-players", timeout: @wait)
 
       join_late(Map.fetch!(devices, late_key), join_url, late_name)
       pick_songs(devices)
@@ -88,8 +97,11 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> assert_connected()
     |> within("#music-prompt-modal", &click_button(&1, nil, "Connect", exact: true))
     |> refute_has("#music-prompt-modal")
+    # Connecting a service chooses its default background track, and the
+    # lobby asks about it right there.
+    |> assert_has("#background-prompt #background-track", text: "Slow Burn Sunday")
     |> click_button("Settings")
-    |> fill_in("Time to pick", with: "120")
+    |> fill_in("Time per question", with: "120")
     |> fill_in("Prompts per player", with: "1")
     |> fill_in("Voting opens after", with: "10")
     |> fill_in("Voting time", with: Integer.to_string(@vote_timer_s))
@@ -319,6 +331,16 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> Stage.then_hold(to_timeout(second: 3))
     |> click_link("Back to your game")
     |> assert_has("#me", text: "Cleo", timeout: @wait)
+
+    # Even with the session cookie gone, the phone has kept its seat: it is
+    # Cleo again, not a stranger who would join the audience.
+    path = current_path(session)
+
+    session
+    |> clear_cookies()
+    |> visit(path)
+    |> assert_has("#me", text: "Cleo", timeout: @wait)
+    |> refute_has("#audience-join-note")
   end
 
   defp tally(scores, submitter, votes) do
