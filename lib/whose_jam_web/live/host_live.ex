@@ -205,11 +205,13 @@ defmodule WhoseJamWeb.HostLive do
 
   def handle_event("open_background", _params, socket) do
     {:noreply,
-     assign(socket, background_open?: true, bg_results: [], bg_query: "", bg_error: nil)}
+     socket
+     |> cancel_background_search()
+     |> assign(background_open?: true, bg_results: [], bg_query: "", bg_error: nil)}
   end
 
   def handle_event("close_background", _params, socket) do
-    {:noreply, assign(socket, background_open?: false)}
+    {:noreply, socket |> cancel_background_search() |> assign(background_open?: false)}
   end
 
   # Search the room's music service for the background track: only while the
@@ -337,8 +339,17 @@ defmodule WhoseJamWeb.HostLive do
     {:noreply, put_flash(socket, :error, "Unknown music service.")}
   end
 
+  # A search still waiting its turn is dropped (its message, if already
+  # sent, no longer matches `bg_pending`).
+  defp cancel_background_search(%{assigns: %{bg_pending: {_ref, timer}}} = socket) do
+    Process.cancel_timer(timer)
+    assign(socket, bg_pending: nil)
+  end
+
+  defp cancel_background_search(socket), do: socket
+
   defp search_background(socket, query) do
-    if pending = socket.assigns.bg_pending, do: Process.cancel_timer(elem(pending, 1))
+    socket = cancel_background_search(socket)
 
     spacing = (socket.assigns.view.music && socket.assigns.view.music.search_debounce_ms) || 0
 

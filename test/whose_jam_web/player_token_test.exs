@@ -11,12 +11,6 @@ defmodule WhoseJamWeb.PlayerTokenTest do
       assert PlayerToken.seat_of(token) == {:ok, "ABCD", "p1"}
     end
 
-    test "a token keeps its room, so a page for another room can tell it isn't its own" do
-      token = PlayerToken.sign(%{code: "ABCD", player_id: "p1", role: :player})
-      assert {:ok, code, _player_id} = PlayerToken.seat_of(token)
-      refute code == "WXYZ"
-    end
-
     test "refuses a tampered token, and anything that isn't a token" do
       token = PlayerToken.sign(%{code: "ABCD", player_id: "p1", role: :player})
 

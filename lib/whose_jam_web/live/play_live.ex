@@ -2963,7 +2963,7 @@ defmodule WhoseJamWeb.PlayLive do
     awards = my_awards(view, player_id)
 
     me
-    |> recap_stats(role, mine, view.config)
+    |> recap_stats(role, mine, view.config, awards)
     |> Enum.with_index()
     |> Enum.map(fn {{value, label}, i} ->
       %{value: value, label: label, total?: i == 0, award: Map.get(awards, label)}
@@ -2971,19 +2971,21 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # The player's own game as a receipt: their points, and every way points
-  # could come, a zero included, so the card always has the same rows.
-  # Only the ways of scoring that were on, so the lines add up to the points.
-  defp recap_stats(%{recap: %{} = recap}, :player, %{score: score}, config) do
-    [
-      {score, "Points"},
-      config.score_correct? && {recap.called, "Correct guesses"},
-      config.score_fooled? && {recap.fooled, "Players fooled"},
-      config.score_predictions? && {Map.get(recap, :blamed, 0), "Correct predictions"}
+  # could come that was on, a zero included, so the lines add up to the
+  # points. A row an award was won on stays even when its way of scoring was
+  # off: the TV hands the award out regardless, and the slip sits on its row.
+  defp recap_stats(%{recap: %{} = recap}, :player, %{score: score}, config, awards) do
+    rows = [
+      {config.score_correct?, {recap.called, "Correct guesses"}},
+      {config.score_fooled?, {recap.fooled, "Players fooled"}},
+      {config.score_predictions?, {Map.get(recap, :blamed, 0), "Correct predictions"}}
     ]
-    |> Enum.filter(& &1)
+
+    [{score, "Points"}] ++
+      for {on?, {_value, label} = row} <- rows, on? or Map.has_key?(awards, label), do: row
   end
 
-  defp recap_stats(_me, _role, _mine, _config), do: []
+  defp recap_stats(_me, _role, _mine, _config, _awards), do: []
 
   # The jump to the night's songs, said as an action (the playlist's own
   # heading is below it, so it doesn't say that twice).

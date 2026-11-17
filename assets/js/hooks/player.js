@@ -105,8 +105,10 @@ const Progress = {
 //   * on mount, a phone with no seat on screen offers the saved one back
 //     ("resume_seat"), once per mount.
 const SEAT_PREFIX = "whose-jam:seat:"
-// As long as a seat's token is good for (`WhoseJamWeb.PlayerToken`); an
-// older saved seat is dropped rather than offered.
+// A saved seat is dropped this long after the phone last held it (each visit
+// to the game saves it again): as long as a token is good for
+// (`WhoseJamWeb.PlayerToken`), so a seat still offered may yet be one the
+// server refuses, and then forgets.
 const SEAT_MAX_AGE_MS = 4 * 60 * 60 * 1000
 
 function seatKey(code) { return SEAT_PREFIX + String(code).toUpperCase() }
