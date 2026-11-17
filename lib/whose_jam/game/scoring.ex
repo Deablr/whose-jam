@@ -51,7 +51,8 @@ defmodule WhoseJam.Game.Scoring do
 
   @typedoc """
   Which of the three ways to score are on (all of them, unless said
-  otherwise): `correct?` (+1 to a right guess), `fooled?` (+1 to the picker per
+  otherwise): `correct?` (+1 to a player's right guess; the audience's right
+  guesses always score, as they are all an audience member can score), `fooled?` (+1 to the picker per
   player fooled) and `predictions?` (+1 to the picker for a right forecast).
   """
   @type opts :: %{
@@ -113,12 +114,23 @@ defmodule WhoseJam.Game.Scoring do
 
   defp tally(vote, acc, submitter_id, correct_choice, on) do
     cond do
-      # Correct guess: +1 to the voter (player or audience).
-      vote.choice == correct_choice -> if on.correct?, do: add(acc, vote.voter_id, 1), else: acc
+      # Correct guess: +1 to the voter (player or audience). The audience
+      # always scores it: it is the only way they can score at all.
+      vote.choice == correct_choice and (on.correct? or vote.voter_role == :audience) ->
+        add(acc, vote.voter_id, 1)
+
+      vote.choice == correct_choice ->
+        acc
+
       # Incorrect guess: submitter is fooled only by non-audience voters.
-      vote.voter_role == :audience -> acc
-      on.fooled? -> add(acc, submitter_id, 1)
-      true -> acc
+      vote.voter_role == :audience ->
+        acc
+
+      on.fooled? ->
+        add(acc, submitter_id, 1)
+
+      true ->
+        acc
     end
   end
 

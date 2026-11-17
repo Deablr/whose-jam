@@ -923,7 +923,7 @@ defmodule WhoseJamWeb.PlayLive do
           id="how-to-score"
           class="mt-5 space-y-1.5 px-1 text-base leading-[1.45] text-jam-cream/80 lg:mt-8"
         >
-          <li :if={@view.config.score_correct?} class="flex gap-3">
+          <li :if={@role == :audience or @view.config.score_correct?} class="flex gap-3">
             <span class="w-6 shrink-0 font-display text-jam-orange">+1</span>
             <span class="text-balance">for each correct guess</span>
           </li>
@@ -1029,7 +1029,7 @@ defmodule WhoseJamWeb.PlayLive do
       </h1>
       <div :if={!@ready?} class="space-y-1">
         <p class="font-medium text-jam-cream">
-          Guess who picked each song.{if @view.config.score_correct?, do: " +1 for each you call."}
+          Guess who picked each song. +1 for each you call.
         </p>
         <p class="text-sm text-jam-cream/70">The game had started when you joined.</p>
       </div>
@@ -1391,7 +1391,7 @@ defmodule WhoseJamWeb.PlayLive do
     do: "When your song plays, predict the most common wrong guess. +1 if you’re right."
 
   defp own_song_explanation(_config),
-    do: "When your song plays, sit tight and keep a straight face."
+    do: "When your song plays, predict the most common wrong guess, just for fun."
 
   defp all_picked?(%{answering: %{progress: progress}}),
     do: Enum.all?(progress, fn {_id, p} -> p.submitted >= p.total end)
@@ -1738,23 +1738,20 @@ defmodule WhoseJamWeb.PlayLive do
   # own_song_explainer/1).
   defp voting_body(assigns) do
     picked = assigns.me.vote
-    idle? = no_prediction?(assigns)
-    assigns = assign(assigns, picked: picked, own?: own_round?(assigns), idle?: idle?)
+    assigns = assign(assigns, picked: picked, own?: own_round?(assigns))
 
-    if idle? or (not is_nil(picked) and not assigns.view.config.allow_vote_change?) do
+    if not is_nil(picked) and not assigns.view.config.allow_vote_change? do
       assigns =
-        assign(assigns,
-          picked_label: picked && choice_label(assigns.round, picked)
-        )
+        assign(assigns, picked_label: choice_label(assigns.round, picked))
 
       ~H"""
       <%!-- A lock, not a tick: the vote is in, not yet right. The same card
            on every phone; the picker's says what they locked in. --%>
       <.locked_card
         id="phone-voted"
-        label={locked_label(@own?, @idle?)}
+        label={locked_label(@own?)}
         label_id="locked-note"
-        name={if @idle?, do: "Keep a straight face", else: @picked_label || "Vote locked in"}
+        name={@picked_label || "Vote locked in"}
         tape_id={@round.style == :guess_who && @picked_label && @picked}
         note="Eyes on the TV"
         class="flex-1"
@@ -1838,7 +1835,7 @@ defmodule WhoseJamWeb.PlayLive do
             id="vote-hint"
             class="text-[0.9375rem] font-normal leading-[1.4] text-jam-cream/75 max-[359px]:min-h-[2.8em]"
           >
-            <.inline_points text={vote_hint(@round, @own?, @change?, @view.config.score_correct?)} />
+            <.inline_points text={vote_hint(@round, @own?, @change?, scores_right_guess?(assigns))} />
           </p>
           <p :if={@change?} class={["text-sm text-jam-mint", !@picked && "invisible"]}>
             {cond do
@@ -2070,18 +2067,34 @@ defmodule WhoseJamWeb.PlayLive do
   # reports: where most of the wrong guesses land.
   # As short as everyone else's, so both fit one line on any phone (the
   # headline has asked whom the room will blame).
-  defp vote_hint(_round, true, _change?, _correct?),
+  # (With predictions not scored the picker still makes one, just for fun:
+  # their phone keeps everyone's layout, and who is locked in still gives
+  # nobody away.)
+  # `points?` is whether being right scores: for the picker, whether
+  # predictions do; for everyone else, whether their right guess does.
+  defp vote_hint(_round, true, _change?, true),
     do: "Pick who they’ll blame. +1 if you’re right."
 
-  defp vote_hint(round, false, true, _correct?),
+  defp vote_hint(_round, true, _change?, false), do: "Pick who they’ll blame, just for fun."
+
+  defp vote_hint(round, false, true, _points?),
     do: "Tap a #{choice_noun(round)}. Tap another to switch."
 
-  defp vote_hint(%{style: :guess_who}, false, false, true),
-    do: "Pick who chose it. +1 if you’re right."
+  defp vote_hint(round, false, false, points?),
+    do: vote_task(round) <> if(points?, do: " +1 if you’re right.", else: "")
 
-  defp vote_hint(%{style: :guess_who}, false, false, false), do: "Pick who chose it."
-  defp vote_hint(_round, false, false, true), do: "Pick its prompt. +1 if you’re right."
-  defp vote_hint(_round, false, false, false), do: "Pick its prompt."
+  # Whether this phone's player scores by being right in the round in play
+  # (`Scoring`: the audience's right guesses always score).
+  defp scores_right_guess?(%{view: %{config: config}} = assigns) do
+    cond do
+      own_round?(assigns) -> config.score_predictions?
+      assigns.role == :audience -> true
+      true -> config.score_correct?
+    end
+  end
+
+  defp vote_task(%{style: :guess_who}), do: "Pick who chose it."
+  defp vote_task(_round), do: "Pick its prompt."
 
   # What the round asks: the room, whose song it is; the picker, where the
   # blame will land (see vote_hint/3).
@@ -2093,15 +2106,6 @@ defmodule WhoseJamWeb.PlayLive do
   # What a locked-in screen calls the choice on it.
   defp locked_label(true), do: "Your prediction"
   defp locked_label(false), do: "Locked in"
-
-  # The picker with no prediction to make (it isn't scored) has nothing to
-  # lock in: their card says whose song it is.
-  defp locked_label(true, true), do: "Your song"
-  defp locked_label(own?, false), do: locked_label(own?)
-
-  # Whether this phone's player is the picker and isn't asked to predict.
-  defp no_prediction?(assigns),
-    do: own_round?(assigns) and not assigns.view.config.score_predictions?
 
   # What a round's choices are: players, or prompts.
   defp choice_noun(%{style: :guess_who}), do: "name"
@@ -2246,7 +2250,6 @@ defmodule WhoseJamWeb.PlayLive do
       |> assign(:gain, my_delta(assigns))
       |> assign(:standing, round_standing(assigns))
       |> assign(:guessed, guessed(assigns))
-      |> then(&assign(&1, :idle?, no_prediction?(&1)))
 
     ~H"""
     <div
@@ -2260,7 +2263,7 @@ defmodule WhoseJamWeb.PlayLive do
       <.locked_card
         id={"eyes-up-#{@round.index}"}
         icon={if @guessed, do: "hero-lock-closed-solid", else: "hero-clock-solid"}
-        label={if @guessed, do: locked_label(@own?, @idle?), else: "Time’s up"}
+        label={if @guessed, do: locked_label(@own?), else: "Time’s up"}
         name={@guessed || "No vote"}
         tape_id={@round.style == :guess_who && @guessed && @me.vote}
         draw?={false}
@@ -2401,9 +2404,7 @@ defmodule WhoseJamWeb.PlayLive do
   defp guessed(%{round: round, me: %{vote: choice}}) when not is_nil(choice),
     do: choice_label(round, choice)
 
-  defp guessed(assigns) do
-    if no_prediction?(assigns), do: "Keep a straight face", else: nil
-  end
+  defp guessed(_assigns), do: nil
 
   # What the round meant for the person holding this phone.
   defp outcome(%{round: round} = assigns) do
@@ -2463,19 +2464,25 @@ defmodule WhoseJamWeb.PlayLive do
         headline =
           if MapSet.size(wrong) > 0, do: "No player fell for it", else: "Nobody fell for it"
 
-        Map.put(miss(headline), :blame, blame_line(round))
+        Map.put(miss(headline), :blame, blame_line(view, round))
 
       {_, names} ->
-        bluff("You fooled #{join_names(names)}", round, delta)
+        bluff("You fooled #{join_names(names)}", view, round, delta)
     end
   end
 
   # A bluff that worked, with what it was worth: the fooling and the blame
   # guess each get a line, so the points add up, and a blame guess that
   # missed says who took the blame instead.
-  defp bluff(headline, round, delta) do
-    blame = blame_line(round)
-    fooling = delta - if(match?(%{forecast: %{right?: true}}, round), do: 1, else: 0)
+  defp bluff(headline, view, round, delta) do
+    blame = blame_line(view, round)
+
+    forecast_point =
+      if view.config.score_predictions? and match?(%{forecast: %{right?: true}}, round),
+        do: 1,
+        else: 0
+
+    fooling = delta - forecast_point
 
     %{
       win?: true,
@@ -2488,16 +2495,24 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   # The TV's sentence: whom the fooled blamed and whether this player called
-  # it, led by its point when it scored one (a miss has none).
-  defp blame_line(%{forecast: %{choice: choice, right?: right?}} = round) do
+  # it, led by its point when it scored one (a miss has none, and nor does a
+  # right one when predictions aren't scored).
+  defp blame_line(view, %{forecast: %{choice: choice, right?: right?}} = round) do
     case blamed(round) do
-      nil -> "Predicted #{guess_name(round, choice)}, but nobody was fooled."
-      took when right? -> "+1 " <> prediction(choice, took, true, round)
-      took -> prediction(choice, took, false, round)
+      nil ->
+        "Predicted #{guess_name(round, choice)}, but nobody was fooled."
+
+      took when right? ->
+        if view.config.score_predictions?,
+          do: "+1 " <> prediction(choice, took, true, round),
+          else: "Predicted the blame on #{guess_name(round, choice)}."
+
+      took ->
+        prediction(choice, took, false, round)
     end
   end
 
-  defp blame_line(_round), do: nil
+  defp blame_line(_view, _round), do: nil
 
   # The TV's words: the prediction (a right one names whom the picker
   # predicted, even when others tied for the blame), and on a miss who took
@@ -2948,7 +2963,7 @@ defmodule WhoseJamWeb.PlayLive do
     awards = my_awards(view, player_id)
 
     me
-    |> recap_stats(role, mine)
+    |> recap_stats(role, mine, view.config)
     |> Enum.with_index()
     |> Enum.map(fn {{value, label}, i} ->
       %{value: value, label: label, total?: i == 0, award: Map.get(awards, label)}
@@ -2957,16 +2972,18 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The player's own game as a receipt: their points, and every way points
   # could come, a zero included, so the card always has the same rows.
-  defp recap_stats(%{recap: %{} = recap}, :player, %{score: score}) do
+  # Only the ways of scoring that were on, so the lines add up to the points.
+  defp recap_stats(%{recap: %{} = recap}, :player, %{score: score}, config) do
     [
       {score, "Points"},
-      {recap.called, "Correct guesses"},
-      {recap.fooled, "Players fooled"},
-      {Map.get(recap, :blamed, 0), "Correct predictions"}
+      config.score_correct? && {recap.called, "Correct guesses"},
+      config.score_fooled? && {recap.fooled, "Players fooled"},
+      config.score_predictions? && {Map.get(recap, :blamed, 0), "Correct predictions"}
     ]
+    |> Enum.filter(& &1)
   end
 
-  defp recap_stats(_me, _role, _mine), do: []
+  defp recap_stats(_me, _role, _mine, _config), do: []
 
   # The jump to the night's songs, said as an action (the playlist's own
   # heading is below it, so it doesn't say that twice).

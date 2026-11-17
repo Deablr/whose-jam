@@ -8,7 +8,8 @@ defmodule WhoseJamWeb.HomeLive do
   `PlayLive`).
 
   A device that still holds a seat in a game that is on (its session's
-  `WhoseJamWeb.PlayerToken`) is offered the way back first, so a phone that
+  `WhoseJamWeb.PlayerToken`, or one of the seats the phone saved in local
+  storage, which the `SeatFinder` hook offers) is offered the way back first, so a phone that
   left by accident needn't find the code again. `?host` opens the theme picker
   straight away (the TV's closing card links here to host another game).
   """

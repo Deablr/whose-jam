@@ -581,24 +581,22 @@ defmodule WhoseJam.Game.ServerTest do
       assert round.deltas == %{submitter => 1, b => 1}
     end
 
-    test "without predictions the picker is not asked, and counts as in" do
+    test "without prediction points the picker still predicts, and isn't in until they do" do
       {code, view} = start_voting_with(%{score_predictions?: false})
       submitter = submitter_of(view)
       [a, b] = for p <- view.players, p.id != submitter, do: p.id
 
-      # Already in from the start, so the lock-in list still doesn't give them
-      # away, and the round waits for nobody else on their account.
-      assert submitter in view.round.voters
+      # Nobody is in yet: the lock-in list gives nobody away.
+      assert view.round.voters == []
       assert view.round.eligible_voters == 3
-      assert view.round.votes_received == 1
 
-      assert Game.cast_vote(code, submitter, a) == {:error, :not_predicting}
-
+      :ok = Game.cast_vote(code, submitter, b)
       :ok = Game.cast_vote(code, a, b)
       :ok = Game.cast_vote(code, b, submitter)
 
       assert_receive {:game_state, %{round_state: :results, round: round}}, 1000
-      assert round.forecast == nil
+      # The forecast came true, for no point: only the fooling scores.
+      assert round.forecast == %{choice: b, right?: true}
       assert round.deltas == %{submitter => 1, b => 1}
     end
   end

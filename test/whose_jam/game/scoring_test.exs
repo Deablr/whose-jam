@@ -279,6 +279,13 @@ defmodule WhoseJam.Game.ScoringTest do
       assert Scoring.score_round(round, votes, %{correct?: false}) == %{"sub" => 3}
     end
 
+    test "without correct guesses for players, the audience's right guesses still score" do
+      round = guess_who_round("sub")
+      votes = [vote("p1", "sub"), vote("a1", "sub", :audience)]
+
+      assert Scoring.score_round(round, votes, %{correct?: false}) == %{"a1" => 1}
+    end
+
     test "without fooling, the picker keeps only the prediction" do
       {round, votes} = mixed_round()
 

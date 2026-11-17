@@ -786,16 +786,14 @@ defmodule WhoseJam.Game.Server do
   defp build_round(state, submitter_id, qid, %{style: :guess_who} = question, song) do
     round_map(submitter_id, qid, question, song,
       choices: guess_who_choices(state),
-      correct_choice: submitter_id,
-      predict?: state.config.score_predictions?
+      correct_choice: submitter_id
     )
   end
 
   defp build_round(state, submitter_id, qid, %{style: :guess_question} = question, song) do
     round_map(submitter_id, qid, question, song,
       choices: guess_question_choices(state, qid, question),
-      correct_choice: qid,
-      predict?: state.config.score_predictions?
+      correct_choice: qid
     )
   end
 
@@ -810,10 +808,6 @@ defmodule WhoseJam.Game.Server do
       song: song,
       choices: Keyword.fetch!(opts, :choices),
       correct_choice: Keyword.fetch!(opts, :correct_choice),
-      # Whether the submitter is asked to predict the blame (it is scored).
-      # If not, they have nothing to lock in and count as in from the start,
-      # so the lock-in list still doesn't give them away.
-      predict?: Keyword.fetch!(opts, :predict?),
       votes: %{},
       # The submitter's own choice: which wrong answer the room will fall for.
       forecast: nil,
@@ -832,7 +826,7 @@ defmodule WhoseJam.Game.Server do
   # Everyone who has locked something in: the voters, and the submitter once
   # their forecast is in. Sorted, so where the submitter sits in the list
   # says nothing about whose song it is.
-  defp locked_in(%{forecast: nil, predict?: true} = round), do: Enum.sort(Map.keys(round.votes))
+  defp locked_in(%{forecast: nil} = round), do: Enum.sort(Map.keys(round.votes))
   defp locked_in(round), do: Enum.sort([round.submitter_id | Map.keys(round.votes)])
 
   defp guess_who_choices(state) do
@@ -1520,9 +1514,6 @@ defmodule WhoseJam.Game.Server do
 
   defp validate_can_vote(state, voter_id) do
     cond do
-      voter_id == state.round.submitter_id and not state.round.predict? ->
-        {:error, :not_predicting}
-
       voter_id not in locked_in(state.round) ->
         :ok
 

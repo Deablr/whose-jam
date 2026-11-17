@@ -14,7 +14,7 @@ defmodule WhoseJam.Game.Config do
 
     * `answer_s_per_question` — seconds each player gets per question they are
       asked, so the answer phase lasts `answer_s_per_question *
-      questions_per_player` (per style in a sub-round; see `answer_window_s/2`).
+      questions_per_player` (per style in a sub-round; see `answer_window_s/1`).
       Defaults to `45`.
     * `vote_delay_s` — seconds the song plays before voting opens. Defaults to
       `10`; `0` opens voting as soon as the song starts.
@@ -36,10 +36,12 @@ defmodule WhoseJam.Game.Config do
   Host-facing scoring switches (each defaults to `true`; `Game.Scoring` takes
   them as `scoring_opts/1`):
 
-    * `score_correct?` — +1 to a voter who guessed right.
+    * `score_correct?` — +1 to a player who guessed right. (The audience's
+      right guesses always score: they are all the audience plays for.)
     * `score_fooled?` — +1 to a picker for each player their song fooled.
     * `score_predictions?` — +1 to a picker whose blame prediction came true.
-      Switched off, the picker isn't asked to predict at all.
+      Switched off, the picker still predicts (so their phone and the
+      lock-in list look as they always do), for no points.
 
   Host-facing presentation choices (how the screens tell the game; they never
   change the scoring or the timers):

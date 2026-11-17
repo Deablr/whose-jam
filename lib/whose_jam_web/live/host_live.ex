@@ -34,8 +34,13 @@ defmodule WhoseJamWeb.HostLive do
     * `data-config` — the provider's `client_config/1` as JSON (for Spotify the
       host's access token, refreshed server-side on a timer via
       `WhoseJam.Music.refresh_if_due/2` + `Game.set_music/3`).
-    * `data-uri` — the song URI to be playing *right now*, or `""`.
-    * `data-round` — the current round's identity (sub-round + round index).
+    * `data-uri` — the song URI to be playing *right now*, or `""`: the
+      round's song while one plays, else the host's background track during
+      the lobby and the song-picking.
+    * `data-round` — the current round's identity (sub-round + round index),
+      or `"background"` for the background track.
+    * `data-background` — `"true"` while it is the background track, which the
+      hook plays quietly and on a loop, never reporting its end.
 
   `data-uri` holds the current round's song for the whole `:playing` phase
   (listening, voting and the reveal), and `data-round` identifies the round so
@@ -63,6 +68,9 @@ defmodule WhoseJamWeb.HostLive do
   alias WhoseJam.Game
   alias WhoseJam.Game.{Awards, Config, Standings}
   alias WhoseJam.Music
+
+  # Longest background search the server sends on (as PlayLive's).
+  @max_query_bytes 400
 
   @impl true
   def mount(%{"code" => code}, _session, socket) do
@@ -95,7 +103,11 @@ defmodule WhoseJamWeb.HostLive do
         background_open?: false,
         bg_results: [],
         bg_query: "",
-        bg_error: nil
+        bg_error: nil,
+        # {ref, timer} of a background search waiting its turn, and when the
+        # last one ran (see search_background/2)
+        bg_pending: nil,
+        bg_last_ms: nil
       )
       |> assign_playback()
 
@@ -130,6 +142,13 @@ defmodule WhoseJamWeb.HostLive do
   def handle_info({:game_ended, reason}, socket) do
     {:noreply, socket |> put_flash(:info, ended_message(reason)) |> push_navigate(to: ~p"/")}
   end
+
+  # A background search that waited its turn; a newer one replaces it.
+  def handle_info({:bg_search, ref, query}, %{assigns: %{bg_pending: {ref, _timer}}} = socket) do
+    {:noreply, run_background_search(assign(socket, bg_pending: nil), query)}
+  end
+
+  def handle_info({:bg_search, _ref, _query}, socket), do: {:noreply, socket}
 
   def handle_info(:refresh_token, socket) do
     {:noreply, assign_playback(socket)}
@@ -193,22 +212,17 @@ defmodule WhoseJamWeb.HostLive do
     {:noreply, assign(socket, background_open?: false)}
   end
 
-  # Search the room's music service for the background track.
-  def handle_event("search_background", %{"q" => query}, socket) when is_binary(query) do
-    query = String.slice(query, 0, 100)
-
-    case Game.search_songs(socket.assigns.code, query) do
-      {:ok, results} ->
-        {:noreply,
-         assign(socket, bg_results: Enum.take(results, 6), bg_query: query, bg_error: nil)}
-
-      {:error, _reason} ->
-        {:noreply,
-         assign(socket,
-           bg_results: [],
-           bg_query: query,
-           bg_error: "Couldn’t search just now. Try again in a moment."
-         )}
+  # Search the room's music service for the background track: only while the
+  # picker is open in the lobby, never with a query longer than a title needs,
+  # and (as the phones do) never sooner after the last search than the
+  # service's own search spacing, whatever the browser sends. Anyone with the
+  # room code can open this screen, and a search can cost the service's quota.
+  def handle_event("search_background", %{"q" => query}, socket)
+      when is_binary(query) and byte_size(query) <= @max_query_bytes do
+    if socket.assigns.background_open? and socket.assigns.view.phase == :lobby do
+      {:noreply, search_background(socket, query)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -321,6 +335,41 @@ defmodule WhoseJamWeb.HostLive do
 
   def handle_event("connect_music", _params, socket) do
     {:noreply, put_flash(socket, :error, "Unknown music service.")}
+  end
+
+  defp search_background(socket, query) do
+    if pending = socket.assigns.bg_pending, do: Process.cancel_timer(elem(pending, 1))
+
+    spacing = (socket.assigns.view.music && socket.assigns.view.music.search_debounce_ms) || 0
+
+    wait =
+      case socket.assigns.bg_last_ms do
+        nil -> 0
+        last -> spacing - (System.monotonic_time(:millisecond) - last)
+      end
+
+    if wait <= 0 do
+      run_background_search(assign(socket, bg_pending: nil), query)
+    else
+      ref = make_ref()
+      timer = Process.send_after(self(), {:bg_search, ref, query}, wait)
+      assign(socket, bg_pending: {ref, timer})
+    end
+  end
+
+  defp run_background_search(socket, query) do
+    socket = assign(socket, bg_last_ms: System.monotonic_time(:millisecond), bg_query: query)
+
+    case Game.search_songs(socket.assigns.code, query) do
+      {:ok, results} ->
+        assign(socket, bg_results: Enum.take(results, 6), bg_error: nil)
+
+      {:error, _reason} ->
+        assign(socket,
+          bg_results: [],
+          bg_error: "Couldn’t search just now. Try again in a moment."
+        )
+    end
   end
 
   # How many of the night's songs the final screen lists.
@@ -1554,7 +1603,7 @@ defmodule WhoseJamWeb.HostLive do
               class={[
                 "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-lg font-bold transition-colors",
                 if(p.id in @view.phone_hosts,
-                  do: "bg-jam-orange text-jam-ink hover:bg-jam-orange/85",
+                  do: "bg-jam-cream text-jam-ink hover:bg-white",
                   else:
                     "bg-jam-cream/[0.08] text-jam-cream/70 hover:bg-jam-cream/15 hover:text-jam-cream"
                 )
@@ -1562,7 +1611,7 @@ defmodule WhoseJamWeb.HostLive do
             >
               <.icon
                 :if={p.id in @view.phone_hosts}
-                name="hero-check-circle-solid"
+                name="hero-device-phone-mobile-solid"
                 class="size-5"
               />
               {if p.id in @view.phone_hosts, do: "Host", else: "Make host"}
@@ -1652,10 +1701,13 @@ defmodule WhoseJamWeb.HostLive do
           id={@prefix <> "background-track"}
           class="truncate text-xl font-bold"
         >
-          {@view.background.name}<span
-            :if={@view.background.artist != ""}
-            class="font-medium text-jam-cream/65"
-          > · {@view.background.artist}</span>
+          {@view.background.name}
+        </p>
+        <p
+          :if={@view.background && @view.background.artist != ""}
+          class="truncate text-lg font-medium text-jam-cream/65"
+        >
+          {@view.background.artist}
         </p>
         <p
           :if={is_nil(@view.background)}
@@ -3445,12 +3497,15 @@ defmodule WhoseJamWeb.HostLive do
       missing: missing,
       # What fooling the room was worth: the picker's points, less the one
       # for a guess that came true (which gets a line of its own).
-      fool_points: Map.get(round.deltas || %{}, round.submitter_id, 0) - forecast_point(round)
+      fool_points:
+        Map.get(round.deltas || %{}, round.submitter_id, 0) - forecast_point(view, round)
     }
   end
 
-  defp forecast_point(%{forecast: %{right?: true}}), do: 1
-  defp forecast_point(_round), do: 0
+  defp forecast_point(%{config: %{score_predictions?: true}}, %{forecast: %{right?: true}}),
+    do: 1
+
+  defp forecast_point(_view, _round), do: 0
 
   # The picker's prediction (which wrong answer the room would fall for), and
   # whether it came true: `{text, right?}` (with nobody fooled, nobody took the
@@ -3462,8 +3517,10 @@ defmodule WhoseJamWeb.HostLive do
       [] ->
         {"Predicted #{choice_name(view, round, choice)}, but nobody was fooled", false}
 
+      # A right one earns its sticker only when predictions are scored.
       took ->
-        {prediction(choice_name(view, round, choice), took, right?), right?}
+        {prediction(choice_name(view, round, choice), took, right?),
+         right? and view.config.score_predictions?}
     end
   end
 
