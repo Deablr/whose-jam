@@ -268,6 +268,9 @@ defmodule WhoseJamWeb.E2E.FitTest do
     |> click_button("Settings")
     |> fill_in("Time per question", with: "300")
     |> fill_in("Prompts per player", with: Integer.to_string(prompts))
+    # Names as long as the host may allow, and every song played.
+    |> fill_in("Longest name (letters)", with: "24")
+    |> fill_in("Songs played (%)", with: "100")
     |> fill_in("Voting opens after", with: "0")
     |> click_button("Close settings")
 

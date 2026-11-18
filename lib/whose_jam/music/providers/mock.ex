@@ -133,4 +133,9 @@ defmodule WhoseJam.Music.Providers.Mock do
 
   @impl true
   def client_config(_auth), do: %{track_ms: @track_ms, audio: @audio}
+
+  # No account to save to: a stand-in link, so the screens can show one.
+  @impl true
+  def save_playlist(_params, _name, uris),
+    do: {:ok, "https://example.com/whose-jam/mock-playlist?songs=#{length(uris)}"}
 end

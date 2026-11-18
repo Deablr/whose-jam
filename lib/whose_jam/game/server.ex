@@ -38,10 +38,38 @@ defmodule WhoseJam.Game.Server do
   in the room has something to lock in, who has done so says nothing about
   whose song is playing.
 
-  Sub-rounds come from the theme's `style_sequence`. When
-  `config.subrounds_enabled?` is false the sequence collapses into a *single*
-  answering phase spanning every style, then a single playing phase over all
-  resulting songs.
+  A game plays one or more themes, in the order the host chose them, and
+  each theme is played on its own: its songs are all picked, then all played,
+  before the next theme's picking starts. Within a theme, sub-rounds come
+  from its `style_sequence`. When `config.subrounds_enabled?` is false a
+  theme's sequence collapses into a *single* answering phase spanning every
+  style, then a single playing phase over all resulting songs. Once a
+  sub-round's picking ends, a random `config.songs_played_pct` of its songs
+  are played (`WhoseJam.Game.Config.songs_to_play/2`).
+
+  A player can leave, and the host can remove anyone, until the game is
+  finished. The server says so on the room topic first
+  (`{:participant_removed, id, reason}`, `reason` `:left` or `:removed`), then
+  forgets them: their songs still to come are dropped, and they stop being a
+  choice in the rounds still to come.
+
+  Once a vote's countdown is running, anyone who has locked in can give the
+  song another second (`WhoseJam.Game.extend_song/2`), as often as they like.
+
+  When the game is finished, a winner can pick one of their own songs that
+  were played to play the night out (`WhoseJam.Game.pick_finale/3`).
+
+  ## Head to head
+
+  A `:vs` sub-round asks everyone the same one prompt, then plays the songs
+  against each other in a bracket (`WhoseJam.Game.Bracket`) instead of one
+  round per song. Each matchup is a round: in `:revealing` the first song
+  (`"a"`) plays for a clip, then the second (`"b"`; the TV reporting a song's
+  end moves on early); in `:voting` the room picks the better one, with the
+  countdown running from the start; at `:results` the pickers are named and
+  the winner goes through. When a stage's matchups are done the winners (and
+  any bye) make the next stage, until one song is left, whose picker gets
+  `WhoseJam.Game.Bracket.champion_bonus/0`.
 
   ## Host screens and the end of a game
 
@@ -74,7 +102,7 @@ defmodule WhoseJam.Game.Server do
   use GenServer, restart: :temporary
 
   alias WhoseJam.Content
-  alias WhoseJam.Game.{Awards, Binning, Config, Scoring}
+  alias WhoseJam.Game.{Awards, Binning, Bracket, Config, Scoring}
   alias WhoseJam.Music
 
   # --- capacity / timing constants -----------------------------------------
@@ -107,11 +135,18 @@ defmodule WhoseJam.Game.Server do
   @max_sign_ins 4
 
   @guess_question_decoys 3
+  # How long each song of a head-to-head matchup plays before the next.
+  @vs_clip_s 30
+  # A tap on "one more second" faster than this is the same tap.
+  @extend_tap_ms 150
+  # How much one tap gives the song.
+  @extend_ms 1_000
 
   # --- server state ---------------------------------------------------------
 
   defstruct code: nil,
-            theme: nil,
+            # the themes, in the order they are played (at least one)
+            themes: [],
             overrides: %{},
             # frozen at start_game; nil while in :lobby
             config: nil,
@@ -126,13 +161,18 @@ defmodule WhoseJam.Game.Server do
             last_activity_ms: 0,
             # id => total score
             scores: %{},
-            # style => [runtime_question]
-            style_pools: %{},
-            # [%{styles, assignments, questions_by_id}]
+            # [%{theme_id, styles, assignments, questions_by_id, pools}], `pools`
+            # being style => the theme's [runtime_question] of that style
             subrounds: [],
             subround_index: 0,
             # answering scope
             submissions: %{},
+            # how quickly everyone picks their songs:
+            #   started_ms  when this sub-round's picking started
+            #   finished    player id => ms from then to their last pick
+            #   times       player id => total ms over the sub-rounds, or
+            #               :dnf for a player who once didn't pick them all
+            picking: %{started_ms: nil, finished: %{}, times: %{}},
             answer_deadline_ms: nil,
             # how long the answer window that ends at answer_deadline_ms is
             # (for the screens' draining bars)
@@ -150,13 +190,14 @@ defmodule WhoseJam.Game.Server do
             # or the countdown timer — never both
             vote_ref: nil,
             results_ref: nil,
-            # when the reveal on screen gives way to the next song (or the
-            # final scores); nil outside :results
-            results_until_ms: nil,
             # listening-delay timer (:revealing -> :voting)
             vote_delay_ref: nil,
             finished_ref: nil,
             winners: nil,
+            # once finished: the winner's song that plays the night out
+            # (`finale`: %{player_id, song}) and the link to the playlist the
+            # host saved (`saved_playlist`)
+            ending: %{finale: nil, saved_playlist: nil},
             # Every round played to a reveal, newest first (`Awards.played_round`)
             history: [],
             # Host screens (see the moduledoc):
@@ -202,7 +243,7 @@ defmodule WhoseJam.Game.Server do
   def init(opts) do
     state = %__MODULE__{
       code: Keyword.fetch!(opts, :code),
-      theme: Keyword.fetch!(opts, :theme),
+      themes: Keyword.fetch!(opts, :themes),
       overrides: Keyword.get(opts, :overrides, %{}),
       last_activity_ms: now_ms()
     }
@@ -233,25 +274,10 @@ defmodule WhoseJam.Game.Server do
   # =========================================================================
 
   def handle_call({:join, name}, _from, state) do
-    role = join_role(state)
-
-    id = generate_id()
-    player = %{id: id, name: to_string(name), role: role, connected?: true}
-
-    state =
-      %{
-        state
-        | participants: Map.put(state.participants, id, player),
-          order: state.order ++ [id],
-          scores: Map.put_new(state.scores, id, 0)
-      }
-      |> touch()
-
-    result =
-      %{player_id: id, role: role}
-      |> maybe_flag_audience_cap(state, role)
-
-    {:reply, {:ok, result}, broadcast(state)}
+    case clean_name(name, current_config(state).name_max_length) do
+      "" -> {:reply, {:error, :invalid_name}, state}
+      name -> join(state, name)
+    end
   end
 
   def handle_call({:rejoin, player_id}, _from, state) do
@@ -263,6 +289,26 @@ defmodule WhoseJam.Game.Server do
       :error ->
         {:reply, {:error, :unknown_player}, state}
     end
+  end
+
+  # A player leaving, or the host removing anyone, until the game is over.
+  def handle_call({:remove, id, reason}, _from, state) when state.phase != :finished do
+    if Map.has_key?(state.participants, id) do
+      Phoenix.PubSub.broadcast(
+        WhoseJam.PubSub,
+        topic(state.code),
+        {:participant_removed, id, reason}
+      )
+
+      state = state |> forget_participant(id) |> drop_from_play(id) |> touch()
+      {:reply, :ok, broadcast(state)}
+    else
+      {:reply, {:error, :unknown_player}, state}
+    end
+  end
+
+  def handle_call({:remove, _id, _reason}, _from, state) do
+    {:reply, {:error, :finished}, state}
   end
 
   def handle_call({:set_config, overrides}, _from, %{phase: :lobby} = state)
@@ -357,7 +403,13 @@ defmodule WhoseJam.Game.Server do
     with true <- assigned?(state, player_id, question_id) || {:error, :not_assigned},
          {:ok, song} <- normalize_song(state, song) do
       submissions = Map.put(state.submissions, {player_id, question_id}, song)
-      state = %{state | submissions: submissions} |> touch() |> maybe_end_answering()
+
+      state =
+        %{state | submissions: submissions}
+        |> note_finished_picking(player_id)
+        |> touch()
+        |> maybe_end_answering()
+
       {:reply, :ok, broadcast(state)}
     else
       {:error, _reason} = error -> {:reply, error, state}
@@ -376,7 +428,7 @@ defmodule WhoseJam.Game.Server do
     with {:ok, voter} <- fetch_participant(state, voter_id),
          :ok <- validate_choice(state, choice),
          :ok <- validate_can_vote(state, voter_id) do
-      round = record_choice(state.round, voter, choice)
+      round = record_choice(state.round, voter, choice, now_ms() - state.votes_open_ms)
       state = %{state | round: round} |> touch() |> update_countdown()
       {:reply, :ok, broadcast(state)}
     else
@@ -390,6 +442,14 @@ defmodule WhoseJam.Game.Server do
 
   # The song is over: open voting if it wasn't already, and make sure the
   # countdown is running so the round can't stall.
+  def handle_call(
+        :song_ended,
+        _from,
+        %{phase: :playing, round_state: :revealing, round: %{style: :vs}} = state
+      ) do
+    {:reply, :ok, broadcast(vs_next(state))}
+  end
+
   def handle_call(:song_ended, _from, %{phase: :playing, round_state: :revealing} = state) do
     {:reply, :ok, broadcast(state |> begin_voting() |> start_countdown())}
   end
@@ -400,6 +460,62 @@ defmodule WhoseJam.Game.Server do
 
   def handle_call(:song_ended, _from, state) do
     {:reply, {:error, :not_playing}, state}
+  end
+
+  # Another second of the song, from anyone who has locked in, once the
+  # countdown is running.
+  def handle_call({:extend_song, player_id}, _from, %{round_state: :voting} = state)
+      when is_integer(state.vote_deadline_ms) do
+    last = Map.get(state.round.extend_taps, player_id, 0)
+
+    cond do
+      player_id not in locked_in(state.round) ->
+        {:reply, {:error, :not_locked_in}, state}
+
+      now_ms() - last < @extend_tap_ms ->
+        {:reply, {:error, :too_fast}, state}
+
+      true ->
+        state = extend_countdown(state, player_id)
+        {:reply, :ok, broadcast(touch(state))}
+    end
+  end
+
+  def handle_call({:extend_song, _player_id}, _from, state) do
+    {:reply, {:error, :no_countdown}, state}
+  end
+
+  def handle_call({:pick_finale, player_id, uri}, _from, %{phase: :finished} = state) do
+    with true <- player_id in state.winners.players || {:error, :not_winner},
+         true <- is_nil(state.ending.finale) || {:error, :already_picked},
+         %{} = played <- own_played_song(state, player_id, uri) || {:error, :not_played} do
+      song = Map.take(played, [:uri, :song_name, :artist, :album_art_url])
+      state = put_in(state.ending.finale, %{player_id: player_id, song: song}) |> touch()
+      {:reply, :ok, broadcast(state)}
+    else
+      {:error, _reason} = error -> {:reply, error, state}
+    end
+  end
+
+  def handle_call({:pick_finale, _player_id, _uri}, _from, state) do
+    {:reply, {:error, :not_finished}, state}
+  end
+
+  def handle_call(
+        {:set_saved_playlist, "https://" <> _ = url},
+        _from,
+        %{phase: :finished} = state
+      )
+      when byte_size(url) <= 500 do
+    {:reply, :ok, broadcast(touch(put_in(state.ending.saved_playlist, url)))}
+  end
+
+  def handle_call({:set_saved_playlist, _url}, _from, %{phase: :finished} = state) do
+    {:reply, {:error, :bad_link}, state}
+  end
+
+  def handle_call({:set_saved_playlist, _url}, _from, state) do
+    {:reply, {:error, :not_finished}, state}
   end
 
   def handle_call(:skip_song, _from, %{phase: :playing} = state) do
@@ -514,6 +630,15 @@ defmodule WhoseJam.Game.Server do
   @impl true
   def handle_info({:answer_timeout, si}, %{phase: :answering, subround_index: si} = state) do
     {:noreply, broadcast(end_answering(state))}
+  end
+
+  def handle_info({:vs_next, si, ri}, state) do
+    if state.phase == :playing and state.round_state == :revealing and
+         state.subround_index == si and state.round_index == ri do
+      {:noreply, broadcast(vs_next(state))}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_info({:vote_delay_timeout, si, ri}, state) do
@@ -637,29 +762,27 @@ defmodule WhoseJam.Game.Server do
     player_ids = player_ids(state)
     config = Config.build(state.overrides, length(player_ids))
 
-    style_pools =
-      state.theme.style_sequence
-      |> Enum.uniq()
-      |> Map.new(fn style -> {style, Content.game_questions(state.theme.id, style)} end)
-
-    ordered_styles = Enum.uniq(state.theme.style_sequence)
-    subrounds = build_subrounds(ordered_styles, config, player_ids, style_pools)
+    subrounds = Enum.flat_map(state.themes, &build_subrounds(&1, config, player_ids))
 
     state = %{
       state
       | config: config,
-        style_pools: style_pools,
         subrounds: subrounds,
         subround_index: 0,
+        picking: %{started_ms: nil, finished: %{}, times: %{}},
+        ending: %{finale: nil, saved_playlist: nil},
         scores: reset_scores(state)
     }
 
     begin_answering(state, 0)
   end
 
-  # One sub-round per style when enabled; a single all-styles sub-round when
-  # not. `ordered_styles` follows the theme's style_sequence.
-  defp build_subrounds(ordered_styles, config, player_ids, style_pools) do
+  # One sub-round per style of the theme when enabled; a single all-styles
+  # sub-round when not. The styles follow the theme's style_sequence.
+  defp build_subrounds(theme, config, player_ids) do
+    ordered_styles = Enum.uniq(theme.style_sequence)
+    pools = Map.new(ordered_styles, &{&1, Content.game_questions(theme.id, &1)})
+
     groups =
       if config.subrounds_enabled? do
         Enum.map(ordered_styles, &[&1])
@@ -668,14 +791,33 @@ defmodule WhoseJam.Game.Server do
       end
 
     Enum.map(groups, fn group ->
-      build_subround(group, config, player_ids, style_pools)
+      build_subround(theme.id, group, config, player_ids, Map.take(pools, group))
     end)
   end
 
-  defp build_subround(styles, config, player_ids, style_pools) do
+  # Head to head: everyone gets the same one prompt, drawn at random.
+  defp build_subround(theme_id, [:vs] = styles, _config, player_ids, pools) do
+    {assignments, questions_by_id} =
+      case pools |> Map.get(:vs, []) |> Enum.shuffle() do
+        [] -> {%{}, %{}}
+        [question | _] -> {%{question.id => player_ids}, %{question.id => question}}
+      end
+
+    %{
+      theme_id: theme_id,
+      styles: styles,
+      assignments: assignments,
+      questions_by_id: questions_by_id,
+      pools: pools,
+      # the entries through to the next stage, in order
+      bracket: %{advancing: []}
+    }
+  end
+
+  defp build_subround(theme_id, styles, config, player_ids, pools) do
     {assignments, questions_by_id} =
       Enum.reduce(styles, {%{}, %{}}, fn style, {assign_acc, q_acc} ->
-        pool = Map.get(style_pools, style, [])
+        pool = Map.get(pools, style, [])
         assignment = Binning.assign(player_ids, pool, config.questions_per_player)
 
         by_id = Map.new(pool, fn q -> {q.id, q} end)
@@ -688,7 +830,13 @@ defmodule WhoseJam.Game.Server do
         {Map.merge(assign_acc, assignment), Map.merge(q_acc, used_questions)}
       end)
 
-    %{styles: styles, assignments: assignments, questions_by_id: questions_by_id}
+    %{
+      theme_id: theme_id,
+      styles: styles,
+      assignments: assignments,
+      questions_by_id: questions_by_id,
+      pools: pools
+    }
   end
 
   # =========================================================================
@@ -700,8 +848,12 @@ defmodule WhoseJam.Game.Server do
     # Each style in a sub-round asks `questions_per_player` questions, so the
     # answer window scales with how many styles the sub-round covers (1 for a
     # normal sub-round; S for the collapsed all-styles case).
-    style_count = max(length(subround.styles), 1)
-    ms = Config.answer_window_s(state.config) * style_count * 1000
+    # A head-to-head sub-round asks one prompt.
+    ms =
+      if subround.styles == [:vs],
+        do: state.config.answer_s_per_question * 1000,
+        else: Config.answer_window_s(state.config) * max(length(subround.styles), 1) * 1000
+
     ref = schedule({:answer_timeout, index}, ms)
 
     %{
@@ -710,6 +862,7 @@ defmodule WhoseJam.Game.Server do
         round_state: nil,
         subround_index: index,
         submissions: %{},
+        picking: %{state.picking | started_ms: now_ms(), finished: %{}},
         answer_deadline_ms: now_ms() + ms,
         answer_window_ms: ms,
         answer_ref: ref,
@@ -768,20 +921,219 @@ defmodule WhoseJam.Game.Server do
 
   defp end_answering(state) do
     state = cancel_timer(state, :answer_ref)
-    rounds = build_rounds(state)
-    begin_playing(%{state | rounds: rounds, round_index: 0})
+    state = %{state | picking: %{state.picking | times: add_pick_times(state)}}
+
+    if vs?(state) do
+      entries =
+        for {{player_id, _qid}, song} <- Enum.shuffle(state.submissions),
+            do: %{player_id: player_id, song: song}
+
+      bracket_stage(state, entries)
+    else
+      begin_playing(%{state | rounds: build_rounds(state), round_index: 0})
+    end
   end
 
-  # Every submission becomes exactly one round; unanswered questions are dropped.
+  # =========================================================================
+  # Head to head
+  # =========================================================================
+
+  defp vs?(state), do: current_subround(state).styles == [:vs]
+
+  # A stage of the bracket: its matchups are the rounds; a bye goes straight
+  # through. One entry left is the champion; none, nothing to play.
+  defp bracket_stage(state, []), do: advance_subround(state)
+
+  defp bracket_stage(state, [champion]) do
+    bonus = Bracket.champion_bonus()
+
+    scores =
+      if Map.has_key?(state.participants, champion.player_id),
+        do: Map.update(state.scores, champion.player_id, bonus, &(&1 + bonus)),
+        else: state.scores
+
+    advance_subround(%{state | scores: scores})
+  end
+
+  defp bracket_stage(state, entries) do
+    {pairs, bye} = Bracket.pairs(entries)
+    question = current_subround(state).questions_by_id |> Map.values() |> List.first()
+    stage = Bracket.stage_name(length(entries))
+    rounds = Enum.map(pairs, &vs_round(&1, question, stage))
+
+    state
+    |> put_bracket(%{advancing: bye})
+    |> Map.merge(%{rounds: rounds, round_index: 0})
+    |> begin_playing()
+  end
+
+  defp vs_round({a, b}, question, stage) do
+    %{
+      style: :vs,
+      qid: question && question.id,
+      question: question,
+      stage: stage,
+      a: a,
+      b: b,
+      # which of the two is playing
+      playing: "a",
+      song: a.song,
+      # nobody's song in particular: everyone votes, the pickers too
+      submitter_id: nil,
+      choices: [%{id: "a", name: a.song.name}, %{id: "b", name: b.song.name}],
+      correct_choice: nil,
+      votes: %{},
+      forecast: nil,
+      extended_s: 0,
+      extend_taps: %{},
+      revealed: false,
+      deltas: nil,
+      next_ms: nil,
+      tally: nil,
+      winner: nil
+    }
+  end
+
+  defp put_bracket(state, bracket) do
+    subrounds =
+      List.update_at(state.subrounds, state.subround_index, &Map.put(&1, :bracket, bracket))
+
+    %{state | subrounds: subrounds}
+  end
+
+  defp advancing(state), do: get_in(current_subround(state), [:bracket, :advancing]) || []
+
+  # The first song's clip is over (or it ended): the second plays; the
+  # second's is over: the vote.
+  defp vs_next(%{round: %{playing: "a"} = round} = state) do
+    state = cancel_timer(state, :vote_delay_ref)
+    ref = schedule({:vs_next, state.subround_index, state.round_index}, vs_clip_ms())
+    %{state | round: %{round | playing: "b", song: round.b.song}, vote_delay_ref: ref}
+  end
+
+  defp vs_next(state), do: begin_voting(state)
+
+  defp vs_results(state) do
+    round = state.round
+    tally = Bracket.tally({round.a, round.b}, vote_list(round))
+    winner = Bracket.winner(tally, Enum.random(["a", "b"]))
+    deltas = {round.a, round.b} |> Bracket.deltas(tally) |> only_participants(state)
+    ms = results_pause_ms(state)
+
+    round = %{
+      round
+      | revealed: true,
+        deltas: deltas,
+        tally: tally,
+        winner: winner,
+        next_ms: now_ms() + ms
+    }
+
+    ref = schedule({:results_done, state.subround_index, state.round_index}, ms)
+
+    %{
+      state
+      | round_state: :results,
+        round: round,
+        scores: add_deltas(state.scores, deltas),
+        results_ref: ref,
+        history: vs_played(state.history, round)
+    }
+    |> put_bracket(%{advancing: advancing(state) ++ [Map.fetch!(round, side(winner))]})
+  end
+
+  defp side("a"), do: :a
+  defp side("b"), do: :b
+
+  # The songs a matchup played, each once a night, as the playlist and the
+  # awards remember a round (nobody fooled, nobody called: no right answer).
+  defp vs_played(history, round) do
+    vote_ms = for {id, %{role: :player, ms: ms}} <- round.votes, into: %{}, do: {id, ms}
+
+    Enum.reduce([round.a, round.b], history, fn entry, acc ->
+      if Enum.any?(acc, &(&1.uri == entry.song.uri and &1.submitter_id == entry.player_id)) do
+        acc
+      else
+        [
+          %{
+            submitter_id: entry.player_id,
+            uri: entry.song.uri,
+            song_name: entry.song.name,
+            artist: entry.song.artist,
+            album_art_url: entry.song.album_art_url,
+            fooled: 0,
+            called: [],
+            missed: [],
+            vote_ms: vote_ms,
+            blamed?: false,
+            split?: false
+          }
+          | acc
+        ]
+      end
+    end)
+  end
+
+  # A matchup skipped before its vote: one song goes through, at random,
+  # for no points.
+  defp skip_matchup(%{round: %{style: :vs, revealed: false} = round} = state),
+    do: put_bracket(state, %{advancing: advancing(state) ++ [Enum.random([round.a, round.b])]})
+
+  defp skip_matchup(state), do: state
+
+  defp only_participants(deltas, state),
+    do: Map.filter(deltas, fn {id, _n} -> Map.has_key?(state.participants, id) end)
+
+  defp add_deltas(scores, deltas) do
+    Enum.reduce(deltas, scores, fn {id, delta}, acc ->
+      Map.update(acc, id, delta, &(&1 + delta))
+    end)
+  end
+
+  defp vs_clip_ms, do: env_ms(:vs_clip_ms, @vs_clip_s * 1000)
+
+  # A random share of the submissions (`songs_played_pct`) becomes one round
+  # each; unanswered questions are dropped.
   defp build_rounds(state) do
     subround = current_subround(state)
+    count = Config.songs_to_play(state.config, map_size(state.submissions))
 
     state.submissions
+    |> Enum.shuffle()
+    |> Enum.take(count)
     |> Enum.map(fn {{player_id, qid}, song} ->
       question = Map.fetch!(subround.questions_by_id, qid)
       build_round(state, player_id, qid, question, song)
     end)
-    |> Enum.shuffle()
+  end
+
+  # The moment a player has a song for every prompt they were asked (the
+  # first time only: changing a pick afterwards doesn't count against them).
+  defp note_finished_picking(state, player_id) do
+    done? =
+      Enum.all?(current_subround(state).assignments, fn {qid, pids} ->
+        player_id not in pids or Map.has_key?(state.submissions, {player_id, qid})
+      end)
+
+    if done? and not Map.has_key?(state.picking.finished, player_id) do
+      ms = now_ms() - state.picking.started_ms
+      put_in(state.picking.finished[player_id], ms)
+    else
+      state
+    end
+  end
+
+  # Each asked player's picking time this sub-round, added to their total;
+  # one who didn't finish is out of the running for the quickest pick.
+  defp add_pick_times(state) do
+    asked = current_subround(state).assignments |> Map.values() |> List.flatten() |> Enum.uniq()
+
+    Enum.reduce(asked, state.picking.times, fn pid, acc ->
+      case {Map.fetch(state.picking.finished, pid), Map.get(acc, pid, 0)} do
+        {{:ok, ms}, total} when is_integer(total) -> Map.put(acc, pid, total + ms)
+        _unfinished -> Map.put(acc, pid, :dnf)
+      end
+    end)
   end
 
   defp build_round(state, submitter_id, qid, %{style: :guess_who} = question, song) do
@@ -793,7 +1145,7 @@ defmodule WhoseJam.Game.Server do
 
   defp build_round(state, submitter_id, qid, %{style: :guess_question} = question, song) do
     round_map(submitter_id, qid, question, song,
-      choices: guess_question_choices(state, qid, question),
+      choices: guess_question_choices(current_subround(state), qid, question),
       correct_choice: qid
     )
   end
@@ -812,17 +1164,33 @@ defmodule WhoseJam.Game.Server do
       votes: %{},
       # The submitter's own choice: which wrong answer the room will fall for.
       forecast: nil,
+      # How many seconds the room has added to the song, and when each
+      # player last tapped for one.
+      extended_s: 0,
+      extend_taps: %{},
       revealed: false,
-      deltas: nil
+      deltas: nil,
+      # when the reveal gives way to the next song (or the final scores)
+      next_ms: nil
     }
   end
 
   # The submitter's choice is their forecast; anyone else's is a vote.
-  defp record_choice(%{submitter_id: id} = round, %{id: id}, choice),
+  defp record_choice(%{submitter_id: id} = round, %{id: id}, choice, _ms),
     do: %{round | forecast: choice}
 
-  defp record_choice(round, voter, choice),
-    do: %{round | votes: Map.put(round.votes, voter.id, %{choice: choice, role: voter.role})}
+  # A vote keeps how long its voter took to first lock in once votes opened.
+  defp record_choice(round, voter, choice, ms) do
+    first =
+      case Map.fetch(round.votes, voter.id) do
+        {:ok, %{ms: first}} -> first
+        :error -> ms
+      end
+
+    vote = %{choice: choice, role: voter.role, ms: first}
+
+    %{round | votes: Map.put(round.votes, voter.id, vote)}
+  end
 
   # Everyone who has locked something in: the voters, and the submitter once
   # their forecast is in. Sorted, so where the submitter sits in the list
@@ -836,12 +1204,10 @@ defmodule WhoseJam.Game.Server do
     |> Enum.map(fn p -> %{id: p.id, name: p.name} end)
   end
 
-  defp guess_question_choices(state, correct_qid, question) do
-    style = question.style
-
+  defp guess_question_choices(subround, correct_qid, question) do
     decoys =
-      state.style_pools
-      |> Map.get(style, [])
+      subround.pools
+      |> Map.get(question.style, [])
       |> Enum.reject(fn q -> q.id == correct_qid end)
       |> Enum.shuffle()
       |> Enum.take(@guess_question_decoys)
@@ -872,15 +1238,20 @@ defmodule WhoseJam.Game.Server do
         votes_open_ms: now_ms() + delay_ms,
         vote_deadline_ms: nil,
         vote_ref: nil,
-        results_ref: nil,
-        results_until_ms: nil
+        results_ref: nil
     }
 
-    if delay_ms == 0 do
-      begin_voting(state)
-    else
-      ref = schedule({:vote_delay_timeout, state.subround_index, index}, delay_ms)
-      %{state | vote_delay_ref: ref}
+    cond do
+      round.style == :vs ->
+        ref = schedule({:vs_next, state.subround_index, index}, vs_clip_ms())
+        %{state | vote_delay_ref: ref}
+
+      delay_ms == 0 ->
+        begin_voting(state)
+
+      true ->
+        ref = schedule({:vote_delay_timeout, state.subround_index, index}, delay_ms)
+        %{state | vote_delay_ref: ref}
     end
   end
 
@@ -900,6 +1271,7 @@ defmodule WhoseJam.Game.Server do
         vote_deadline_ms: nil,
         vote_ref: ref
     }
+    |> then(&if(&1.round.style == :vs, do: start_countdown(&1), else: &1))
     |> update_countdown()
   end
 
@@ -956,24 +1328,23 @@ defmodule WhoseJam.Game.Server do
     for p <- Map.values(state.participants), p.connected?, do: p.id
   end
 
+  defp enter_results(%{round: %{style: :vs}} = state),
+    do: state |> cancel_timer(:vote_ref) |> vs_results()
+
   defp enter_results(state) do
     state = cancel_timer(state, :vote_ref)
     round = state.round
 
     deltas =
-      Scoring.score_round(
-        scoring_round(round),
-        vote_list(round),
-        Config.scoring_opts(state.config)
-      )
+      round
+      |> scoring_round()
+      |> Scoring.score_round(vote_list(round), Config.scoring_opts(state.config))
+      |> only_participants(state)
 
-    scores =
-      Enum.reduce(deltas, state.scores, fn {id, delta}, acc ->
-        Map.update(acc, id, delta, &(&1 + delta))
-      end)
+    scores = add_deltas(state.scores, deltas)
 
-    round = %{round | revealed: true, deltas: deltas}
     ms = results_pause_ms(state)
+    round = %{round | revealed: true, deltas: deltas, next_ms: now_ms() + ms}
     ref = schedule({:results_done, state.subround_index, state.round_index}, ms)
 
     %{
@@ -982,7 +1353,6 @@ defmodule WhoseJam.Game.Server do
         round: round,
         scores: scores,
         results_ref: ref,
-        results_until_ms: now_ms() + ms,
         history: [played_round(round) | state.history]
     }
   end
@@ -1005,29 +1375,32 @@ defmodule WhoseJam.Game.Server do
           choice == round.correct_choice,
           do: voter_id
 
+    player_votes = for {id, %{role: :player} = vote} <- round.votes, do: {id, vote}
+
     %{
       submitter_id: round.submitter_id,
+      uri: round.song.uri,
       song_name: round.song.name,
       artist: round.song.artist,
       album_art_url: round.song.album_art_url,
-      fooled:
-        Enum.count(round.votes, fn {_id, vote} ->
-          vote.role == :player and vote.choice != round.correct_choice
-        end),
+      fooled: Enum.count(player_votes, fn {_id, vote} -> vote.choice != round.correct_choice end),
       called: called,
+      missed: for({id, vote} <- player_votes, vote.choice != round.correct_choice, do: id),
+      vote_ms: Map.new(player_votes, fn {id, vote} -> {id, vote.ms} end),
       # The submitter's blame guess came true.
-      blamed?: Scoring.forecast_right?(scoring_round(round), vote_list(round))
+      blamed?: Scoring.forecast_right?(scoring_round(round), vote_list(round)),
+      split?: Scoring.split_room?(scoring_round(round), vote_list(round))
     }
   end
 
   defp advance_round(state) do
-    state = cancel_round_timers(state)
+    state = state |> cancel_round_timers() |> skip_matchup()
     next = state.round_index + 1
 
-    if next < length(state.rounds) do
-      enter_round(state, next)
-    else
-      advance_subround(state)
+    cond do
+      next < length(state.rounds) -> enter_round(state, next)
+      vs?(state) -> bracket_stage(state, advancing(state))
+      true -> advance_subround(state)
     end
   end
 
@@ -1051,6 +1424,7 @@ defmodule WhoseJam.Game.Server do
         round: nil,
         rounds: [],
         winners: compute_winners(state),
+        ending: %{finale: nil, saved_playlist: nil},
         finished_ref: ref
     }
   end
@@ -1063,7 +1437,6 @@ defmodule WhoseJam.Game.Server do
       | phase: :lobby,
         round_state: nil,
         config: nil,
-        style_pools: %{},
         subrounds: [],
         subround_index: 0,
         submissions: %{},
@@ -1074,6 +1447,8 @@ defmodule WhoseJam.Game.Server do
         round: nil,
         vote_deadline_ms: nil,
         winners: nil,
+        ending: %{finale: nil, saved_playlist: nil},
+        picking: %{started_ms: nil, finished: %{}, times: %{}},
         history: [],
         participants: seat_audience(state),
         scores: reset_scores(state),
@@ -1132,7 +1507,8 @@ defmodule WhoseJam.Game.Server do
       code: state.code,
       phase: state.phase,
       round_state: state.round_state,
-      theme: theme_view(state.theme),
+      theme: theme_view(current_theme(state)),
+      themes: Enum.map(state.themes, &theme_view/1),
       music: music_view(state.music),
       background: state.host.background,
       phone_hosts: state.host.phone_hosts,
@@ -1147,7 +1523,9 @@ defmodule WhoseJam.Game.Server do
       scores: state.scores,
       winners: state.winners,
       awards: awards_view(state),
-      playlist: playlist_view(state)
+      playlist: playlist_view(state),
+      finale: state.ending.finale,
+      saved_playlist: state.ending.saved_playlist
     }
   end
 
@@ -1159,6 +1537,7 @@ defmodule WhoseJam.Game.Server do
     |> Enum.map(
       &%{
         player_id: &1.submitter_id,
+        uri: &1.uri,
         song_name: &1.song_name,
         artist: &1.artist,
         album_art_url: &1.album_art_url
@@ -1169,8 +1548,15 @@ defmodule WhoseJam.Game.Server do
   defp playlist_view(_state), do: nil
 
   # Only a finished game has awards to give.
-  defp awards_view(%{phase: :finished, history: history}),
-    do: history |> Enum.reverse() |> Awards.summarize()
+  defp awards_view(%{phase: :finished, history: history} = state) do
+    picks =
+      for id <- state.order,
+          ms = Map.get(state.picking.times, id),
+          is_integer(ms),
+          do: %{player_id: id, ms: ms}
+
+    history |> Enum.reverse() |> Awards.summarize(picks)
+  end
 
   defp awards_view(_state), do: nil
 
@@ -1220,15 +1606,16 @@ defmodule WhoseJam.Game.Server do
   end
 
   # How many songs this player called, how many players their own songs
-  # fooled, and how many of their blame guesses came true, over the rounds
-  # that reached a reveal.
+  # fooled, how many of their blame guesses came true and how many of their
+  # songs split the room, over the rounds that reached a reveal.
   defp recap(%{phase: :finished, history: history}, player_id) do
     own = Enum.filter(history, &(&1.submitter_id == player_id))
 
     %{
       called: Enum.count(history, &(player_id in &1.called)),
       fooled: Enum.sum_by(own, & &1.fooled),
-      blamed: Enum.count(own, & &1.blamed?)
+      blamed: Enum.count(own, & &1.blamed?),
+      split: Enum.count(own, & &1.split?)
     }
   end
 
@@ -1308,7 +1695,10 @@ defmodule WhoseJam.Game.Server do
       final_suspense?: config.final_suspense?,
       score_correct?: config.score_correct?,
       score_fooled?: config.score_fooled?,
-      score_predictions?: config.score_predictions?
+      score_predictions?: config.score_predictions?,
+      score_split?: config.score_split?,
+      name_max_length: config.name_max_length,
+      songs_played_pct: config.songs_played_pct
     }
   end
 
@@ -1381,6 +1771,11 @@ defmodule WhoseJam.Game.Server do
       all_in?: eligible > 0 and locked == eligible,
       votes_open_ms: state.votes_open_ms,
       deadline_ms: state.vote_deadline_ms,
+      # Seconds the room has added to the song by tapping for more.
+      extended_s: round.extended_s,
+      # A head-to-head matchup: its two songs, which is playing, and once
+      # revealed whose each was and how the vote went (nil otherwise).
+      vs: vs_view(round),
       revealed: round.revealed
     }
 
@@ -1394,10 +1789,13 @@ defmodule WhoseJam.Game.Server do
         deltas: round.deltas,
         votes: vote_list(round),
         forecast: forecast_view(round),
+        # Some players called it and some didn't (worth a point to the
+        # picker while `score_split?` is on).
+        split?: Scoring.split_room?(scoring_round(round), vote_list(round)),
         correct_choice: round.correct_choice,
         correct_prompt: correct_prompt(round),
         # When this reveal moves on, so a screen can say "next song in…".
-        next_ms: state.results_until_ms
+        next_ms: round.next_ms
       })
     else
       Map.merge(base, %{
@@ -1405,6 +1803,7 @@ defmodule WhoseJam.Game.Server do
         deltas: nil,
         votes: nil,
         forecast: nil,
+        split?: nil,
         correct_choice: nil,
         correct_prompt: nil,
         next_ms: nil
@@ -1413,6 +1812,21 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp round_view(_state), do: nil
+
+  defp vs_view(%{style: :vs} = round) do
+    base = %{stage: round.stage, playing: round.playing, a: round.a.song, b: round.b.song}
+
+    if round.revealed,
+      do:
+        Map.merge(base, %{
+          picks: %{"a" => round.a.player_id, "b" => round.b.player_id},
+          tally: round.tally,
+          winner: round.winner
+        }),
+      else: Map.merge(base, %{picks: nil, tally: nil, winner: nil})
+  end
+
+  defp vs_view(_round), do: nil
 
   # What the submitter forecast, and whether it came true.
   defp forecast_view(%{forecast: nil}), do: nil
@@ -1435,7 +1849,10 @@ defmodule WhoseJam.Game.Server do
   # round so the room knows what the question was. A :guess_question round's
   # prompt is what voters guess, so it only appears at the reveal, as
   # `correct_prompt`.
-  defp public_prompt(%{style: :guess_who, question: %{prompt: prompt}}), do: prompt
+  defp public_prompt(%{style: style, question: %{prompt: prompt}})
+       when style in [:guess_who, :vs],
+       do: prompt
+
   defp public_prompt(_round), do: nil
 
   # When several songs were picked for the same prompt, which of them this
@@ -1475,6 +1892,102 @@ defmodule WhoseJam.Game.Server do
   # =========================================================================
   # Helpers
   # =========================================================================
+
+  defp join(state, name) do
+    role = join_role(state)
+    id = generate_id()
+    player = %{id: id, name: name, role: role, connected?: true}
+
+    state =
+      %{
+        state
+        | participants: Map.put(state.participants, id, player),
+          order: state.order ++ [id],
+          scores: Map.put_new(state.scores, id, 0)
+      }
+      |> touch()
+
+    result =
+      %{player_id: id, role: role}
+      |> maybe_flag_audience_cap(state, role)
+
+    {:reply, {:ok, result}, broadcast(state)}
+  end
+
+  # A name as it is kept: trimmed, its runs of whitespace made one space, and
+  # cut to the room's limit. Anything but a string is no name at all.
+  defp clean_name(name, max) when is_binary(name) do
+    name
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+    |> String.slice(0, max)
+    |> String.trim_trailing()
+  end
+
+  defp clean_name(_name, _max), do: ""
+
+  # Everything the room knew about a participant, gone.
+  defp forget_participant(state, id) do
+    %{
+      state
+      | participants: Map.delete(state.participants, id),
+        order: List.delete(state.order, id),
+        scores: Map.delete(state.scores, id),
+        submissions: Map.reject(state.submissions, fn {{pid, _qid}, _song} -> pid == id end),
+        picking: %{
+          state.picking
+          | finished: Map.delete(state.picking.finished, id),
+            times: Map.delete(state.picking.times, id)
+        },
+        subrounds: Enum.map(state.subrounds, &unassign(&1, id))
+    }
+    |> put_host(phone_hosts: List.delete(state.host.phone_hosts, id))
+  end
+
+  # A sub-round without the player: their prompts go, and a prompt nobody
+  # else was asked goes with them.
+  defp unassign(subround, id) do
+    assignments =
+      subround.assignments
+      |> Map.new(fn {qid, pids} -> {qid, List.delete(pids, id)} end)
+      |> Map.reject(fn {_qid, pids} -> pids == [] end)
+
+    %{subround | assignments: assignments}
+  end
+
+  # Whatever was under way carries on without them.
+  defp drop_from_play(%{phase: :answering} = state, _id), do: maybe_end_answering(state)
+
+  defp drop_from_play(%{phase: :playing, round: %{}} = state, id) do
+    {played, to_come} = Enum.split(state.rounds, state.round_index + 1)
+
+    to_come =
+      for round <- to_come, round.submitter_id != id do
+        %{round | choices: without_choice(round, id)}
+      end
+
+    state = %{state | rounds: played ++ to_come, round: drop_vote(state.round, id)}
+
+    cond do
+      state.round.submitter_id == id and not state.round.revealed -> advance_round(state)
+      state.round_state == :voting -> update_countdown(state)
+      true -> state
+    end
+  end
+
+  defp drop_from_play(state, _id), do: state
+
+  defp without_choice(%{style: :guess_who, choices: choices}, id),
+    do: Enum.reject(choices, &(&1.id == id))
+
+  defp without_choice(round, _id), do: round.choices
+
+  defp drop_vote(%{revealed: true} = round, _id), do: round
+
+  defp drop_vote(round, id) do
+    forecast = if round.submitter_id == id, do: nil, else: round.forecast
+    %{round | votes: Map.delete(round.votes, id), forecast: forecast}
+  end
 
   defp join_role(state) do
     cond do
@@ -1536,6 +2049,38 @@ defmodule WhoseJam.Game.Server do
       nil -> []
       subround -> subround.styles
     end
+  end
+
+  # The theme being played (the first, before the game starts and after it
+  # ends).
+  defp current_theme(state) do
+    theme_id =
+      case Enum.at(state.subrounds, state.subround_index) do
+        %{theme_id: id} when state.phase in [:answering, :playing] -> id
+        _other -> nil
+      end
+
+    Enum.find(state.themes, hd(state.themes), &(&1.id == theme_id))
+  end
+
+  # One more second on the clock (on top of what's left), for one tap.
+  defp extend_countdown(state, player_id) do
+    state = cancel_timer(state, :vote_ref)
+    ms = max(state.vote_deadline_ms - now_ms(), 0) + @extend_ms
+    ref = schedule({:vote_timeout, state.subround_index, state.round_index}, ms)
+
+    round = %{
+      state.round
+      | extended_s: state.round.extended_s + div(@extend_ms, 1000),
+        extend_taps: Map.put(state.round.extend_taps, player_id, now_ms())
+    }
+
+    %{state | round: round, vote_deadline_ms: now_ms() + ms, vote_ref: ref}
+  end
+
+  # One of the player's own songs that was played tonight.
+  defp own_played_song(state, player_id, uri) do
+    Enum.find(state.history, &(&1.submitter_id == player_id and &1.uri == uri))
   end
 
   defp current_config(state) do

@@ -112,6 +112,11 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     |> click_button("Settings")
     |> fill_in("Time per question", with: "120")
     |> fill_in("Prompts per player", with: "1")
+    # Long names, every song played, and no point for splitting the room
+    # (the script's tie at the top counts calls and fooling only).
+    |> fill_in("Longest name (letters)", with: "24")
+    |> fill_in("Songs played (%)", with: "100")
+    |> uncheck("Splitting the room: +1 when some call it and some don’t")
     |> fill_in("Voting opens after", with: "10")
     |> fill_in("Voting time", with: Integer.to_string(@vote_timer_s))
     # Votes can be changed until the clock runs out: a tap is the vote.
@@ -203,10 +208,15 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
   end
 
   # A locked-in pick can be changed while the others are still choosing.
+  # Once every song is picked the phone says so without showing them; the
+  # pick is a tap away.
   defp pick_step(:change, session) do
     session
-    |> assert_has("button", text: "Change pick", timeout: @wait)
+    |> assert_has("#done-picking h1", text: "You’re done", timeout: @wait)
+    |> refute_has("#done-picking figure")
     |> Stage.then_hold(to_timeout(second: 2))
+    |> click_button("See or change your song")
+    |> assert_has("button", text: "Change pick", timeout: @wait)
     |> click_button("Change pick")
     |> assert_has("input[name=q]", timeout: @wait)
   end

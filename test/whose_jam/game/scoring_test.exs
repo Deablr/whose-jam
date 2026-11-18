@@ -42,7 +42,9 @@ defmodule WhoseJam.Game.ScoringTest do
       vote("p3", "also_wrong")
     ]
 
-    result = Scoring.score_round(round, votes)
+    # (p1 calling it and the others not also splits the room; that point is
+    # tested on its own below.)
+    result = Scoring.score_round(round, votes, %{split?: false})
 
     assert result["p1"] == 1
     assert result["sub"] == 2
@@ -128,7 +130,8 @@ defmodule WhoseJam.Game.ScoringTest do
 
     result = Scoring.score_round(round, votes)
 
-    assert result == %{"p1" => 1, "a2" => 1, "sub" => 1}
+    # One player fooled, and the room split (p1 right, p2 wrong).
+    assert result == %{"p1" => 1, "a2" => 1, "sub" => 2}
   end
 
   # Sane totals ----------------------------------------------------------------
@@ -151,7 +154,8 @@ defmodule WhoseJam.Game.ScoringTest do
     fooled_player_votes =
       Enum.count(votes, &(&1.choice != round.correct_choice and &1.voter_role != :audience))
 
-    assert Enum.sum(Map.values(result)) == correct_votes + fooled_player_votes
+    # +1 more: p1 called it and p2 and p3 didn't, so the room split.
+    assert Enum.sum(Map.values(result)) == correct_votes + fooled_player_votes + 1
   end
 
   test "all deltas are non-negative integers" do
@@ -178,8 +182,8 @@ defmodule WhoseJam.Game.ScoringTest do
       votes = [vote("p1", "p3"), vote("p2", "p3"), vote("p3", "p1"), vote("p4", "sub")]
 
       assert Scoring.forecast_right?(round, votes)
-      # 3 fooled + 1 for the forecast; p4 called it.
-      assert Scoring.score_round(round, votes) == %{"sub" => 4, "p4" => 1}
+      # 3 fooled + 1 for the forecast + 1 for the split room; p4 called it.
+      assert Scoring.score_round(round, votes) == %{"sub" => 5, "p4" => 1}
     end
 
     test "earns nothing when another wrong answer was given more often" do
@@ -222,7 +226,8 @@ defmodule WhoseJam.Game.ScoringTest do
       votes = [vote("p1", "q1"), vote("p2", "q1"), vote("p3", "q2")]
 
       refute Scoring.forecast_right?(round, votes)
-      assert Scoring.score_round(round, votes) == %{"p1" => 1, "p2" => 1, "sub" => 1}
+      # The one fooled player, and the split room.
+      assert Scoring.score_round(round, votes) == %{"p1" => 1, "p2" => 1, "sub" => 2}
     end
 
     test "of the correct answer needs a player to have called it" do
@@ -290,20 +295,22 @@ defmodule WhoseJam.Game.ScoringTest do
     test "everything on is the default" do
       {round, votes} = mixed_round()
 
+      # 2 fooled, the prediction and the split room.
       assert Scoring.score_round(round, votes) ==
-               %{"p1" => 1, "p2" => 1, "sub" => 3}
+               %{"p1" => 1, "p2" => 1, "sub" => 4}
 
       assert Scoring.score_round(round, votes, %{
                correct?: true,
                fooled?: true,
-               predictions?: true
+               predictions?: true,
+               split?: true
              }) ==
                Scoring.score_round(round, votes)
     end
 
     test "without correct guesses, callers score nothing and the picker is unchanged" do
       {round, votes} = mixed_round()
-      assert Scoring.score_round(round, votes, %{correct?: false}) == %{"sub" => 3}
+      assert Scoring.score_round(round, votes, %{correct?: false}) == %{"sub" => 4}
     end
 
     test "without correct guesses for players, the audience's right guesses still score" do
@@ -317,14 +324,21 @@ defmodule WhoseJam.Game.ScoringTest do
       {round, votes} = mixed_round()
 
       assert Scoring.score_round(round, votes, %{fooled?: false}) ==
-               %{"p1" => 1, "p2" => 1, "sub" => 1}
+               %{"p1" => 1, "p2" => 1, "sub" => 2}
     end
 
     test "without predictions, a forecast that came true scores nothing" do
       {round, votes} = mixed_round()
 
       assert Scoring.score_round(round, votes, %{predictions?: false}) ==
-               %{"p1" => 1, "p2" => 1, "sub" => 2}
+               %{"p1" => 1, "p2" => 1, "sub" => 3}
+    end
+
+    test "without the split, a song that split the room scores nothing for it" do
+      {round, votes} = mixed_round()
+
+      assert Scoring.score_round(round, votes, %{split?: false}) ==
+               %{"p1" => 1, "p2" => 1, "sub" => 3}
     end
 
     test "with everything off nobody scores" do
@@ -333,8 +347,51 @@ defmodule WhoseJam.Game.ScoringTest do
       assert Scoring.score_round(round, votes, %{
                correct?: false,
                fooled?: false,
-               predictions?: false
+               predictions?: false,
+               split?: false
              }) == %{}
+    end
+  end
+
+  # Splitting the room ---------------------------------------------------------
+
+  describe "a song that split the room" do
+    test "earns the picker +1 when at least one player called it and one didn't" do
+      round = guess_who_round("sub")
+      votes = [vote("p1", "sub"), vote("p2", "p3")]
+
+      assert Scoring.split_room?(round, votes)
+      # The fooled player, and the split.
+      assert Scoring.score_round(round, votes) == %{"p1" => 1, "sub" => 2}
+    end
+
+    test "earns nothing when every player called it, or nobody did" do
+      round = guess_who_round("sub")
+
+      refute Scoring.split_room?(round, [vote("p1", "sub"), vote("p2", "sub")])
+      refute Scoring.split_room?(round, [vote("p1", "p2"), vote("p2", "p1")])
+      refute Scoring.split_room?(round, [])
+    end
+
+    test "counts players only: the audience neither splits nor unsplits it" do
+      round = guess_who_round("sub")
+
+      refute Scoring.split_room?(round, [vote("p1", "sub"), vote("a1", "p2", :audience)])
+      refute Scoring.split_room?(round, [vote("a1", "sub", :audience), vote("p1", "p2")])
+
+      assert Scoring.split_room?(round, [
+               vote("p1", "sub"),
+               vote("p2", "p1"),
+               vote("a1", "sub", :audience)
+             ])
+    end
+
+    test "doesn't wait on whoever didn't vote" do
+      round = guess_who_round("sub")
+
+      # Two players voted, one each way; a third never did.
+      assert Scoring.score_round(round, [vote("p1", "sub"), vote("p2", "p1")]) ==
+               %{"p1" => 1, "sub" => 2}
     end
   end
 end

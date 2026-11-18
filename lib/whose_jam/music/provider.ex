@@ -22,6 +22,10 @@ defmodule WhoseJam.Music.Provider do
     8. **What the server can't verify** — `account_question/1`,
        `answer_account_question/2` and `warning/1` (all optional; see below).
 
+  And one extra a provider may offer: saving the night's playlist to the
+  host's account (`playlist_authorize_url/2` and `save_playlist/3`, see
+  below).
+
   ## Song URIs
 
   A song's `uri` is a provider-namespaced string (`spotify:track:…`,
@@ -58,6 +62,22 @@ defmodule WhoseJam.Music.Provider do
       the host screen then stores with `WhoseJam.Game.set_music/3`.
     * `warning/1` returns host-facing copy when playback will work but be worse
       than it could be (ads without Premium). It never blocks the game.
+
+  ## Saving the playlist
+
+  At the end of the night the host can save the songs that were played as a
+  playlist in their own account, so the room can open it (the TV shows its
+  link as a QR code). It is a sign-in of its own, asking only for what
+  making a playlist needs, and nothing from it is kept:
+
+    * `playlist_authorize_url/2` — where to send the host to allow it (an
+      `:oauth_redirect` provider; the callback is the provider's usual one).
+    * `save_playlist/3` — with the callback's params (`"code"` and
+      `"redirect_uri"`; empty for a provider without the sign-in), the
+      playlist's name and the songs' URIs, in order: makes the playlist and
+      returns a link anyone can open (`https://`), keeping no token.
+
+  Both optional; a provider without `save_playlist/3` offers no saving.
   """
 
   @type id :: atom()
@@ -167,7 +187,23 @@ defmodule WhoseJam.Music.Provider do
   """
   @callback default_background() :: track()
 
+  @doc """
+  Where to send the host to allow saving a playlist to their account (see
+  "Saving the playlist").
+  """
+  @callback playlist_authorize_url(state :: String.t(), redirect_uri :: String.t()) ::
+              {:ok, String.t()} | {:error, term()}
+
+  @doc """
+  Make a playlist of `uris` called `name` in the host's account and return a
+  link anyone can open (see "Saving the playlist").
+  """
+  @callback save_playlist(params :: map(), name :: String.t(), uris :: [String.t()]) ::
+              {:ok, String.t()} | {:error, term()}
+
   @optional_callbacks authorize_url: 2,
+                      playlist_authorize_url: 2,
+                      save_playlist: 3,
                       default_background: 0,
                       redirect_host: 0,
                       refresh: 1,

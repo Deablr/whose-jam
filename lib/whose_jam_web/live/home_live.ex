@@ -12,6 +12,9 @@ defmodule WhoseJamWeb.HomeLive do
   storage, which the `SeatFinder` hook offers) is offered the way back first, so a phone that
   left by accident needn't find the code again. `?host` opens the theme picker
   straight away (the TV's closing card links here to host another game).
+
+  A host can play one theme ("Host this"), or line several up, each to be
+  played as a round of its own, in the order they were added.
   """
   use WhoseJamWeb, :live_view
 
@@ -26,6 +29,8 @@ defmodule WhoseJamWeb.HomeLive do
        themes: load_themes(),
        join_code: "",
        host_open?: Map.has_key?(params, "host"),
+       # themes lined up to be played as rounds, in order (ids)
+       rounds: [],
        seat: live_seat(session)
      )}
   end
@@ -55,15 +60,27 @@ defmodule WhoseJamWeb.HomeLive do
   end
 
   @impl true
-  def handle_event("create", %{"theme" => theme_id}, socket) do
-    case WhoseJam.Game.create_game(theme_id) do
-      {:ok, code} ->
-        {:noreply, push_navigate(socket, to: ~p"/host/#{code}")}
+  def handle_event("create", %{"theme" => theme_id}, socket) when is_binary(theme_id),
+    do: create(socket, [theme_id])
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Couldn’t create that game. Please try again.")}
-    end
+  def handle_event("create", _params, socket), do: {:noreply, socket}
+
+  def handle_event("create_rounds", _params, %{assigns: %{rounds: [_ | _] = ids}} = socket),
+    do: create(socket, ids)
+
+  def handle_event("create_rounds", _params, socket), do: {:noreply, socket}
+
+  # A theme in or out of the night's rounds; the rest keep their order.
+  def handle_event("toggle_round", %{"theme" => theme_id}, socket) when is_binary(theme_id) do
+    rounds = socket.assigns.rounds
+
+    rounds =
+      if theme_id in rounds, do: List.delete(rounds, theme_id), else: rounds ++ [theme_id]
+
+    {:noreply, assign(socket, rounds: rounds)}
   end
+
+  def handle_event("toggle_round", _params, socket), do: {:noreply, socket}
 
   # Seats this phone saved for games it joined (`SeatFinder`): the way back
   # to one that is still on, when the session cookie has lost its own.
@@ -103,6 +120,16 @@ defmodule WhoseJamWeb.HomeLive do
 
   def handle_event("validate_join", %{"code" => code}, socket) do
     {:noreply, assign(socket, join_code: normalize_code(code))}
+  end
+
+  defp create(socket, theme_ids) do
+    case Game.create_game(theme_ids) do
+      {:ok, code} ->
+        {:noreply, push_navigate(socket, to: ~p"/host/#{code}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn’t create that game. Please try again.")}
+    end
   end
 
   defp normalize_code(code) do
@@ -262,6 +289,9 @@ defmodule WhoseJamWeb.HomeLive do
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="font-display text-3xl leading-none lg:text-[2.75rem]">Pick a theme</h2>
+          <p class="mt-2 text-[1.0625rem] font-medium text-jam-cream/70 lg:text-[1.35rem]">
+            Or add a few, to play a round of each.
+          </p>
         </div>
         <%!-- The same light close as the settings sheet's. --%>
         <button
@@ -282,8 +312,16 @@ defmodule WhoseJamWeb.HomeLive do
       <ul class="grid gap-8 pt-2 sm:grid-cols-2">
         <li
           :for={theme <- @themes}
+          id={"theme-#{theme.id}"}
           class="jam-paper jam-theme-card group relative flex flex-col gap-3 px-7 pb-6 pt-7 text-jam-ink lg:gap-4 lg:px-9 lg:pb-8 lg:pt-9"
         >
+          <%!-- Lined up as a round: its place in the night, on orange tape. --%>
+          <span
+            :if={round_of(@rounds, theme.id)}
+            class="jam-tape jam-tape-orange absolute -top-4 right-6 text-[1.1rem] lg:text-[1.35rem]"
+          >
+            Round {round_of(@rounds, theme.id)}
+          </span>
           <h3 class="font-display text-[2rem] leading-none lg:text-[2.6rem]">{theme.name}</h3>
           <%!-- Two lines kept for it on every card, so the prompts start level. --%>
           <p class="min-h-[2lh] text-[1.0625rem] font-medium leading-snug text-pretty text-jam-ink/70 lg:text-[1.35rem]">
@@ -308,10 +346,63 @@ defmodule WhoseJamWeb.HomeLive do
               class="size-[1.1em] transition-transform duration-150 group-hover:translate-x-1"
             />
           </button>
+          <%!-- Above the sheet-wide "Host this", so it can be tapped on its
+               own. --%>
+          <button
+            type="button"
+            id={"add-round-#{theme.id}"}
+            phx-click="toggle_round"
+            phx-value-theme={theme.id}
+            aria-pressed={to_string(round_of(@rounds, theme.id) != nil)}
+            class="relative z-10 -mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[1rem] font-bold text-jam-ink/70 underline decoration-jam-ink/25 underline-offset-4 hover:text-jam-ink lg:text-[1.2rem]"
+          >
+            <.icon
+              name={if round_of(@rounds, theme.id), do: "hero-minus-mini", else: "hero-plus-mini"}
+              class="size-[1.1em]"
+            />
+            {if round_of(@rounds, theme.id), do: "Take out of the rounds", else: "Add as a round"}
+          </button>
         </li>
       </ul>
+
+      <%!-- The night lined up: each theme a round, in the order added. --%>
+      <div
+        :if={@rounds != []}
+        id="rounds-bar"
+        class="sticky bottom-0 flex flex-wrap items-center justify-between gap-4 rounded-lg bg-jam-night px-6 py-4 shadow-[0_-0.5rem_1.5rem_rgb(0_0_0/0.35)]"
+      >
+        <p class="min-w-0 text-[1.0625rem] font-semibold text-jam-cream/85 lg:text-[1.35rem]">
+          {rounds_line(@rounds, @themes)}
+        </p>
+        <button
+          type="button"
+          id="host-rounds"
+          phx-click="create_rounds"
+          class="jam-btn shrink-0 text-[1.0625rem] lg:text-[1.35rem]"
+        >
+          {if length(@rounds) == 1, do: "Host 1 round", else: "Host #{length(@rounds)} rounds"}
+        </button>
+      </div>
     </.modal>
     """
+  end
+
+  # The theme's place among the night's rounds (1-based), or nil.
+  defp round_of(rounds, theme_id) do
+    case Enum.find_index(rounds, &(&1 == to_string(theme_id))) do
+      nil -> nil
+      i -> i + 1
+    end
+  end
+
+  # The rounds lined up, by name, in order.
+  defp rounds_line(rounds, themes) do
+    names = for id <- rounds, theme = Enum.find(themes, &(to_string(&1.id) == id)), do: theme.name
+
+    case names do
+      [one] -> "#{one}. Add another for a second round."
+      names -> Enum.join(names, ", then ")
+    end
   end
 
   # How a theme plays, from the styles of its rounds, in the order they come
@@ -319,6 +410,7 @@ defmodule WhoseJamWeb.HomeLive do
   defp how_it_plays(styles) do
     case Enum.uniq(styles) do
       [:guess_who] -> "Guess who picked each song."
+      [:vs] -> "One prompt for everyone; the songs go head to head until one is left."
       [:guess_question] -> "Guess which prompt each song was picked for."
       [:guess_question, :guess_who] -> "Two rounds: guess the prompt, then the person."
       [:guess_who, :guess_question] -> "Two rounds: guess the person, then the prompt."

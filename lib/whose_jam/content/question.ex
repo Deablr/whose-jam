@@ -2,9 +2,10 @@ defmodule WhoseJam.Content.Question do
   @moduledoc """
   A single prompt belonging to a theme.
 
-  `style` is one of `:guess_who`, `:guess_question`, or `:guess_for_player`
-  (reserved, never seeded in v1). `is_example` questions are preview-only:
-  shown to hosts in the lobby and excluded from gameplay selection.
+  `style` is one of `:guess_who`, `:guess_question`, `:vs` (head to head:
+  everyone answers the one prompt and the songs compete, see
+  `WhoseJam.Game.Bracket`), or `:guess_for_player` (reserved, never seeded).
+  `is_example` questions are preview-only: shown to hosts in the lobby and excluded from gameplay selection.
   """
 
   use Ecto.Schema
@@ -12,7 +13,7 @@ defmodule WhoseJam.Content.Question do
 
   alias WhoseJam.Content.Theme
 
-  @styles [:guess_who, :guess_question, :guess_for_player]
+  @styles [:guess_who, :guess_question, :vs, :guess_for_player]
 
   @type t :: %__MODULE__{}
 

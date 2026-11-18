@@ -93,6 +93,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       everyone = Enum.map(@players, &elem(&1, 0))
       Stage.snap(devices, [:host | everyone], "final")
       Stage.hold(to_timeout(second: 1))
+      victory_song(devices, scores)
+      save_playlist(devices)
       exit_game(devices)
       Stage.hold(to_timeout(second: 2))
     end)
@@ -127,6 +129,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> assert_has("p", text: "This screen is ready to play the music.")
     |> fill_in("Time per question", with: "120")
     |> fill_in("Prompts per player", with: "1")
+    # Every song played (the default plays 80% of them, at random).
+    |> fill_in("Songs played (%)", with: "100")
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so
     # those rounds prove the hook works); a real one plays on past it.
@@ -452,6 +456,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     host
     |> assert_has("#reveal-summary", text: picker_line(right, length(fooled)))
 
+    # Some called it and some didn't: a point of its own, on a line of its own.
+    if right > 0 and fooled != [],
+      do: assert_has(host, "#reveal-split", text: "+1 Split the room."),
+      else: refute_has(host, "#reveal-split")
+
     if length(fooled) <= 3 do
       for voter <- fooled, do: assert_has(host, "#reveal-summary", text: name_of(voter))
     end
@@ -529,9 +538,12 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         {_voter, _decoy}, acc -> Map.update!(acc, submitter, &(&1 + 1))
       end)
 
-    if guessed_right?(submitter, votes, bluff),
-      do: Map.update!(scores, submitter, &(&1 + 1)),
-      else: scores
+    fooled = Enum.count(votes, fn {_voter, choice} -> choice != submitter end)
+    split? = fooled > 0 and fooled < length(votes)
+
+    scores
+    |> Map.update!(submitter, &(&1 + if(guessed_right?(submitter, votes, bluff), do: 1, else: 0)))
+    |> Map.update!(submitter, &(&1 + if(split?, do: 1, else: 0)))
   end
 
   # --- finished --------------------------------------------------------------
@@ -576,6 +588,47 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     host
     |> assert_has("#awards dt", text: "Best bluff")
     |> assert_has("#awards dd", text: "fooled #{most_fooled}")
+  end
+
+  # A winner picks one of their own songs to end the night on; the TV plays
+  # it and says whose it is.
+  defp victory_song(devices, scores) do
+    top = scores |> Map.values() |> Enum.max()
+    winner = Enum.find(Enum.map(@players, &elem(&1, 0)), &(scores[&1] == top))
+    {_, winner_name, _, _, song} = List.keyfind!(@players, winner, 0)
+
+    devices.host
+    |> assert_has("#finale-note", text: "pick a victory song", timeout: @wait)
+
+    devices
+    |> Map.fetch!(winner)
+    |> assert_has("#finale-pick h2", text: "Pick your victory song", timeout: @wait)
+    |> Stage.then_snap(winner, "victory-pick")
+    |> within("#finale-pick", &click_button(&1, song))
+    |> assert_has("#finale-on", text: "Your victory song")
+
+    devices.host
+    |> assert_has("#finale-note", text: "Now playing #{winner_name}’s victory song")
+    |> Stage.then_hold(800)
+    |> Stage.then_snap(:host, "victory-song")
+  end
+
+  # The host saves the night's songs to the music service; the TV shows the
+  # playlist's link as a code to scan, and every phone can open it.
+  defp save_playlist(devices) do
+    devices.host
+    |> click_button("Tonight’s playlist")
+    |> click_button("Save it to Mock Music")
+    |> assert_has("#saved-playlist svg", timeout: @wait)
+    |> Stage.then_hold(600)
+    |> Stage.then_snap(:host, "saved-playlist")
+    |> click_button("Back to the scores")
+
+    in_parallel(@players, fn {key, _name, _device, _search, _song} ->
+      devices
+      |> Map.fetch!(key)
+      |> assert_has("#open-saved-playlist", text: "Open it in Mock Music", timeout: @wait)
+    end)
   end
 
   # The host closes the room from the final scoreboard (its confirmation is

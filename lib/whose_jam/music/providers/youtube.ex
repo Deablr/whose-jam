@@ -40,7 +40,7 @@ defmodule WhoseJam.Music.Providers.YouTube do
 
   @behaviour WhoseJam.Music.Provider
 
-  alias WhoseJam.YouTube.{Auth, Client, Credentials}
+  alias WhoseJam.YouTube.{Auth, Client, Credentials, Playlists}
 
   @uri_regex ~r/\Ayoutube:video:[A-Za-z0-9_-]{11}\z/
   @art_regex ~r|\Ahttps://i\.ytimg\.com/vi/[A-Za-z0-9_-]{11}/[a-z0-9_]+\.jpg\z|
@@ -109,6 +109,28 @@ defmodule WhoseJam.Music.Providers.YouTube do
   end
 
   def connect(_params), do: {:error, :invalid_connect}
+
+  @impl true
+  def playlist_authorize_url(state, redirect_uri),
+    do: Auth.playlist_authorize_url(state, redirect_uri)
+
+  # The playlist sign-in's token makes the playlist and is dropped.
+  @impl true
+  def save_playlist(%{"code" => code, "redirect_uri" => redirect_uri}, name, uris)
+      when is_binary(code) and is_binary(redirect_uri) do
+    video_ids = for "youtube:video:" <> id <- uris, do: id
+
+    with {:ok, token} <- Auth.playlist_token(code, redirect_uri) do
+      Playlists.create(
+        token,
+        name,
+        "The songs we played at Whose Jam, picked by the room.",
+        video_ids
+      )
+    end
+  end
+
+  def save_playlist(_params, _name, _uris), do: {:error, :invalid_connect}
 
   @impl true
   def eligible?(auth), do: Map.get(auth, :signed_in?) == true

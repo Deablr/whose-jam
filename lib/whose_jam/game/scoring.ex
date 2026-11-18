@@ -25,6 +25,10 @@ defmodule WhoseJam.Game.Scoring do
       correct answer (the submitter naming themselves) predicts that nobody
       falls for it: +1 when at least one player voted and none was fooled.
       Audience votes count towards neither.
+    * The submitter earns +1 more when their song split the room: at least
+      one player called it and at least one player didn't (`split_room?/2`).
+      A song nobody called is too obscure, one everybody called too obvious.
+      Audience votes don't count either way.
 
   ## Return shape
 
@@ -33,7 +37,8 @@ defmodule WhoseJam.Game.Scoring do
   A caller that wants explicit zeros can merge against its own roster.
 
   Guarantee: `Enum.sum(Map.values(result)) == correct_votes + fooled_player_votes`,
-  plus 1 when the forecast was right (`forecast_right?/2`).
+  plus 1 when the forecast was right (`forecast_right?/2`) and 1 when the song
+  split the room (`split_room?/2`), each while its way of scoring is on.
   """
 
   @type id :: String.t()
@@ -52,15 +57,18 @@ defmodule WhoseJam.Game.Scoring do
         }
 
   @typedoc """
-  Which of the three ways to score are on (all of them, unless said
+  Which of the four ways to score are on (all of them, unless said
   otherwise): `correct?` (+1 to a player's right guess; the audience's right
-  guesses always score, as they are all an audience member can score), `fooled?` (+1 to the picker per
-  player fooled) and `predictions?` (+1 to the picker for a right forecast).
+  guesses always score, as they are all an audience member can score),
+  `fooled?` (+1 to the picker per player fooled), `predictions?` (+1 to the
+  picker for a right forecast) and `split?` (+1 to the picker when the song
+  split the room).
   """
   @type opts :: %{
           optional(:correct?) => boolean(),
           optional(:fooled?) => boolean(),
-          optional(:predictions?) => boolean()
+          optional(:predictions?) => boolean(),
+          optional(:split?) => boolean()
         }
 
   @doc """
@@ -77,13 +85,38 @@ defmodule WhoseJam.Game.Scoring do
         opts \\ %{}
       )
       when is_list(votes) and is_map(opts) do
-    on = Map.merge(%{correct?: true, fooled?: true, predictions?: true}, opts)
+    on = Map.merge(%{correct?: true, fooled?: true, predictions?: true, split?: true}, opts)
 
-    deltas = Enum.reduce(votes, %{}, &tally(&1, &2, submitter_id, correct_choice, on))
+    votes
+    |> Enum.reduce(%{}, &tally(&1, &2, submitter_id, correct_choice, on))
+    |> add_if(on.predictions? and forecast_right?(round, votes), submitter_id)
+    |> add_if(on.split? and split_room?(round, votes), submitter_id)
+  end
 
-    if on.predictions? and forecast_right?(round, votes),
-      do: add(deltas, submitter_id, 1),
-      else: deltas
+  @doc """
+  Whether the round's song split the room: at least one player (not audience)
+  voted for the correct answer and at least one voted for another.
+
+  ## Examples
+
+      iex> round = %{style: :guess_who, submitter_id: "a", correct_choice: "a"}
+      iex> votes = [
+      ...>   %{voter_id: "b", voter_role: :player, choice: "a"},
+      ...>   %{voter_id: "c", voter_role: :player, choice: "b"}
+      ...> ]
+      iex> WhoseJam.Game.Scoring.split_room?(round, votes)
+      true
+      iex> WhoseJam.Game.Scoring.split_room?(round, tl(votes))
+      false
+  """
+  @spec split_room?(round(), [vote()]) :: boolean()
+  def split_room?(%{correct_choice: correct_choice}, votes) when is_list(votes) do
+    {right, wrong} =
+      votes
+      |> Enum.reject(&(&1.voter_role == :audience))
+      |> Enum.split_with(&(&1.choice == correct_choice))
+
+    right != [] and wrong != []
   end
 
   @doc """
@@ -141,4 +174,7 @@ defmodule WhoseJam.Game.Scoring do
   end
 
   defp add(acc, id, points), do: Map.update(acc, id, points, &(&1 + points))
+
+  defp add_if(acc, true, id), do: add(acc, id, 1)
+  defp add_if(acc, false, _id), do: acc
 end
