@@ -325,12 +325,17 @@ defmodule WhoseJam.Game do
   dropped just before. Any other time the notice can't be a host's:
   `{:error, :no_host_screen}`. At most four sign-ins are under way at once
   (`{:error, :too_many_sign_ins}`).
+
+  A sign-in to save a finished game's playlist (`purpose` `:playlist`) also
+  keeps the finished game up while it is under way.
   """
-  @spec host_signing_in(String.t()) :: {:ok, String.t()} | {:error, term()}
-  def host_signing_in(code), do: command(code, :host_signing_in)
+  @spec host_signing_in(String.t(), :connect | :playlist) ::
+          {:ok, String.t()} | {:error, term()}
+  def host_signing_in(code, purpose \\ :connect) when purpose in [:connect, :playlist],
+    do: command(code, {:host_signing_in, purpose})
 
   @doc """
-  The sign-in `sign_in_id` (from `host_signing_in/1`) is over, whatever its
+  The sign-in `sign_in_id` (from `host_signing_in/2`) is over, whatever its
   outcome: the OAuth callback came back. Once no sign-in is under way, the
   usual 30-second grace applies again. Only an id that was let in and is
   still under way counts, and only once: `{:error, :unknown_sign_in}`

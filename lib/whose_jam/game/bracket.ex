@@ -17,7 +17,9 @@ defmodule WhoseJam.Game.Bracket do
     * Each vote a song wins is +1 to whoever picked it.
     * A vote for one's own song doesn't count (anyone may cast it, so every
       phone has the same choices and gives nobody away).
-    * The champion's picker gets +2 more (`champion_bonus/0`).
+    * The champion's picker gets +2 more (`champion_bonus/0`), when the final
+      was played to a vote (the server decides: a lone song, a skipped final
+      or a walkover crowns nobody).
   """
 
   @type entry :: %{required(:player_id) => String.t(), required(:song) => map()}

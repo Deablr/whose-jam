@@ -2781,4 +2781,50 @@ defmodule WhoseJam.Game.ServerTest do
                {:ok, "https://x.example/p"}
     end
   end
+
+  describe "fixes from review, round 2" do
+    test "collapsed, a mixed theme keeps head to head in its place in the sequence" do
+      theme = insert_theme([:vs, :guess_who])
+      insert_questions(theme, :vs, 3)
+      insert_questions(theme, :guess_who, 8)
+      {code, ids} = lobby_with_players(theme, 3, %{subrounds_enabled?: false})
+      :ok = Game.start_game(code)
+
+      view = Game.get_state(code)
+      assert view.subround_total == 2
+      assert view.subround_styles == [:vs]
+      assert [%{style: :vs}] = Game.player_view(code, hd(ids)).me.assigned
+    end
+
+    test "only a playlist sign-in keeps a finished game up" do
+      put_test_env(:finished_shutdown_ms, 300)
+      {code, ids} = lobby_with_players(guess_who_theme(), 3)
+      host = start_supervised!({Agent, fn -> nil end})
+      :ok = Game.attach_host(code, host)
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      play_to_finish(code)
+
+      # A sign-in to connect a service changes nothing: the game closes.
+      assert {:ok, _id} = Game.host_signing_in(code)
+      assert_receive {:game_ended, :idle}, 1_000
+    end
+
+    test "a playlist sign-in on a finished game keeps it up while it is under way" do
+      put_test_env(:finished_shutdown_ms, 300)
+      put_test_env(:sign_in_grace_ms, 1_200)
+      {code, ids} = lobby_with_players(guess_who_theme(), 3)
+      host = start_supervised!({Agent, fn -> nil end})
+      :ok = Game.attach_host(code, host)
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      play_to_finish(code)
+
+      assert {:ok, _id} = Game.host_signing_in(code, :playlist)
+      refute_receive {:game_ended, _}, 700
+      assert_receive {:game_ended, :idle}, 1_500
+    end
+  end
 end

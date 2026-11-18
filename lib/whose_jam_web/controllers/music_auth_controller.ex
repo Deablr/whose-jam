@@ -4,7 +4,7 @@ defmodule WhoseJamWeb.MusicAuthController do
 
   `authorize/2` sends the host off to the provider with the room code and
   provider id signed into the `state` parameter, first telling the game its
-  host screen is away signing in (`WhoseJam.Game.host_signing_in/1`), so
+  host screen is away signing in (`WhoseJam.Game.host_signing_in/2`), so
   leaving for the provider's page doesn't end the game; `callback/2` recovers them,
   hands the provider's `connect/1` the auth code, stores the result on the
   game via `WhoseJam.Game.set_music/3`, and ends the sign-in
@@ -40,7 +40,7 @@ defmodule WhoseJamWeb.MusicAuthController do
          :ok <- ensure_configured(provider),
          :ok <- ensure_playlist_saving(provider),
          :ok <- ensure_playlist_to_save(room_code, provider) do
-      sign_in = sign_in_id(Game.host_signing_in(room_code))
+      sign_in = sign_in_id(Game.host_signing_in(room_code, :playlist))
 
       state =
         Phoenix.Token.sign(conn, @state_salt, %{

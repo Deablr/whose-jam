@@ -77,7 +77,7 @@ defmodule WhoseJam.Game.Server do
   the server monitors it. When the last one closes and none comes back within
   a short grace (30s; a refresh or a dropped connection comes back sooner),
   the game ends. While host screens are away signing in to a music service
-  (each from `WhoseJam.Game.host_signing_in/1` until its OAuth callback calls
+  (each from `WhoseJam.Game.host_signing_in/2` until its OAuth callback calls
   `WhoseJam.Game.host_back_from_sign_in/2`, for 15 minutes at most) the game
   waits for them that long instead. Until a host screen
   has attached, nothing is watched (the idle timeout covers a game nobody
@@ -573,7 +573,7 @@ defmodule WhoseJam.Game.Server do
   # (see `host_back_from_sign_in`). One that never comes back drops out when
   # its window closes. Past @max_sign_ins at once, new ones are refused rather
   # than pushing out one under way.
-  def handle_call(:host_signing_in, _from, state) do
+  def handle_call({:host_signing_in, purpose}, _from, state) do
     sign_ins = open_sign_ins(state)
 
     cond do
@@ -587,7 +587,9 @@ defmodule WhoseJam.Game.Server do
         id = generate_id()
         sign_ins = Map.put(sign_ins, id, now_ms() + sign_in_grace_ms())
         # A finished game waits for a host saving its playlist.
-        state = keep_finished(state, sign_in_grace_ms())
+        state =
+          if purpose == :playlist, do: keep_finished(state, sign_in_grace_ms()), else: state
+
         {:reply, {:ok, id}, %{state | host: %{state.host | sign_ins: sign_ins}}}
     end
   end
@@ -794,14 +796,18 @@ defmodule WhoseJam.Game.Server do
     ordered_styles = Enum.uniq(theme.style_sequence)
     pools = Map.new(ordered_styles, &{&1, Content.game_questions(theme.id, &1)})
 
-    # Head to head is always a sub-round of its own.
-    {vs, others} = Enum.split_with(ordered_styles, &(&1 == :vs))
-
+    # Head to head is always a sub-round of its own, in its place in the
+    # sequence; collapsed, the other styles around it share one.
     groups =
-      if config.subrounds_enabled? or others == [] do
+      if config.subrounds_enabled? do
         Enum.map(ordered_styles, &[&1])
       else
-        [others | Enum.map(vs, &[&1])]
+        ordered_styles
+        |> Enum.chunk_by(&(&1 == :vs))
+        |> Enum.flat_map(fn
+          [:vs | _] = vs -> Enum.map(vs, &[&1])
+          others -> [others]
+        end)
       end
 
     Enum.map(groups, fn group ->
