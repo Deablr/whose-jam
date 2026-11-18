@@ -27,6 +27,8 @@ defmodule WhoseJamWeb.Router do
     # The TV and host console are one screen; keep the old TV URL working.
     live "/tv/:code", HostLive
 
+    get "/credits", CreditsController, :index
+
     get "/claim/:token", PlayerSessionController, :claim
     get "/auth/:provider", MusicAuthController, :authorize
     get "/auth/:provider/callback", MusicAuthController, :callback
