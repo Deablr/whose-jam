@@ -29,6 +29,8 @@ defmodule WhoseJam.Spotify.Auth do
 
   # Scopes required for the Web Playback SDK and playback control.
   @scopes "streaming user-read-email user-read-private user-modify-playback-state user-read-playback-state"
+  # The one-off sign-in that saves the night's playlist asks for this alone.
+  @playlist_scopes "playlist-modify-public"
 
   @doc """
   Builds the Spotify authorization URL to redirect the host to.
@@ -41,7 +43,18 @@ defmodule WhoseJam.Spotify.Auth do
   URL string.
   """
   @spec authorize_url(String.t(), String.t()) :: String.t() | {:error, :not_configured}
-  def authorize_url(state, redirect_uri) do
+  def authorize_url(state, redirect_uri), do: authorize_url(state, redirect_uri, @scopes)
+
+  @doc """
+  Like `authorize_url/2`, for the one-off sign-in that saves the night's
+  playlist (see `WhoseJam.Spotify.Playlists`): it asks only to make a public
+  playlist.
+  """
+  @spec playlist_authorize_url(String.t(), String.t()) :: String.t() | {:error, :not_configured}
+  def playlist_authorize_url(state, redirect_uri),
+    do: authorize_url(state, redirect_uri, @playlist_scopes)
+
+  defp authorize_url(state, redirect_uri, scopes) do
     case Credentials.fetch() do
       {:ok, %{client_id: client_id}} ->
         query =
@@ -49,7 +62,7 @@ defmodule WhoseJam.Spotify.Auth do
             client_id: client_id,
             response_type: "code",
             redirect_uri: redirect_uri,
-            scope: @scopes,
+            scope: scopes,
             state: state
           )
 

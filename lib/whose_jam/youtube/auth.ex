@@ -9,7 +9,9 @@ defmodule WhoseJam.YouTube.Auth do
   play the songs. It asks only for the `openid` scope and keeps nothing: no
   tokens, and no name or email (the host screen is shown to the whole room,
   and anyone with the room code can open it). Nothing after the sign-in calls
-  Google on the host's behalf — song search uses the server's API key, see
+  Google on the host's behalf, except saving the night's playlist when the
+  host asks to, with a sign-in of its own whose token is used once and
+  dropped (`playlist_authorize_url/2`) — song search uses the server's API key, see
   `WhoseJam.YouTube.Client`.
 
   It cannot prove the account has **YouTube Premium**. No Google API or OAuth
@@ -33,6 +35,9 @@ defmodule WhoseJam.YouTube.Auth do
   @token_url "https://oauth2.googleapis.com/token"
 
   @scopes "openid"
+  # The one-off sign-in that saves the night's playlist: making a playlist
+  # needs the YouTube account scope (Google words it as managing the account).
+  @playlist_scopes "https://www.googleapis.com/auth/youtube"
 
   @doc """
   Builds the Google authorization URL to redirect the host to.
@@ -42,14 +47,26 @@ defmodule WhoseJam.YouTube.Auth do
   is always shown, so "Switch account" really can switch.
   """
   @spec authorize_url(String.t(), String.t()) :: {:ok, String.t()} | {:error, :not_configured}
-  def authorize_url(state, redirect_uri) do
+  def authorize_url(state, redirect_uri), do: authorize_url(state, redirect_uri, @scopes)
+
+  @doc """
+  Like `authorize_url/2`, for the one-off sign-in that saves the night's
+  playlist (see `WhoseJam.YouTube.Playlists`). Its token is used once, by
+  `playlist_token/2`'s caller, and never kept.
+  """
+  @spec playlist_authorize_url(String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, :not_configured}
+  def playlist_authorize_url(state, redirect_uri),
+    do: authorize_url(state, redirect_uri, @playlist_scopes)
+
+  defp authorize_url(state, redirect_uri, scopes) do
     with {:ok, %{client_id: client_id}} <- Credentials.fetch_oauth_client() do
       query =
         URI.encode_query(
           client_id: client_id,
           response_type: "code",
           redirect_uri: redirect_uri,
-          scope: @scopes,
+          scope: scopes,
           state: state,
           prompt: "select_account"
         )
@@ -69,6 +86,15 @@ defmodule WhoseJam.YouTube.Auth do
   """
   @spec sign_in(String.t(), String.t()) :: :ok | {:error, term()}
   def sign_in(code, redirect_uri) when is_binary(code) and is_binary(redirect_uri) do
+    with {:ok, _token} <- playlist_token(code, redirect_uri), do: :ok
+  end
+
+  @doc """
+  Exchanges an authorization `code` for its access token, for the one
+  request the playlist sign-in was for. The caller drops it after.
+  """
+  @spec playlist_token(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def playlist_token(code, redirect_uri) when is_binary(code) and is_binary(redirect_uri) do
     with {:ok, client} <- Credentials.fetch_oauth_client() do
       exchange_code(client, code, redirect_uri)
     end
@@ -88,7 +114,7 @@ defmodule WhoseJam.YouTube.Auth do
     )
     |> case do
       {:ok, %Req.Response{status: 200, body: %{"access_token" => token}}} when is_binary(token) ->
-        :ok
+        {:ok, token}
 
       {:ok, %Req.Response{status: 200, body: body}} ->
         {:error, {:unexpected_token_body, body}}

@@ -37,18 +37,28 @@ defmodule WhoseJam.Game do
   defdelegate max_players, to: Server
 
   @doc """
-  Create a new game for `theme_id`, optionally with host setting `overrides`.
+  Create a new game for a theme, or for several played one after another
+  (a list of theme ids, in the order they are played; the same theme twice
+  counts once), optionally with host setting `overrides`.
 
   Returns `{:ok, code}` with a freshly minted, unused room code, or
-  `{:error, :theme_not_found}` if the theme does not exist.
+  `{:error, :theme_not_found}` if a theme does not exist (or none is given).
   """
-  @spec create_game(term(), map()) :: {:ok, String.t()} | {:error, term()}
-  def create_game(theme_id, host_overrides \\ %{}) do
-    case fetch_theme(theme_id) do
-      {:ok, theme} -> start_with_free_code(theme, host_overrides, @max_code_attempts)
-      :error -> {:error, :theme_not_found}
+  @spec create_game(term() | [term()], map()) :: {:ok, String.t()} | {:error, term()}
+  def create_game(theme_ids, host_overrides \\ %{})
+
+  def create_game(theme_ids, host_overrides) when is_list(theme_ids) do
+    themes = theme_ids |> Enum.uniq() |> Enum.map(&fetch_theme/1)
+
+    if themes != [] and Enum.all?(themes, &match?({:ok, _}, &1)) do
+      themes = themes |> Enum.map(&elem(&1, 1)) |> Enum.uniq_by(& &1.id)
+      start_with_free_code(themes, host_overrides, @max_code_attempts)
+    else
+      {:error, :theme_not_found}
     end
   end
+
+  def create_game(theme_id, host_overrides), do: create_game([theme_id], host_overrides)
 
   @doc "Whether a live game is registered under `code`."
   @spec exists?(String.t()) :: boolean()
@@ -81,6 +91,10 @@ defmodule WhoseJam.Game do
   joining after the game has started, becomes `:audience`. When the audience
   soft cap (~20) is exceeded the result also carries
   `audience_soft_cap_exceeded: true` — a friendly indicator, never a rejection.
+
+  The name is kept trimmed, its whitespace runs made single spaces, and cut to
+  the room's `name_max_length` setting; a name with nothing left is
+  `{:error, :invalid_name}`.
   """
   @spec join(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def join(code, name), do: command(code, {:join, name})
@@ -91,6 +105,23 @@ defmodule WhoseJam.Game do
   """
   @spec rejoin(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def rejoin(code, player_id), do: command(code, {:rejoin, player_id})
+
+  @doc """
+  A player (or audience member) leaves the game, until it is finished
+  (`{:error, :finished}` after). The room topic first carries
+  `{:participant_removed, player_id, :left}`; then the game carries on
+  without them: their songs still to come are dropped, and they are no longer
+  a choice in the rounds to come.
+  """
+  @spec leave(String.t(), String.t()) :: :ok | {:error, term()}
+  def leave(code, player_id), do: command(code, {:remove, player_id, :left})
+
+  @doc """
+  The host removes a player (or audience member), as `leave/2` does, with
+  `{:participant_removed, player_id, :removed}` on the room topic.
+  """
+  @spec remove_player(String.t(), String.t()) :: :ok | {:error, term()}
+  def remove_player(code, player_id), do: command(code, {:remove, player_id, :removed})
 
   @doc "Apply host setting `overrides` (lobby only)."
   @spec set_config(String.t(), map()) :: :ok | {:error, term()}
@@ -180,6 +211,70 @@ defmodule WhoseJam.Game do
   @spec cast_vote(String.t(), String.t(), term()) :: :ok | {:error, term()}
   def cast_vote(code, voter_id, choice), do: command(code, {:cast_vote, voter_id, choice})
 
+  @doc """
+  Give the song in play another second, from someone who has locked in,
+  once the vote's countdown is running (`{:error, :no_countdown}` before,
+  `{:error, :not_locked_in}` from anyone else). There is no limit, but taps
+  closer together than a moment count once (`{:error, :too_fast}`).
+  """
+  @spec extend_song(String.t(), String.t()) :: :ok | {:error, term()}
+  def extend_song(code, player_id), do: command(code, {:extend_song, player_id})
+
+  @doc """
+  A winner of a finished game picks one of their own songs that was played,
+  by its uri, to play the night out. The first pick stands
+  (`{:error, :already_picked}` after it); `{:error, :not_winner}` from anyone
+  else, `{:error, :not_played}` for a song that wasn't theirs or wasn't
+  played. The public view then carries `finale: %{player_id, song}`.
+  """
+  @spec pick_finale(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def pick_finale(code, player_id, uri), do: command(code, {:pick_finale, player_id, uri})
+
+  @doc """
+  Keep the link to the playlist the host saved of a finished game's songs
+  (see `WhoseJam.Music.save_playlist/4`), so every screen can offer it: the
+  public view carries it as `saved_playlist`. Only an `https://` link of a
+  finished game (`{:error, :bad_link}`, `{:error, :not_finished}`).
+  """
+  @spec set_saved_playlist(String.t(), String.t()) :: :ok | {:error, term()}
+  def set_saved_playlist(code, url), do: command(code, {:set_saved_playlist, url})
+
+  @doc """
+  Save a finished game's songs, in the order played, as a playlist in the
+  host's account with the room's music service (`WhoseJam.Music.save_playlist/4`;
+  `params` are a playlist sign-in's callback params, or `%{}` for a service
+  without one), and keep its link (`set_saved_playlist/2`). The music service
+  is called from the caller's process, never the game's. Returns the link.
+  Once one is saved, it is the link: the service isn't asked again (each
+  save spends its quota, and anyone with the room code can ask).
+  """
+  @spec save_playlist(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
+  def save_playlist(code, params) when is_map(params) do
+    case get_state(code) do
+      %{phase: :finished, saved_playlist: "https://" <> _ = url} -> {:ok, url}
+      view -> save_new_playlist(code, view, params)
+    end
+  end
+
+  defp save_new_playlist(code, view, params) do
+    with %{phase: :finished, music: %{id: provider_id}, playlist: [_ | _] = songs} <-
+           view || {:error, :not_found},
+         {:ok, mod} <- Music.fetch_provider(provider_id) |> ok_or(:unknown_provider),
+         {:ok, url} <-
+           Music.save_playlist(mod, params, playlist_name(), Enum.map(songs, & &1.uri)),
+         :ok <- set_saved_playlist(code, url) do
+      {:ok, url}
+    else
+      {:error, _reason} = error -> error
+      _not_finished -> {:error, :not_finished}
+    end
+  end
+
+  defp ok_or({:ok, _} = ok, _reason), do: ok
+  defp ok_or(:error, reason), do: {:error, reason}
+
+  defp playlist_name, do: "Whose Jam, " <> Calendar.strftime(Date.utc_today(), "%B %-d")
+
   @doc "Host action: skip past the current round."
   @spec skip_song(String.t()) :: :ok | {:error, term()}
   def skip_song(code), do: command(code, :skip_song)
@@ -230,12 +325,17 @@ defmodule WhoseJam.Game do
   dropped just before. Any other time the notice can't be a host's:
   `{:error, :no_host_screen}`. At most four sign-ins are under way at once
   (`{:error, :too_many_sign_ins}`).
+
+  A sign-in to save a finished game's playlist (`purpose` `:playlist`) also
+  keeps the finished game up while it is under way.
   """
-  @spec host_signing_in(String.t()) :: {:ok, String.t()} | {:error, term()}
-  def host_signing_in(code), do: command(code, :host_signing_in)
+  @spec host_signing_in(String.t(), :connect | :playlist) ::
+          {:ok, String.t()} | {:error, term()}
+  def host_signing_in(code, purpose \\ :connect) when purpose in [:connect, :playlist],
+    do: command(code, {:host_signing_in, purpose})
 
   @doc """
-  The sign-in `sign_in_id` (from `host_signing_in/1`) is over, whatever its
+  The sign-in `sign_in_id` (from `host_signing_in/2`) is over, whatever its
   outcome: the OAuth callback came back. Once no sign-in is under way, the
   usual 30-second grace applies again. Only an id that was let in and is
   still under way counts, and only once: `{:error, :unknown_sign_in}`
@@ -264,16 +364,16 @@ defmodule WhoseJam.Game do
     ArgumentError -> :error
   end
 
-  defp start_with_free_code(_theme, _overrides, 0), do: {:error, :code_exhausted}
+  defp start_with_free_code(_themes, _overrides, 0), do: {:error, :code_exhausted}
 
-  defp start_with_free_code(theme, overrides, attempts) do
+  defp start_with_free_code(themes, overrides, attempts) do
     code = Codes.generate()
 
-    spec = {Server, code: code, theme: theme, overrides: overrides}
+    spec = {Server, code: code, themes: themes, overrides: overrides}
 
     case DynamicSupervisor.start_child(@supervisor, spec) do
       {:ok, _pid} -> {:ok, code}
-      {:error, {:already_started, _pid}} -> start_with_free_code(theme, overrides, attempts - 1)
+      {:error, {:already_started, _pid}} -> start_with_free_code(themes, overrides, attempts - 1)
       {:error, reason} -> {:error, reason}
     end
   end

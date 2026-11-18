@@ -12,7 +12,7 @@ defmodule WhoseJam.Content.Theme do
 
   alias WhoseJam.Content.Question
 
-  @styles [:guess_who, :guess_question, :guess_for_player]
+  @styles [:guess_who, :guess_question, :vs, :guess_for_player]
 
   @type t :: %__MODULE__{}
 

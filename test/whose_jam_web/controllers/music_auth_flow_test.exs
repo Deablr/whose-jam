@@ -42,6 +42,19 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
 
     def connect(%{"code" => "free"}), do: {:ok, %{eligible?: false}}
     def connect(%{"code" => "boom"}), do: {:error, :exchange_failed}
+
+    def playlist_authorize_url(state, redirect_uri) do
+      {:ok,
+       "https://stub.example/playlist?" <>
+         URI.encode_query(state: state, redirect_uri: redirect_uri)}
+    end
+
+    # The "code" decides the outcome; the link says what the playlist got.
+    def save_playlist(%{"code" => "good", "redirect_uri" => _uri}, name, uris),
+      do: {:ok, "https://stub.example/list?" <> URI.encode_query(name: name, n: length(uris))}
+
+    def save_playlist(%{"code" => "plain"}, _name, _uris), do: {:ok, "http://stub.example/list"}
+    def save_playlist(_params, _name, _uris), do: {:error, :exchange_failed}
   end
 
   setup do
@@ -315,5 +328,122 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     # The host's own callback does end it.
     get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{host_state}")
     assert_receive {:game_ended, :host_left}, 1000
+  end
+
+  describe "saving the night's playlist" do
+    # Plays a two-player game on the stub to its end: each voter calls it.
+    defp finished_game(room) do
+      :ok = Game.set_config(room, %{min_players: 2, answer_s_per_question: 5})
+      ids = for i <- 1..2, do: elem(Game.join(room, "P#{i}"), 1).player_id
+      :ok = Game.set_music(room, :oauth_stub, %{eligible?: true})
+      :ok = Game.start_game(room)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> room)
+
+      for id <- ids, q <- Game.player_view(room, id).me.assigned do
+        song = %{uri: "stub:#{id}", name: id, artist: "A", album_art_url: nil}
+        :ok = Game.submit_song(room, id, q.question_id, song)
+      end
+
+      play_out(room, ids)
+    end
+
+    defp play_out(room, ids) do
+      receive do
+        {:game_state, %{phase: :finished} = view} ->
+          view
+
+        {:game_state, %{phase: :playing, round_state: :revealing}} ->
+          Game.song_ended(room)
+          play_out(room, ids)
+
+        {:game_state, %{phase: :playing, round_state: :voting} = view} ->
+          picker = view.round.song.name
+
+          for id <- ids,
+              id not in view.round.voters,
+              do: Game.cast_vote(room, id, if(id == picker, do: hd(ids -- [id]), else: picker))
+
+          play_out(room, ids)
+
+        {:game_state, _view} ->
+          play_out(room, ids)
+      after
+        10_000 -> flunk("the game never finished")
+      end
+    end
+
+    defp authorize_playlist(conn, room) do
+      url = conn |> get("/auth/oauth_stub?code=#{room}&for=playlist") |> redirected_to(302)
+      assert url =~ "https://stub.example/playlist?"
+      query = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      assert query["redirect_uri"] =~ "/auth/oauth_stub/callback"
+      query["state"]
+    end
+
+    test "a finished game's songs are saved, and every screen gets the link",
+         %{conn: conn, room: room} do
+      final = finished_game(room)
+      assert final.saved_playlist == nil
+
+      state = authorize_playlist(conn, room)
+      conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
+
+      assert redirected_to(conn) == "/host/#{room}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "saved to OauthStub"
+
+      link = Game.get_state(room).saved_playlist
+      assert link =~ "https://stub.example/list?"
+      assert URI.decode_query(URI.parse(link).query)["n"] == "#{length(final.playlist)}"
+      # The connection the game plays with is untouched.
+      assert Game.host_state(room).music_auth == %{eligible?: true}
+    end
+
+    test "a failed or cancelled save, or one that returns no https link, saves nothing",
+         %{conn: conn, room: room} do
+      finished_game(room)
+
+      for code <- ["boom", "plain"] do
+        state = authorize_playlist(conn, room)
+        conn = get(build_conn(), "/auth/oauth_stub/callback?code=#{code}&state=#{state}")
+        assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Couldn’t save the playlist"
+      end
+
+      state = authorize_playlist(conn, room)
+      conn = get(build_conn(), "/auth/oauth_stub/callback?error=access_denied&state=#{state}")
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Saving the playlist"
+      assert Game.get_state(room).saved_playlist == nil
+    end
+
+    test "a game still being played has no playlist to save", %{conn: conn, room: room} do
+      :ok = Game.set_music(room, :oauth_stub, %{eligible?: true})
+      conn = get(conn, "/auth/oauth_stub?code=#{room}&for=playlist")
+
+      # Refused before the sign-in: nobody grants a scope for nothing.
+      assert redirected_to(conn) == "/host/#{room}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "once the game is over"
+      assert Game.get_state(room).saved_playlist == nil
+    end
+
+    test "once saved, it stays saved: another sign-in is refused", %{conn: conn, room: room} do
+      finished_game(room)
+      state = authorize_playlist(conn, room)
+      get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
+      link = Game.get_state(room).saved_playlist
+      assert link
+
+      conn = get(build_conn(), "/auth/oauth_stub?code=#{room}&for=playlist")
+      assert redirected_to(conn) == "/host/#{room}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "already saved"
+      assert Game.get_state(room).saved_playlist == link
+    end
+
+    test "a service that can't save playlists says so", %{conn: conn, room: room} do
+      conn = get(conn, "/auth/spotify?code=#{room}&for=playlist")
+      # Spotify can, but isn't configured here; Mock doesn't sign in at all.
+      assert redirected_to(conn) == "/host/#{room}"
+
+      conn = get(build_conn(), "/auth/mock?code=#{room}&for=playlist")
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "doesn't connect this way"
+    end
   end
 end

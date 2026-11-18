@@ -16,7 +16,9 @@ defmodule WhoseJam.Music.Providers.Spotify do
   @behaviour WhoseJam.Music.Provider
 
   alias WhoseJam.Music.Cache
-  alias WhoseJam.Spotify.{Auth, Client, Credentials}
+  alias WhoseJam.Spotify.{Auth, Client, Credentials, Playlists}
+
+  @playlist_description "The songs we played at Whose Jam, picked by the room."
 
   @uri_regex ~r/\Aspotify:track:[A-Za-z0-9]{22}\z/
   @art_regex ~r{\Ahttps://i\.scdn\.co/image/[A-Za-z0-9]+\z}
@@ -89,6 +91,25 @@ defmodule WhoseJam.Music.Providers.Spotify do
   end
 
   def connect(_params), do: {:error, :invalid_connect}
+
+  @impl true
+  def playlist_authorize_url(state, redirect_uri) do
+    case Auth.playlist_authorize_url(state, redirect_uri) do
+      url when is_binary(url) -> {:ok, url}
+      {:error, _} = error -> error
+    end
+  end
+
+  # The playlist sign-in's token makes the playlist and is dropped.
+  @impl true
+  def save_playlist(%{"code" => code, "redirect_uri" => redirect_uri}, name, uris)
+      when is_binary(code) and is_binary(redirect_uri) do
+    with {:ok, tokens} <- Auth.exchange_code(code, redirect_uri) do
+      Playlists.create(tokens.access_token, name, @playlist_description, uris)
+    end
+  end
+
+  def save_playlist(_params, _name, _uris), do: {:error, :invalid_connect}
 
   @impl true
   def eligible?(auth), do: Map.get(auth, :premium?) == true

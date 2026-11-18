@@ -4,7 +4,7 @@ defmodule WhoseJamWeb.MusicAuthController do
 
   `authorize/2` sends the host off to the provider with the room code and
   provider id signed into the `state` parameter, first telling the game its
-  host screen is away signing in (`WhoseJam.Game.host_signing_in/1`), so
+  host screen is away signing in (`WhoseJam.Game.host_signing_in/2`), so
   leaving for the provider's page doesn't end the game; `callback/2` recovers them,
   hands the provider's `connect/1` the auth code, stores the result on the
   game via `WhoseJam.Game.set_music/3`, and ends the sign-in
@@ -14,6 +14,12 @@ defmodule WhoseJamWeb.MusicAuthController do
 
   Providers whose `connect_kind/0` is `:none` never touch this controller;
   `HostLive` connects them on click.
+
+  The same round-trip saves a finished game's playlist to the host's account
+  (`/auth/:provider?code=ROOM&for=playlist`): the provider's
+  `playlist_authorize_url/2` asks only for that, and the callback hands its
+  code to `WhoseJam.Game.save_playlist/2`, which keeps the playlist's link and
+  no token.
   """
   use WhoseJamWeb, :controller
 
@@ -25,6 +31,38 @@ defmodule WhoseJamWeb.MusicAuthController do
   # =========================================================================
   # /auth/:provider?code=ROOMCODE  — kick off the OAuth redirect
   # =========================================================================
+
+  # Saving the night's playlist: a sign-in of its own, once the game is over.
+  def authorize(conn, %{"provider" => provider_id, "code" => room_code, "for" => "playlist"})
+      when is_binary(provider_id) and is_binary(room_code) do
+    with {:ok, provider} <- redirect_provider(provider_id),
+         :ok <- ensure_game(room_code),
+         :ok <- ensure_configured(provider),
+         :ok <- ensure_playlist_saving(provider),
+         :ok <- ensure_playlist_to_save(room_code, provider) do
+      sign_in = sign_in_id(Game.host_signing_in(room_code, :playlist))
+
+      state =
+        Phoenix.Token.sign(conn, @state_salt, %{
+          room: room_code,
+          provider: provider_id,
+          sign_in: sign_in,
+          for: :playlist
+        })
+
+      case provider.playlist_authorize_url(state, redirect_uri(provider)) do
+        {:ok, url} ->
+          redirect(conn, external: url)
+
+        {:error, _} ->
+          conn
+          |> back_from_sign_in(room_code, sign_in)
+          |> failure(:not_configured, provider, room_code)
+      end
+    else
+      {:error, reason, provider} -> failure(conn, reason, provider, room_code)
+    end
+  end
 
   def authorize(conn, %{"provider" => provider_id, "code" => room_code})
       when is_binary(provider_id) and is_binary(room_code) do
@@ -72,10 +110,10 @@ defmodule WhoseJamWeb.MusicAuthController do
   # Host denied the authorization prompt.
   def callback(conn, %{"error" => _error, "state" => state} = params) when is_binary(state) do
     case recover_state(conn, params["provider"], state) do
-      {:ok, room_code, provider, sign_in} ->
+      {:ok, room_code, provider, sign_in, purpose} ->
         conn
         |> back_from_sign_in(room_code, sign_in)
-        |> put_flash(:error, "#{provider.name()} connection was cancelled.")
+        |> put_flash(:error, cancelled_message(provider, purpose))
         |> redirect(to: ~p"/host/#{room_code}")
 
       :error ->
@@ -88,7 +126,12 @@ defmodule WhoseJamWeb.MusicAuthController do
   def callback(conn, %{"code" => auth_code, "state" => state} = params)
       when is_binary(auth_code) and is_binary(state) do
     case recover_state(conn, params["provider"], state) do
-      {:ok, room_code, provider, sign_in} ->
+      {:ok, room_code, provider, sign_in, :playlist} ->
+        conn
+        |> finish_playlist(provider, room_code, auth_code)
+        |> back_from_sign_in(room_code, sign_in)
+
+      {:ok, room_code, provider, sign_in, :connect} ->
         conn
         |> finish_callback(provider, room_code, auth_code)
         |> back_from_sign_in(room_code, sign_in)
@@ -120,6 +163,45 @@ defmodule WhoseJamWeb.MusicAuthController do
       |> redirect(to: ~p"/host/#{room_code}")
     else
       {:error, reason} -> failure(conn, reason, provider, room_code)
+    end
+  end
+
+  defp finish_playlist(conn, provider, room_code, auth_code) do
+    params = %{"code" => auth_code, "redirect_uri" => redirect_uri(provider)}
+
+    case Game.save_playlist(room_code, params) do
+      {:ok, _url} ->
+        conn
+        |> put_flash(:info, "Tonight’s playlist is saved to #{provider.name()}.")
+        |> redirect(to: ~p"/host/#{room_code}")
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(
+          :error,
+          "Couldn’t save the playlist to #{provider.name()}. Please try again."
+        )
+        |> redirect(to: ~p"/host/#{room_code}")
+    end
+  end
+
+  defp cancelled_message(provider, :playlist),
+    do: "Saving the playlist to #{provider.name()} was cancelled."
+
+  defp cancelled_message(provider, :connect), do: "#{provider.name()} connection was cancelled."
+
+  defp ensure_playlist_saving(provider) do
+    if Music.playlist_saving(provider) == :redirect,
+      do: :ok,
+      else: {:error, :no_playlist, provider}
+  end
+
+  # Only a finished game has a playlist, and only one is saved.
+  defp ensure_playlist_to_save(room_code, provider) do
+    case Game.get_state(room_code) do
+      %{phase: :finished, saved_playlist: nil} -> :ok
+      %{phase: :finished} -> {:error, :playlist_saved, provider}
+      _not_finished -> {:error, :no_playlist_yet, provider}
     end
   end
 
@@ -183,6 +265,15 @@ defmodule WhoseJamWeb.MusicAuthController do
   defp failure_message(:not_configured, provider, room),
     do: {"#{provider.name()} isn't configured on the server.", ~p"/host/#{room}"}
 
+  defp failure_message(:playlist_saved, _provider, room),
+    do: {"Tonight’s playlist is already saved.", ~p"/host/#{room}"}
+
+  defp failure_message(:no_playlist_yet, _provider, room),
+    do: {"The playlist can be saved once the game is over.", ~p"/host/#{room}"}
+
+  defp failure_message(:no_playlist, provider, room),
+    do: {"#{provider.name()} can't save playlists.", ~p"/host/#{room}"}
+
   defp failure_message(:not_lobby, _provider, room),
     do: {"The game has started — you can't switch music service now.", ~p"/host/#{room}"}
 
@@ -242,7 +333,8 @@ defmodule WhoseJamWeb.MusicAuthController do
            Phoenix.Token.verify(conn, @state_salt, state, max_age: @state_max_age),
          true <- provider_id == path_provider,
          {:ok, provider} <- Music.fetch_provider(provider_id) do
-      {:ok, room_code, provider, Map.get(signed, :sign_in)}
+      purpose = if Map.get(signed, :for) == :playlist, do: :playlist, else: :connect
+      {:ok, room_code, provider, Map.get(signed, :sign_in), purpose}
     else
       _ -> :error
     end

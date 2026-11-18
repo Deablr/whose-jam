@@ -112,4 +112,30 @@ defmodule WhoseJam.MusicTest do
     assert Spotify.connect_kind() == :oauth_redirect
     assert Spotify.connect(%{}) == {:error, :invalid_connect}
   end
+
+  describe "saving a playlist" do
+    defmodule Saving do
+      def save_playlist(%{"link" => link}, _name, _uris), do: {:ok, link}
+      def save_playlist(_params, _name, _uris), do: {:error, :nope}
+    end
+
+    test "says how each service saves one: after a sign-in, at once, or not at all" do
+      assert Music.playlist_saving(WhoseJam.Music.Providers.Spotify) == :redirect
+      assert Music.playlist_saving(WhoseJam.Music.Providers.YouTube) == :redirect
+      assert Music.playlist_saving(WhoseJam.Music.Providers.Mock) == :direct
+      assert Music.playlist_saving(Saving) == :direct
+      assert Music.playlist_saving(__MODULE__) == nil
+    end
+
+    test "passes on an https link only, and the service's own errors" do
+      assert Music.save_playlist(Saving, %{"link" => "https://a.example/p"}, "n", []) ==
+               {:ok, "https://a.example/p"}
+
+      assert Music.save_playlist(Saving, %{"link" => "http://a.example/p"}, "n", []) ==
+               {:error, :bad_link}
+
+      assert Music.save_playlist(Saving, %{}, "n", []) == {:error, :nope}
+      assert Music.save_playlist(__MODULE__, %{}, "n", []) == {:error, :not_supported}
+    end
+  end
 end

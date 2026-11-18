@@ -79,29 +79,27 @@ reseed.(
 )
 
 # ---------------------------------------------------------------------------
-# Pool 2 — "Emotional Damage" (multi-style: :guess_question then :guess_who)
-# ~8 :guess_question + ~10 :guess_who gameplay questions + 3 example previews.
+# Pool 2 — "Emotional Damage" (single-style, all :guess_who)
+# 18 gameplay questions + 3 example previews. A host who wants more than one
+# round picks more than one theme: each theme is its own round.
 # ---------------------------------------------------------------------------
 
 emotional_damage = [
-  # Example previews (mix of both styles).
+  # Example previews.
   {:guess_who, true,
    "The song that would play over the closing credits of a movie about your life."},
-  {:guess_question, true, "A song for staring dramatically out of a rain-streaked window."},
-  {:guess_question, true, "The track you’d put on to have a good, cathartic cry."},
+  {:guess_who, true, "A song for staring dramatically out of a rain-streaked window."},
+  {:guess_who, true, "The track you’d put on to have a good, cathartic cry."},
 
-  # Sub-round 1 — :guess_question (guess which prompt the song answers).
-  {:guess_question, false, "A song for driving away from your problems at night."},
-  {:guess_question, false, "The soundtrack to overthinking a text you already sent."},
-  {:guess_question, false, "A song that feels like the last day of summer."},
-  {:guess_question, false,
-   "The track for lying on the floor questioning every choice you’ve made."},
-  {:guess_question, false, "A song for pretending you’re fine at a party."},
-  {:guess_question, false, "The tune for a very sad main-character walk in the rain."},
-  {:guess_question, false, "A song that would make a stranger cry on public transit."},
-  {:guess_question, false, "The track for finally letting go of something you held too long."},
-
-  # Sub-round 2 — :guess_who (guess which friend submitted this).
+  # Gameplay.
+  {:guess_who, false, "A song for driving away from your problems at night."},
+  {:guess_who, false, "The soundtrack to overthinking a text you already sent."},
+  {:guess_who, false, "A song that feels like the last day of summer."},
+  {:guess_who, false, "The track for lying on the floor questioning every choice you’ve made."},
+  {:guess_who, false, "A song for pretending you’re fine at a party."},
+  {:guess_who, false, "The tune for a very sad main-character walk in the rain."},
+  {:guess_who, false, "A song that would make a stranger cry on public transit."},
+  {:guess_who, false, "The track for finally letting go of something you held too long."},
   {:guess_who, false, "The song that reliably makes you tear up no matter where you are."},
   {:guess_who, false, "A track tied to a breakup you’re pretending you’re over."},
   {:guess_who, false, "The song you’d want played at your funeral, purely for the drama."},
@@ -118,9 +116,42 @@ emotional_damage = [
 
 reseed.(
   "Emotional Damage",
-  "The songs that get you every time. Two sub-rounds: first guess which prompt each song was picked for, then guess who picked it.",
-  [:guess_question, :guess_who],
+  "The songs that get you every time. Guess who picked each one.",
+  [:guess_who],
   emotional_damage
+)
+
+# ---------------------------------------------------------------------------
+# Pool 3 — "Head to Head" (single-style, all :vs)
+# Everyone picks a song for the same prompt; the songs meet two at a time
+# until one is left. 10 gameplay prompts (one is drawn per game) + 3 example
+# previews.
+# ---------------------------------------------------------------------------
+
+head_to_head = [
+  # Example previews.
+  {:vs, true, "The song that should play when you walk into a party."},
+  {:vs, true, "The best song to scream in the car with the windows down."},
+  {:vs, true, "The one song you’d save if all the others disappeared."},
+
+  # Gameplay.
+  {:vs, false, "The perfect first song of a road trip."},
+  {:vs, false, "The ultimate karaoke closer."},
+  {:vs, false, "The song that should be playing when the credits roll on tonight."},
+  {:vs, false, "The best song to dance to in your kitchen."},
+  {:vs, false, "The song most likely to get the whole room singing."},
+  {:vs, false, "The greatest song to hear at 1 a.m."},
+  {:vs, false, "The best song for the first warm day of the year."},
+  {:vs, false, "The song you’d play to win someone over."},
+  {:vs, false, "The best song to cook dinner to."},
+  {:vs, false, "The perfect song to walk out to before a big fight."}
+]
+
+reseed.(
+  "Head to Head",
+  "Everyone picks a song for the same prompt, then the songs go head to head until one is left.",
+  [:vs],
+  head_to_head
 )
 
 IO.puts("Seeded #{length(Repo.all(Theme))} themes, #{length(Repo.all(Question))} questions.")

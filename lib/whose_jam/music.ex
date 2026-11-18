@@ -177,6 +177,38 @@ defmodule WhoseJam.Music do
   end
 
   @doc """
+  How `mod` saves a playlist to the host's account: `:redirect` (a sign-in
+  first, `c:WhoseJam.Music.Provider.playlist_authorize_url/2`), `:direct` (no
+  sign-in), or `nil` when it can't.
+  """
+  @spec playlist_saving(module()) :: :redirect | :direct | nil
+  def playlist_saving(mod) do
+    Code.ensure_loaded(mod)
+
+    cond do
+      not function_exported?(mod, :save_playlist, 3) -> nil
+      function_exported?(mod, :playlist_authorize_url, 2) -> :redirect
+      true -> :direct
+    end
+  end
+
+  @doc """
+  Save `uris` as a playlist called `name` in the host's account, through
+  `mod`'s `c:WhoseJam.Music.Provider.save_playlist/3`. Returns the link, which
+  must be an `https://` URL (anything else is `{:error, :bad_link}`), or
+  `{:error, :not_supported}` for a provider that can't save one.
+  """
+  @spec save_playlist(module(), map(), String.t(), [String.t()]) ::
+          {:ok, String.t()} | {:error, term()}
+  def save_playlist(mod, params, name, uris) when is_map(params) and is_list(uris) do
+    case optional(mod, :save_playlist, [params, name, uris], {:error, :not_supported}) do
+      {:ok, "https://" <> _ = url} when byte_size(url) <= 500 -> {:ok, url}
+      {:ok, _other} -> {:error, :bad_link}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
   The loopback host for `mod`'s default OAuth redirect URI over plain http:
   the provider's `redirect_host/0`, or `"127.0.0.1"` when it has no preference.
   """

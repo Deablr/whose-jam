@@ -3,6 +3,8 @@ defmodule WhoseJam.Game.ConfigTest do
 
   alias WhoseJam.Game.Config
 
+  doctest Config
+
   @target_s 1200
   @band_low round(@target_s * 0.8)
   @band_high round(@target_s * 1.2)
@@ -52,15 +54,44 @@ defmodule WhoseJam.Game.ConfigTest do
 
     test "every way of scoring is on unless switched off" do
       config = Config.build(%{}, 5)
-      assert Config.scoring_opts(config) == %{correct?: true, fooled?: true, predictions?: true}
+
+      assert Config.scoring_opts(config) ==
+               %{correct?: true, fooled?: true, predictions?: true, split?: true}
 
       off =
         Config.build(
-          %{"score_fooled?" => "false", score_correct?: false, score_predictions?: false},
+          %{
+            "score_fooled?" => "false",
+            score_correct?: false,
+            score_predictions?: false,
+            score_split?: "false"
+          },
           5
         )
 
-      assert Config.scoring_opts(off) == %{correct?: false, fooled?: false, predictions?: false}
+      assert Config.scoring_opts(off) ==
+               %{correct?: false, fooled?: false, predictions?: false, split?: false}
+    end
+
+    test "names keep 12 characters and 80% of the songs are played, unless set otherwise" do
+      config = Config.build(%{}, 5)
+      assert config.name_max_length == 12
+      assert config.songs_played_pct == 80
+
+      set = Config.build(%{"name_max_length" => "20", songs_played_pct: 50}, 5)
+      assert set.name_max_length == 20
+      assert set.songs_played_pct == 50
+    end
+
+    test "with fewer songs played, everyone picks more, so about as many are played" do
+      for n <- 3..8 do
+        all = Config.build(%{songs_played_pct: 100}, n)
+        some = Config.build(%{songs_played_pct: 50}, n)
+        assert some.questions_per_player >= all.questions_per_player
+
+        played = Config.songs_to_play(some, n * some.questions_per_player)
+        assert abs(played - n * all.questions_per_player) <= n
+      end
     end
 
     test "derived timings at representative player counts (3, 5, 8)" do
@@ -326,7 +357,7 @@ defmodule WhoseJam.Game.ConfigTest do
 
     test "a vote delay longer than the typical listening time lengthens each round" do
       base = Config.build(%{}, 5)
-      rounds = 5 * base.questions_per_player
+      rounds = Config.songs_to_play(base, 5 * base.questions_per_player)
 
       # Up to song_playback_s (30s) the delay overlaps the listening time.
       assert Config.estimated_runtime_s(Config.build(%{vote_delay_s: 20}, 5), 5) ==
@@ -358,6 +389,37 @@ defmodule WhoseJam.Game.ConfigTest do
       off = Config.build(%{subrounds_enabled?: false}, 5)
 
       assert Config.estimated_runtime_s(on, 5, 2) == Config.estimated_runtime_s(off, 5, 2)
+    end
+  end
+
+  describe "name_max_length and songs_played_pct" do
+    test "are clamped to their ranges, edges included" do
+      for {key, first..last//_} <- [
+            name_max_length: Config.range(:name_max_length),
+            songs_played_pct: Config.range(:songs_played_pct)
+          ] do
+        assert Map.fetch!(Config.build(%{key => first}, 5), key) == first
+        assert Map.fetch!(Config.build(%{key => first - 1}, 5), key) == first
+        assert Map.fetch!(Config.build(%{key => last}, 5), key) == last
+        assert Map.fetch!(Config.build(%{key => last + 1}, 5), key) == last
+      end
+
+      assert Config.range(:name_max_length) == 4..24
+      assert Config.range(:songs_played_pct) == 10..100
+    end
+  end
+
+  describe "songs_to_play/2" do
+    test "plays the share of the songs, rounded, and never none of some" do
+      config = Config.build(%{songs_played_pct: 80}, 4)
+
+      assert Config.songs_to_play(config, 0) == 0
+      assert Config.songs_to_play(config, 1) == 1
+      assert Config.songs_to_play(config, 3) == 2
+      assert Config.songs_to_play(config, 10) == 8
+
+      assert Config.songs_to_play(Config.build(%{songs_played_pct: 100}, 4), 7) == 7
+      assert Config.songs_to_play(Config.build(%{songs_played_pct: 10}, 4), 4) == 1
     end
   end
 end

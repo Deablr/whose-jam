@@ -35,10 +35,12 @@ identity — any browser can open it.
 
 **Host flow:**
 
-1. Open the app, create a game, and pick a theme. Two pools ship with v1:
-   *Certified Bangers* (one style: guess-who-submitted-it) and *Emotional
-   Damage* (two sub-rounds: guess-which-prompt, then guess-who). In guess-who
-   rounds the TV and phones show the prompt the song was picked for.
+1. Open the app, create a game, and pick a theme, or line up several
+   ("Add as a round"), each played as a round of its own. Three pools ship:
+   *Certified Bangers* and *Emotional Damage* (guess who picked each song;
+   the TV and phones show the prompt the song was picked for) and *Head to
+   Head* (everyone answers one prompt, then the songs go head to head in a
+   bracket until one is left).
 2. Connect a music service. **Spotify** needs a Premium account (verified
    after OAuth; the game will not start without it). **YouTube** needs a Google
    sign-in, then asks whether the account has YouTube Premium — without it the
