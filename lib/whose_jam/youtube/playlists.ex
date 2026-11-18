@@ -51,13 +51,21 @@ defmodule WhoseJam.YouTube.Playlists do
     end
   end
 
-  # One request per video (the API takes no batches), in order, stopping at
-  # the first failure.
+  # One request per video (the API takes no batches), in order. A video the
+  # API won't take (removed or made private since it was picked) is left
+  # out; the access or the connection failing stops it.
   defp add_videos(access_token, playlist_id, video_ids) do
     Enum.reduce_while(video_ids, :ok, fn video_id, :ok ->
       case add_video(access_token, playlist_id, video_id) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
+        :ok ->
+          {:cont, :ok}
+
+        {:error, {:http_error, status, _body}}
+        when status in 400..499 and status not in [401, 403, 429] ->
+          {:cont, :ok}
+
+        error ->
+          {:halt, error}
       end
     end)
   end

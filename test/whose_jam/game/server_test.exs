@@ -2641,14 +2641,144 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.round.vs.stage == "Semi-final"
     end
 
-    test "skipping a matchup sends one of its songs through, for no points" do
+    test "skipping a matchup sends one of its songs through, for no points, and a skipped final crowns nobody" do
       {code, _ids} = vs_game(2)
       :ok = Game.skip_song(code)
 
       view = Game.get_state(code)
-      # Two songs: the only matchup was the final; skipping it crowns one.
+      # Two songs: the only matchup was the final; skipping it pays nothing,
+      # the champion's bonus included.
       assert view.phase == :finished
-      assert Enum.sum(Map.values(view.scores)) == 2
+      assert Enum.sum(Map.values(view.scores)) == 0
+    end
+
+    test "a lone song has nothing to play against and wins nothing" do
+      {code, [a | _]} =
+        lobby_with_players(vs_theme(), 3, %{answer_s_per_question: 1})
+
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      submit_all(code, a)
+
+      # The others never pick; the clock runs out.
+      final = play_until(code, &(&1.phase == :finished), false)
+      assert Enum.sum(Map.values(final.scores)) == 0
+    end
+
+    test "a player who leaves takes their song out of the bracket" do
+      put_test_env(:vs_clip_ms, 0)
+      {code, ids} = lobby_with_players(vs_theme(), 4, %{min_players: 2})
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+
+      # The picker of the first song in play leaves before the vote: the
+      # other song goes through, and theirs is heard no more.
+      first = Game.get_state(code)
+      leaver = first.round.vs.a.name
+      :ok = Game.leave(code, leaver)
+      # What was broadcast before they left is history.
+      flush_game_state()
+
+      final =
+        play_until(
+          code,
+          fn view ->
+            if view.phase == :playing do
+              refute view.round.vs.a.name == leaver
+              refute view.round.vs.b.name == leaver
+
+              if view.round_state == :voting,
+                do:
+                  for(
+                    id <- ids -- [leaver],
+                    id not in view.round.voters,
+                    do: Game.cast_vote(code, id, "a")
+                  )
+            end
+
+            view.phase == :finished
+          end,
+          false
+        )
+
+      refute Map.has_key?(final.scores, leaver)
+      refute Enum.any?(final.playlist, &(&1.player_id == leaver))
+    end
+
+    test "a player whose song already went through, leaving, gives their next opponent a walkover" do
+      put_test_env(:vs_clip_ms, 60_000)
+      {code, ids} = vs_game(3)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+
+      # Three songs: the semi-final, and a bye for the third. The bye's
+      # picker leaves; the semi's winner then has nobody to meet.
+      view = Game.get_state(code)
+      bye = Enum.find(ids, &(&1 not in [view.round.vs.a.name, view.round.vs.b.name]))
+      :ok = Game.leave(code, bye)
+      :ok = Game.song_ended(code)
+      :ok = Game.song_ended(code)
+
+      for id <- ids -- [bye], do: Game.cast_vote(code, id, "a")
+      assert_receive {:game_state, %{round_state: :results}}, 1000
+
+      final = play_until(code, &(&1.phase == :finished))
+      # The semi paid its one counted vote; no final was played, so no bonus.
+      assert Enum.sum(Map.values(final.scores)) == 1
+    end
+  end
+
+  describe "fixes from review" do
+    test "seconds the room added survive a phone dropping out after everyone is in" do
+      put_test_env(:all_voted_countdown_ms, 300)
+      {code, ids} = lobby_with_players(guess_who_theme(), 4, %{vote_timer_s: 60})
+      :ok = Game.start_game(code)
+      for pid <- ids, do: submit_all(code, pid)
+      :ok = Game.song_ended(code)
+
+      view = Game.get_state(code)
+      submitter = submitter_of(view)
+      [a, b, c] = ids -- [submitter]
+      :ok = Game.cast_vote(code, submitter, a)
+      for v <- [a, b, c], do: :ok = Game.cast_vote(code, v, submitter)
+
+      :ok = Game.extend_song(code, a)
+      :ok = Game.extend_song(code, b)
+      extended = Game.get_state(code).round.deadline_ms
+
+      # c's phone goes to sleep: everyone left is still in.
+      :ok = Game.presence_diff(code, [submitter, a, b])
+      assert Game.get_state(code).round.deadline_ms == extended
+    end
+
+    test "a victory song keeps the finished game up past its usual close" do
+      put_test_env(:finished_shutdown_ms, 300)
+      put_test_env(:finale_shutdown_ms, 1_200)
+      {code, ids} = lobby_with_players(guess_who_theme(), 3)
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      final = play_to_finish(code)
+
+      [winner | _] = final.winners.players
+      own = Enum.find(final.playlist, &(&1.player_id == winner))
+      :ok = Game.pick_finale(code, winner, own.uri)
+
+      refute_receive {:game_ended, _}, 700
+      assert_receive {:game_ended, :idle}, 1_500
+    end
+
+    test "once a playlist is saved, saving again hands back the same link" do
+      {code, ids} = lobby_with_players(guess_who_theme(), 3)
+      :ok = Game.start_game(code)
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      play_to_finish(code)
+
+      :ok = Game.set_saved_playlist(code, "https://x.example/p")
+      # Spotify isn't configured here: a call to it would fail.
+      assert Game.save_playlist(code, %{"code" => "c", "redirect_uri" => "r"}) ==
+               {:ok, "https://x.example/p"}
     end
   end
 end

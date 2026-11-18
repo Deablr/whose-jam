@@ -416,11 +416,25 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
 
     test "a game still being played has no playlist to save", %{conn: conn, room: room} do
       :ok = Game.set_music(room, :oauth_stub, %{eligible?: true})
-      state = authorize_playlist(conn, room)
-      conn = get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
+      conn = get(conn, "/auth/oauth_stub?code=#{room}&for=playlist")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Couldn’t save the playlist"
+      # Refused before the sign-in: nobody grants a scope for nothing.
+      assert redirected_to(conn) == "/host/#{room}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "once the game is over"
       assert Game.get_state(room).saved_playlist == nil
+    end
+
+    test "once saved, it stays saved: another sign-in is refused", %{conn: conn, room: room} do
+      finished_game(room)
+      state = authorize_playlist(conn, room)
+      get(build_conn(), "/auth/oauth_stub/callback?code=good&state=#{state}")
+      link = Game.get_state(room).saved_playlist
+      assert link
+
+      conn = get(build_conn(), "/auth/oauth_stub?code=#{room}&for=playlist")
+      assert redirected_to(conn) == "/host/#{room}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "already saved"
+      assert Game.get_state(room).saved_playlist == link
     end
 
     test "a service that can't save playlists says so", %{conn: conn, room: room} do

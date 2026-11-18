@@ -113,6 +113,8 @@ defmodule WhoseJam.Game.Server do
   # Idle guards. Kept large so they never interfere with a live game or a test;
   # they exist so an abandoned/finished game eventually frees its process.
   @finished_shutdown_ms 5 * 60 * 1000
+  # A victory song keeps the final screen up at least this long.
+  @finale_shutdown_ms 10 * 60 * 1000
   @abandoned_ttl_ms 60 * 60 * 1000
   # Defensive ceiling on uncounted voting, in case the TV never reports the song
   # ending and nobody votes. Real clients call `song_ended/1` well before this.
@@ -197,7 +199,8 @@ defmodule WhoseJam.Game.Server do
             # once finished: the winner's song that plays the night out
             # (`finale`: %{player_id, song}) and the link to the playlist the
             # host saved (`saved_playlist`)
-            ending: %{finale: nil, saved_playlist: nil},
+            # (`until_ms`: when the finished game closes, if left alone)
+            ending: %{finale: nil, saved_playlist: nil, until_ms: nil},
             # Every round played to a reveal, newest first (`Awards.played_round`)
             history: [],
             # Host screens (see the moduledoc):
@@ -490,7 +493,12 @@ defmodule WhoseJam.Game.Server do
          true <- is_nil(state.ending.finale) || {:error, :already_picked},
          %{} = played <- own_played_song(state, player_id, uri) || {:error, :not_played} do
       song = Map.take(played, [:uri, :song_name, :artist, :album_art_url])
-      state = put_in(state.ending.finale, %{player_id: player_id, song: song}) |> touch()
+
+      state =
+        put_in(state.ending.finale, %{player_id: player_id, song: song})
+        |> touch()
+        |> keep_finished(finale_shutdown_ms())
+
       {:reply, :ok, broadcast(state)}
     else
       {:error, _reason} = error -> {:reply, error, state}
@@ -507,7 +515,8 @@ defmodule WhoseJam.Game.Server do
         %{phase: :finished} = state
       )
       when byte_size(url) <= 500 do
-    {:reply, :ok, broadcast(touch(put_in(state.ending.saved_playlist, url)))}
+    state = touch(put_in(state.ending.saved_playlist, url))
+    {:reply, :ok, broadcast(keep_finished(state, finished_shutdown_ms()))}
   end
 
   def handle_call({:set_saved_playlist, _url}, _from, %{phase: :finished} = state) do
@@ -577,6 +586,8 @@ defmodule WhoseJam.Game.Server do
       true ->
         id = generate_id()
         sign_ins = Map.put(sign_ins, id, now_ms() + sign_in_grace_ms())
+        # A finished game waits for a host saving its playlist.
+        state = keep_finished(state, sign_in_grace_ms())
         {:reply, {:ok, id}, %{state | host: %{state.host | sign_ins: sign_ins}}}
     end
   end
@@ -770,7 +781,7 @@ defmodule WhoseJam.Game.Server do
         subrounds: subrounds,
         subround_index: 0,
         picking: %{started_ms: nil, finished: %{}, times: %{}},
-        ending: %{finale: nil, saved_playlist: nil},
+        ending: %{finale: nil, saved_playlist: nil, until_ms: nil},
         scores: reset_scores(state)
     }
 
@@ -783,11 +794,14 @@ defmodule WhoseJam.Game.Server do
     ordered_styles = Enum.uniq(theme.style_sequence)
     pools = Map.new(ordered_styles, &{&1, Content.game_questions(theme.id, &1)})
 
+    # Head to head is always a sub-round of its own.
+    {vs, others} = Enum.split_with(ordered_styles, &(&1 == :vs))
+
     groups =
-      if config.subrounds_enabled? do
+      if config.subrounds_enabled? or others == [] do
         Enum.map(ordered_styles, &[&1])
       else
-        [ordered_styles]
+        [others | Enum.map(vs, &[&1])]
       end
 
     Enum.map(groups, fn group ->
@@ -809,8 +823,10 @@ defmodule WhoseJam.Game.Server do
       assignments: assignments,
       questions_by_id: questions_by_id,
       pools: pools,
-      # the entries through to the next stage, in order
-      bracket: %{advancing: []}
+      # the entries through to the next stage, in order, and whether the
+      # last matchup was a final played to a vote (a skipped final, or one
+      # nobody was left to play, crowns nobody)
+      bracket: %{advancing: [], played?: false}
     }
   end
 
@@ -941,14 +957,16 @@ defmodule WhoseJam.Game.Server do
   defp vs?(state), do: current_subround(state).styles == [:vs]
 
   # A stage of the bracket: its matchups are the rounds; a bye goes straight
-  # through. One entry left is the champion; none, nothing to play.
+  # through. One entry left is the champion, whose picker gets the bonus if
+  # the final was played to a vote (not a lone song, a skipped final or a
+  # walkover); none, nothing to play.
   defp bracket_stage(state, []), do: advance_subround(state)
 
   defp bracket_stage(state, [champion]) do
     bonus = Bracket.champion_bonus()
 
     scores =
-      if Map.has_key?(state.participants, champion.player_id),
+      if bracket_played?(state) and Map.has_key?(state.participants, champion.player_id),
         do: Map.update(state.scores, champion.player_id, bonus, &(&1 + bonus)),
         else: state.scores
 
@@ -986,6 +1004,7 @@ defmodule WhoseJam.Game.Server do
       forecast: nil,
       extended_s: 0,
       extend_taps: %{},
+      all_in_cut?: false,
       revealed: false,
       deltas: nil,
       next_ms: nil,
@@ -994,14 +1013,24 @@ defmodule WhoseJam.Game.Server do
     }
   end
 
-  defp put_bracket(state, bracket) do
+  # Changes to the current sub-round's bracket (`advancing`, `played?`).
+  defp put_bracket(state, changes) do
     subrounds =
-      List.update_at(state.subrounds, state.subround_index, &Map.put(&1, :bracket, bracket))
+      List.update_at(state.subrounds, state.subround_index, fn subround ->
+        Map.update(subround, :bracket, changes, &Map.merge(&1, changes))
+      end)
 
     %{state | subrounds: subrounds}
   end
 
   defp advancing(state), do: get_in(current_subround(state), [:bracket, :advancing]) || []
+
+  defp bracket_played?(state), do: get_in(current_subround(state), [:bracket, :played?]) == true
+
+  defp vs_picker?(round, id), do: round.a.player_id == id or round.b.player_id == id
+
+  # The other entry of a matchup a player has left.
+  defp vs_opponent(round, id), do: if(round.a.player_id == id, do: round.b, else: round.a)
 
   # The first song's clip is over (or it ended): the second plays; the
   # second's is over: the vote.
@@ -1039,7 +1068,11 @@ defmodule WhoseJam.Game.Server do
         results_ref: ref,
         history: vs_played(state.history, round)
     }
-    |> put_bracket(%{advancing: advancing(state) ++ [Map.fetch!(round, side(winner))]})
+    |> put_bracket(%{
+      advancing: advancing(state) ++ [Map.fetch!(round, side(winner))],
+      # Only a final played to a vote crowns a champion with the bonus.
+      played?: round.stage == "Final"
+    })
   end
 
   defp side("a"), do: :a
@@ -1075,9 +1108,13 @@ defmodule WhoseJam.Game.Server do
   end
 
   # A matchup skipped before its vote: one song goes through, at random,
-  # for no points.
-  defp skip_matchup(%{round: %{style: :vs, revealed: false} = round} = state),
-    do: put_bracket(state, %{advancing: advancing(state) ++ [Enum.random([round.a, round.b])]})
+  # for no points (and, skipping the final, no champion's bonus).
+  defp skip_matchup(%{round: %{style: :vs, revealed: false} = round} = state) do
+    put_bracket(state, %{
+      advancing: advancing(state) ++ [Enum.random([round.a, round.b])],
+      played?: false
+    })
+  end
 
   defp skip_matchup(state), do: state
 
@@ -1168,6 +1205,8 @@ defmodule WhoseJam.Game.Server do
       # player last tapped for one.
       extended_s: 0,
       extend_taps: %{},
+      # whether the all-in cut to a short countdown has happened
+      all_in_cut?: false,
       revealed: false,
       deltas: nil,
       # when the reveal gives way to the next song (or the final scores)
@@ -1277,11 +1316,25 @@ defmodule WhoseJam.Game.Server do
 
   # Majority in → start the countdown; everyone in → cut it to the short final
   # countdown (never lengthening it).
+  #
+  # The cut to the short countdown happens once a round: after it, the clock
+  # only moves by the seconds the room asks for (`extend_countdown/2`), which
+  # a phone dropping out or a vote changed mustn't take back.
   defp update_countdown(state) do
     cond do
-      all_eligible_voted?(state) -> countdown_at_most(state, all_voted_countdown_ms(state))
-      majority_voted?(state) -> start_countdown(state)
-      true -> state
+      all_eligible_voted?(state) and not state.round.all_in_cut? ->
+        state
+        |> countdown_at_most(all_voted_countdown_ms(state))
+        |> then(&%{&1 | round: %{&1.round | all_in_cut?: true}})
+
+      all_eligible_voted?(state) ->
+        state
+
+      majority_voted?(state) ->
+        start_countdown(state)
+
+      true ->
+        state
     end
   end
 
@@ -1393,8 +1446,9 @@ defmodule WhoseJam.Game.Server do
     }
   end
 
-  defp advance_round(state) do
-    state = state |> cancel_round_timers() |> skip_matchup()
+  defp advance_round(state), do: state |> cancel_round_timers() |> skip_matchup() |> next_round()
+
+  defp next_round(state) do
     next = state.round_index + 1
 
     cond do
@@ -1415,8 +1469,6 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp finish(state) do
-    ref = schedule(:finished_shutdown, env_ms(:finished_shutdown_ms, @finished_shutdown_ms))
-
     %{
       state
       | phase: :finished,
@@ -1424,10 +1476,24 @@ defmodule WhoseJam.Game.Server do
         round: nil,
         rounds: [],
         winners: compute_winners(state),
-        ending: %{finale: nil, saved_playlist: nil},
-        finished_ref: ref
+        ending: %{finale: nil, saved_playlist: nil, until_ms: nil}
     }
+    |> keep_finished(finished_shutdown_ms())
   end
+
+  # A finished game closes when left alone this long from now, unless it was
+  # already to stay up longer: the night's last song, a playlist being saved.
+  defp keep_finished(%{phase: :finished, ending: %{until_ms: until}} = state, ms) do
+    if is_integer(until) and until >= now_ms() + ms do
+      state
+    else
+      cancel(state.finished_ref)
+      ref = schedule(:finished_shutdown, ms)
+      %{state | finished_ref: ref, ending: %{state.ending | until_ms: now_ms() + ms}}
+    end
+  end
+
+  defp keep_finished(state, _ms), do: state
 
   defp reset_to_lobby(state) do
     state = cancel_all_timers(state)
@@ -1447,7 +1513,7 @@ defmodule WhoseJam.Game.Server do
         round: nil,
         vote_deadline_ms: nil,
         winners: nil,
-        ending: %{finale: nil, saved_playlist: nil},
+        ending: %{finale: nil, saved_playlist: nil, until_ms: nil},
         picking: %{started_ms: nil, finished: %{}, times: %{}},
         history: [],
         participants: seat_audience(state),
@@ -1958,6 +2024,36 @@ defmodule WhoseJam.Game.Server do
   # Whatever was under way carries on without them.
   defp drop_from_play(%{phase: :answering} = state, _id), do: maybe_end_answering(state)
 
+  # Head to head: a matchup to come with their song is a walkover for the
+  # other; theirs in play, unvoted, sends the other through; and their song
+  # goes no further if it already went through.
+  defp drop_from_play(%{phase: :playing, round: %{style: :vs} = round} = state, id) do
+    {played, to_come} = Enum.split(state.rounds, state.round_index + 1)
+    {theirs, others} = Enum.split_with(to_come, &vs_picker?(&1, id))
+
+    advancing =
+      Enum.reject(advancing(state), &(&1.player_id == id)) ++
+        Enum.map(theirs, &vs_opponent(&1, id))
+
+    state =
+      %{state | rounds: played ++ others, round: drop_vote(round, id)}
+      |> put_bracket(%{advancing: advancing})
+
+    cond do
+      vs_picker?(round, id) and not round.revealed ->
+        state
+        |> cancel_round_timers()
+        |> put_bracket(%{advancing: advancing ++ [vs_opponent(round, id)], played?: false})
+        |> next_round()
+
+      state.round_state == :voting ->
+        update_countdown(state)
+
+      true ->
+        state
+    end
+  end
+
   defp drop_from_play(%{phase: :playing, round: %{}} = state, id) do
     {played, to_come} = Enum.split(state.rounds, state.round_index + 1)
 
@@ -2173,6 +2269,10 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp all_in_pause_ms, do: env_ms(:all_in_pause_ms, @all_in_pause_ms)
+
+  defp finished_shutdown_ms, do: env_ms(:finished_shutdown_ms, @finished_shutdown_ms)
+
+  defp finale_shutdown_ms, do: env_ms(:finale_shutdown_ms, @finale_shutdown_ms)
 
   defp abandoned_ttl_ms, do: env_ms(:abandoned_ttl_ms, @abandoned_ttl_ms)
 

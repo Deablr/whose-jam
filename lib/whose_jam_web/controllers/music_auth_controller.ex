@@ -38,7 +38,8 @@ defmodule WhoseJamWeb.MusicAuthController do
     with {:ok, provider} <- redirect_provider(provider_id),
          :ok <- ensure_game(room_code),
          :ok <- ensure_configured(provider),
-         :ok <- ensure_playlist_saving(provider) do
+         :ok <- ensure_playlist_saving(provider),
+         :ok <- ensure_playlist_to_save(room_code, provider) do
       sign_in = sign_in_id(Game.host_signing_in(room_code))
 
       state =
@@ -195,6 +196,15 @@ defmodule WhoseJamWeb.MusicAuthController do
       else: {:error, :no_playlist, provider}
   end
 
+  # Only a finished game has a playlist, and only one is saved.
+  defp ensure_playlist_to_save(room_code, provider) do
+    case Game.get_state(room_code) do
+      %{phase: :finished, saved_playlist: nil} -> :ok
+      %{phase: :finished} -> {:error, :playlist_saved, provider}
+      _not_finished -> {:error, :no_playlist_yet, provider}
+    end
+  end
+
   defp sign_in_id({:ok, sign_in}), do: sign_in
   defp sign_in_id(_refused), do: nil
 
@@ -254,6 +264,12 @@ defmodule WhoseJamWeb.MusicAuthController do
 
   defp failure_message(:not_configured, provider, room),
     do: {"#{provider.name()} isn't configured on the server.", ~p"/host/#{room}"}
+
+  defp failure_message(:playlist_saved, _provider, room),
+    do: {"Tonight’s playlist is already saved.", ~p"/host/#{room}"}
+
+  defp failure_message(:no_playlist_yet, _provider, room),
+    do: {"The playlist can be saved once the game is over.", ~p"/host/#{room}"}
 
   defp failure_message(:no_playlist, provider, room),
     do: {"#{provider.name()} can't save playlists.", ~p"/host/#{room}"}

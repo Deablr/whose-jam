@@ -245,11 +245,20 @@ defmodule WhoseJam.Game do
   `params` are a playlist sign-in's callback params, or `%{}` for a service
   without one), and keep its link (`set_saved_playlist/2`). The music service
   is called from the caller's process, never the game's. Returns the link.
+  Once one is saved, it is the link: the service isn't asked again (each
+  save spends its quota, and anyone with the room code can ask).
   """
   @spec save_playlist(String.t(), map()) :: {:ok, String.t()} | {:error, term()}
   def save_playlist(code, params) when is_map(params) do
+    case get_state(code) do
+      %{phase: :finished, saved_playlist: "https://" <> _ = url} -> {:ok, url}
+      view -> save_new_playlist(code, view, params)
+    end
+  end
+
+  defp save_new_playlist(code, view, params) do
     with %{phase: :finished, music: %{id: provider_id}, playlist: [_ | _] = songs} <-
-           get_state(code) || {:error, :not_found},
+           view || {:error, :not_found},
          {:ok, mod} <- Music.fetch_provider(provider_id) |> ok_or(:unknown_provider),
          {:ok, url} <-
            Music.save_playlist(mod, params, playlist_name(), Enum.map(songs, & &1.uri)),
