@@ -270,6 +270,15 @@ defmodule WhoseJamWeb.HomeLive do
         </div>
       </div>
 
+      <%!-- Off in the corner, out of the way of the ticket and the hosting. --%>
+      <a
+        id="credits-link"
+        href={~p"/credits"}
+        class="absolute bottom-5 right-6 text-sm font-semibold text-jam-cream/60 underline decoration-jam-cream/20 underline-offset-4 hover:text-jam-cream sm:right-12 lg:right-20"
+      >
+        Credits
+      </a>
+
       {host_picker(assigns)}
     </main>
     """
