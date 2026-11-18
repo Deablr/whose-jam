@@ -144,7 +144,12 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   # A background search that waited its turn; a newer one replaces it.
-  def handle_info({:bg_search, ref, query}, %{assigns: %{bg_pending: {ref, _timer}}} = socket) do
+  # Only while the picker is open: closing it cancels the wait, and this
+  # makes sure a search that slipped past that is never spent.
+  def handle_info(
+        {:bg_search, ref, query},
+        %{assigns: %{bg_pending: {ref, _timer}, background_open?: true}} = socket
+      ) do
     {:noreply, run_background_search(assign(socket, bg_pending: nil), query)}
   end
 
@@ -211,7 +216,7 @@ defmodule WhoseJamWeb.HostLive do
   end
 
   def handle_event("close_background", _params, socket) do
-    {:noreply, socket |> cancel_background_search() |> assign(background_open?: false)}
+    {:noreply, close_background(socket)}
   end
 
   # Search the room's music service for the background track: only while the
@@ -234,7 +239,7 @@ defmodule WhoseJamWeb.HostLive do
   def handle_event("pick_background", %{"uri" => uri}, socket) when is_binary(uri) do
     with %{} = song <- Enum.find(socket.assigns.bg_results, &(&1.uri == uri)),
          :ok <- Game.set_background(socket.assigns.code, song) do
-      {:noreply, assign(socket, background_open?: false)}
+      {:noreply, close_background(socket)}
     else
       _ -> {:noreply, put_flash(socket, :error, "Couldn’t set that track. Please try again.")}
     end
@@ -245,7 +250,7 @@ defmodule WhoseJamWeb.HostLive do
   def handle_event("clear_background", _params, socket) do
     case Game.set_background(socket.assigns.code, nil) do
       :ok ->
-        {:noreply, assign(socket, background_open?: false)}
+        {:noreply, close_background(socket)}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Couldn’t turn that off. Please try again.")}
@@ -337,6 +342,12 @@ defmodule WhoseJamWeb.HostLive do
 
   def handle_event("connect_music", _params, socket) do
     {:noreply, put_flash(socket, :error, "Unknown music service.")}
+  end
+
+  # Every way the background picker closes (Close, a pick, turning it off)
+  # drops the search still waiting its turn with it.
+  defp close_background(socket) do
+    socket |> cancel_background_search() |> assign(background_open?: false)
   end
 
   # A search still waiting its turn is dropped (its message, if already
