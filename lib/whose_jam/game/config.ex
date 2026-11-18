@@ -12,14 +12,16 @@ defmodule WhoseJam.Game.Config do
 
   Host-facing (exposed as settings, per the PRD):
 
-    * `answer_timer_s` — global answer phase length, in seconds. Defaults to
-      `questions_per_player * #{30}s` (more songs to submit ⇒ more time).
+    * `answer_s_per_question` — seconds each player gets per question they are
+      asked, so the answer phase lasts `answer_s_per_question *
+      questions_per_player` (per style in a sub-round; see `answer_window_s/1`).
+      Defaults to `45`.
     * `vote_delay_s` — seconds the song plays before voting opens. Defaults to
       `10`; `0` opens voting as soon as the song starts.
     * `vote_timer_s` — the voting countdown, in seconds. It starts once a
       majority of eligible voters have voted (or the song ends) and drops to a
       short final countdown once everyone has voted (3s, or 5s when votes can
-      be changed; `Game.Server` constants). Defaults to `30`.
+      be changed; `Game.Server` constants). Defaults to `60`.
     * `questions_per_player` — songs each player submits. Default is tuned per
       player count so the estimated runtime lands near the 20-minute target
       (fewer questions at higher player counts, since every submitted song adds
@@ -30,6 +32,16 @@ defmodule WhoseJam.Game.Config do
     * `min_players` — players needed before the host can start. Defaults to
       `3` (so guessing is non-trivial); can be lowered to `2` for development
       and small groups. Clamped to `2..8` (see `min_players_range/0`).
+
+  Host-facing scoring switches (each defaults to `true`; `Game.Scoring` takes
+  them as `scoring_opts/1`):
+
+    * `score_correct?` — +1 to a player who guessed right. (The audience's
+      right guesses always score: they are all the audience plays for.)
+    * `score_fooled?` — +1 to a picker for each player their song fooled.
+    * `score_predictions?` — +1 to a picker whose blame prediction came true.
+      Switched off, the picker still predicts (so their phone and the
+      lock-in list look as they always do), for no points.
 
   Host-facing presentation choices (how the screens tell the game; they never
   change the scoring or the timers):
@@ -45,13 +57,13 @@ defmodule WhoseJam.Game.Config do
 
   Every integer override is clamped to a safe range, so a hand-crafted
   `set_config` can never produce a negative or timer-overflowing value:
-  `answer_timer_s` `1..1800`, `vote_delay_s` `0..60`, `vote_timer_s` `1..300`,
+  `answer_s_per_question` `1..300`, `vote_delay_s` `0..60`, `vote_timer_s` `1..300`,
   `questions_per_player` `1..10`, `min_players` `2..8` (see `range/1`). The
   derived `questions_per_player` default is clamped into its range too.
 
   Internal (fixed values that shape `estimated_runtime_s/3`; `song_playback_s`
   also sizes the server's voting safety timeout). They are **not** overridable
-  via `build/2` — only the eleven host-facing settings above can be overridden:
+  via `build/2` — only the fourteen host-facing settings above can be overridden:
 
     * `song_playback_s` — typical listening time before most votes are in.
       Default `30`.
@@ -60,21 +72,21 @@ defmodule WhoseJam.Game.Config do
       Default `5`.
   """
 
-  @answer_s_per_question 30
-  @default_vote_timer_s 30
+  @default_answer_s_per_question 45
+  @default_vote_timer_s 60
   @default_vote_delay_s 10
   @default_song_playback_s 30
   @default_reveal_padding_s 5
   @default_results_padding_s 5
   @default_min_players 3
   @min_players_range 2..8
-  @answer_timer_range 1..1800
+  @answer_s_per_question_range 1..300
   @vote_delay_range 0..60
   @vote_timer_range 1..300
   @questions_per_player_range 1..10
 
   @type t :: %__MODULE__{
-          answer_timer_s: pos_integer(),
+          answer_s_per_question: pos_integer(),
           vote_timer_s: pos_integer(),
           vote_delay_s: non_neg_integer(),
           questions_per_player: pos_integer(),
@@ -85,12 +97,15 @@ defmodule WhoseJam.Game.Config do
           name_non_voters?: boolean(),
           show_places?: boolean(),
           final_suspense?: boolean(),
+          score_correct?: boolean(),
+          score_fooled?: boolean(),
+          score_predictions?: boolean(),
           song_playback_s: non_neg_integer(),
           reveal_padding_s: non_neg_integer(),
           results_padding_s: non_neg_integer()
         }
 
-  defstruct answer_timer_s: nil,
+  defstruct answer_s_per_question: @default_answer_s_per_question,
             vote_timer_s: @default_vote_timer_s,
             vote_delay_s: @default_vote_delay_s,
             questions_per_player: nil,
@@ -101,6 +116,9 @@ defmodule WhoseJam.Game.Config do
             name_non_voters?: true,
             show_places?: false,
             final_suspense?: true,
+            score_correct?: true,
+            score_fooled?: true,
+            score_predictions?: true,
             song_playback_s: @default_song_playback_s,
             reveal_padding_s: @default_reveal_padding_s,
             results_padding_s: @default_results_padding_s
@@ -112,16 +130,14 @@ defmodule WhoseJam.Game.Config do
   may use atom or string keys (LiveView forms send strings), and string values
   are coerced for known fields (`"45"` → `45`, `"true"` → `true`).
 
-  Only the eleven host-facing settings can be overridden (`answer_timer_s`,
+  Only the fourteen host-facing settings can be overridden (`answer_s_per_question`,
   `vote_timer_s`, `vote_delay_s`, `questions_per_player`, `subrounds_enabled?`,
   `allow_vote_change?`, `min_players`, `quick_reveals?`, `name_non_voters?`,
-  `show_places?`, `final_suspense?`); any other key in `overrides` is ignored. The internal
+  `show_places?`, `final_suspense?`, `score_correct?`, `score_fooled?`,
+  `score_predictions?`); any other key in `overrides` is ignored. The internal
   estimator fields stay fixed at their constant defaults. Integer overrides are
   clamped to the ranges listed in the moduledoc.
 
-  Resolution order matters: `questions_per_player` is resolved first, then
-  `answer_timer_s` derives from the resolved value unless the host overrode it
-  directly.
   """
   @spec build(map(), pos_integer()) :: t()
   def build(overrides, player_count)
@@ -134,11 +150,14 @@ defmodule WhoseJam.Game.Config do
         @questions_per_player_range
       )
 
-    answer_timer_s =
-      fetch_int(overrides, :answer_timer_s, qpp * @answer_s_per_question, @answer_timer_range)
-
     %__MODULE__{
-      answer_timer_s: answer_timer_s,
+      answer_s_per_question:
+        fetch_int(
+          overrides,
+          :answer_s_per_question,
+          @default_answer_s_per_question,
+          @answer_s_per_question_range
+        ),
       vote_timer_s: fetch_int(overrides, :vote_timer_s, @default_vote_timer_s, @vote_timer_range),
       vote_delay_s: fetch_int(overrides, :vote_delay_s, @default_vote_delay_s, @vote_delay_range),
       questions_per_player: qpp,
@@ -149,6 +168,9 @@ defmodule WhoseJam.Game.Config do
       name_non_voters?: fetch_bool(overrides, :name_non_voters?, true),
       show_places?: fetch_bool(overrides, :show_places?, false),
       final_suspense?: fetch_bool(overrides, :final_suspense?, true),
+      score_correct?: fetch_bool(overrides, :score_correct?, true),
+      score_fooled?: fetch_bool(overrides, :score_fooled?, true),
+      score_predictions?: fetch_bool(overrides, :score_predictions?, true),
       song_playback_s: @default_song_playback_s,
       reveal_padding_s: @default_reveal_padding_s,
       results_padding_s: @default_results_padding_s
@@ -160,16 +182,16 @@ defmodule WhoseJam.Game.Config do
 
   Model: one answer phase per sub-round, then one round per submitted song.
   Each round is listening time before most votes are in (at least the vote
-  delay) + the voting countdown + reveal/results padding.
+  delay) + half the voting countdown (it rarely runs in full: it drops to a
+  few seconds once everyone has voted) + reveal/results padding.
   Round count is `player_count * questions_per_player` (total across all
   sub-rounds), since every submitted song becomes its own play-and-vote round.
 
-  `subround_count` (default `1`) is the number of sub-rounds the theme splits
-  into. The answer timer is global *per sub-round* (per the PRD), so when
-  `subrounds_enabled?` is true the answer phase is counted once per sub-round;
-  when it is false the answer phase is counted once regardless of
-  `subround_count`. Only the answer phases multiply — the total round count is
-  unchanged.
+  `subround_count` (default `1`) is the number of styles the theme plays.
+  Every style asks each player `questions_per_player` questions, so the
+  answering time is `answer_window_s/1` once per style whether the styles are
+  split into sub-rounds or collapsed into one phase. Only the answering
+  multiplies — the total round count is unchanged.
 
   The arity-2 form is equivalent to `subround_count = 1`.
   """
@@ -182,23 +204,47 @@ defmodule WhoseJam.Game.Config do
     round_count = player_count * config.questions_per_player
 
     per_round_s =
-      max(config.song_playback_s, config.vote_delay_s) + config.vote_timer_s +
+      max(config.song_playback_s, config.vote_delay_s) + div(config.vote_timer_s, 2) +
         config.reveal_padding_s + config.results_padding_s
 
-    answer_phases = if config.subrounds_enabled?, do: subround_count, else: 1
+    answer_window_s(config) * subround_count + per_round_s * round_count
+  end
 
-    config.answer_timer_s * answer_phases + per_round_s * round_count
+  @doc """
+  How long one style's answer phase lasts, in seconds: every player is asked
+  `questions_per_player` questions and gets `answer_s_per_question` for each.
+  (A collapsed sub-round covering several styles gets this once per style.)
+  """
+  @spec answer_window_s(t()) :: pos_integer()
+  def answer_window_s(%__MODULE__{} = config),
+    do: config.answer_s_per_question * config.questions_per_player
+
+  @doc """
+  The scoring switches as the options `WhoseJam.Game.Scoring.score_round/3`
+  takes.
+  """
+  @spec scoring_opts(t()) :: %{
+          correct?: boolean(),
+          fooled?: boolean(),
+          predictions?: boolean()
+        }
+  def scoring_opts(%__MODULE__{} = config) do
+    %{
+      correct?: config.score_correct?,
+      fooled?: config.score_fooled?,
+      predictions?: config.score_predictions?
+    }
   end
 
   @doc """
   The clamp range for a host-facing integer setting.
 
-  `key` is one of `:answer_timer_s`, `:vote_delay_s`, `:vote_timer_s`,
+  `key` is one of `:answer_s_per_question`, `:vote_delay_s`, `:vote_timer_s`,
   `:questions_per_player`, or `:min_players`. Overrides outside the range are
   clamped to its nearest edge by `build/2`.
   """
   @spec range(atom()) :: Range.t()
-  def range(:answer_timer_s), do: @answer_timer_range
+  def range(:answer_s_per_question), do: @answer_s_per_question_range
   def range(:vote_delay_s), do: @vote_delay_range
   def range(:vote_timer_s), do: @vote_timer_range
   def range(:questions_per_player), do: @questions_per_player_range

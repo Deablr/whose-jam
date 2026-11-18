@@ -113,6 +113,9 @@ defmodule WhoseJam.Music.Providers.Mock do
   def search_debounce_ms, do: 300
 
   @impl true
+  def default_background, do: Enum.find(@tracks, &(&1.uri == "mock:track:003"))
+
+  @impl true
   def valid_uri?(uri), do: Regex.match?(~r/\Amock:track:[0-9]{3}\z/, uri)
 
   # Only this app's own placeholder covers: a path, so never another origin.

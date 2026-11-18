@@ -158,6 +158,25 @@ defmodule WhoseJam.Music do
   def warning(_provider_id, _auth), do: nil
 
   @doc """
+  The provider's default background track (see
+  `c:WhoseJam.Music.Provider.default_background/0`), validated, or `nil` when
+  it has none or it isn't a valid song of that provider.
+  """
+  @spec default_background(module()) :: Track.t() | nil
+  def default_background(mod) do
+    case optional(mod, :default_background, [], nil) do
+      nil ->
+        nil
+
+      song ->
+        case Track.normalize(mod, song) do
+          {:ok, track} -> track
+          {:error, _reason} -> nil
+        end
+    end
+  end
+
+  @doc """
   The loopback host for `mod`'s default OAuth redirect URI over plain http:
   the provider's `redirect_host/0`, or `"127.0.0.1"` when it has no preference.
   """

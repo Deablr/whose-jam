@@ -165,7 +165,22 @@ defmodule WhoseJam.Game.Server do
             #   left_at_ms     when the last one closed
             #   sign_ins       sign-in id => when its window closes (ms), for
             #                  each host screen away signing in
-            host: %{screens: %{}, gone: nil, left_at_ms: nil, sign_ins: %{}}
+            # and what the host has chosen for the room:
+            #   phone_hosts    players they let start the game from their
+            #                  phones (ids, in the order chosen)
+            #   background     the music the TV plays under the lobby and the
+            #                  song-picking (a normalized song, or nil)
+            #   background_off? the host turned it off, which a token refresh
+            #                  keeps
+            host: %{
+              screens: %{},
+              gone: nil,
+              left_at_ms: nil,
+              sign_ins: %{},
+              phone_hosts: [],
+              background: nil,
+              background_off?: false
+            }
 
   # =========================================================================
   # Boot
@@ -271,30 +286,63 @@ defmodule WhoseJam.Game.Server do
         else
           # Broadcast: the public view carries which service this is, and the
           # host screen re-derives its player from the change.
-          state = touch(%{state | music: %{provider: mod.id(), auth: auth}})
+          previous = state.music && state.music.provider
+
+          state =
+            %{state | music: %{provider: mod.id(), auth: auth}}
+            |> with_background(mod, previous)
+            |> touch()
+
           {:reply, :ok, broadcast(state)}
         end
     end
   end
 
-  def handle_call(:start_game, _from, state) do
-    cond do
-      state.phase != :lobby ->
-        {:reply, {:error, :already_started}, state}
+  def handle_call(:start_game, _from, state), do: try_start(state)
 
-      role_count(state, :player) < current_config(state).min_players ->
-        {:reply, {:error, :not_enough_players}, state}
-
-      is_nil(state.music) ->
-        {:reply, {:error, :not_authenticated}, state}
-
-      not music_eligible?(state.music) ->
-        {:reply, {:error, :not_eligible}, state}
-
-      true ->
-        state = start_game(state)
-        {:reply, :ok, broadcast(state)}
+  # A player the host made a host starts the game from their phone.
+  def handle_call({:start_game, player_id}, _from, state) do
+    if player_id in state.host.phone_hosts do
+      try_start(state)
+    else
+      {:reply, {:error, :not_host}, state}
     end
+  end
+
+  def handle_call({:set_phone_host, player_id, host?}, _from, %{phase: :lobby} = state)
+      when is_boolean(host?) do
+    case Map.fetch(state.participants, player_id) do
+      {:ok, %{role: :player}} ->
+        hosts = List.delete(state.host.phone_hosts, player_id)
+        hosts = if host?, do: hosts ++ [player_id], else: hosts
+        {:reply, :ok, broadcast(touch(put_host(state, phone_hosts: hosts)))}
+
+      _other ->
+        {:reply, {:error, :unknown_player}, state}
+    end
+  end
+
+  def handle_call({:set_phone_host, _id, _host?}, _from, state) do
+    {:reply, {:error, :not_lobby}, state}
+  end
+
+  # `song` nil turns the background music off.
+  def handle_call({:set_background, nil}, _from, %{phase: :lobby} = state) do
+    {:reply, :ok, broadcast(touch(put_host(state, background: nil, background_off?: true)))}
+  end
+
+  def handle_call({:set_background, song}, _from, %{phase: :lobby} = state) do
+    with %{music: %{}} <- state,
+         {:ok, track} <- normalize_song(state, song) do
+      {:reply, :ok, broadcast(touch(put_host(state, background: track, background_off?: false)))}
+    else
+      %{music: nil} -> {:reply, {:error, :no_music}, state}
+      {:error, _reason} = error -> {:reply, error, state}
+    end
+  end
+
+  def handle_call({:set_background, _song}, _from, state) do
+    {:reply, {:error, :not_lobby}, state}
   end
 
   # =========================================================================
@@ -547,6 +595,44 @@ defmodule WhoseJam.Game.Server do
   # Start game: build the plan
   # =========================================================================
 
+  defp try_start(state) do
+    cond do
+      state.phase != :lobby ->
+        {:reply, {:error, :already_started}, state}
+
+      role_count(state, :player) < current_config(state).min_players ->
+        {:reply, {:error, :not_enough_players}, state}
+
+      is_nil(state.music) ->
+        {:reply, {:error, :not_authenticated}, state}
+
+      not music_eligible?(state.music) ->
+        {:reply, {:error, :not_eligible}, state}
+
+      true ->
+        state = start_game(state)
+        {:reply, :ok, broadcast(state)}
+    end
+  end
+
+  # Connecting a service picks that service's default background track, unless
+  # the host's pick is already one of its songs, or they turned the music off
+  # (and this is only a refresh of the same service's token).
+  defp with_background(state, mod, previous_provider) do
+    cond do
+      state.host.background && mod.valid_uri?(state.host.background.uri) ->
+        state
+
+      state.host.background_off? and previous_provider == mod.id() ->
+        state
+
+      true ->
+        put_host(state, background: Music.default_background(mod), background_off?: false)
+    end
+  end
+
+  defp put_host(state, changes), do: %{state | host: Enum.into(changes, state.host)}
+
   defp start_game(state) do
     player_ids = player_ids(state)
     config = Config.build(state.overrides, length(player_ids))
@@ -615,7 +701,7 @@ defmodule WhoseJam.Game.Server do
     # answer window scales with how many styles the sub-round covers (1 for a
     # normal sub-round; S for the collapsed all-styles case).
     style_count = max(length(subround.styles), 1)
-    ms = state.config.answer_timer_s * style_count * 1000
+    ms = Config.answer_window_s(state.config) * style_count * 1000
     ref = schedule({:answer_timeout, index}, ms)
 
     %{
@@ -877,7 +963,8 @@ defmodule WhoseJam.Game.Server do
     deltas =
       Scoring.score_round(
         scoring_round(round),
-        vote_list(round)
+        vote_list(round),
+        Config.scoring_opts(state.config)
       )
 
     scores =
@@ -1047,6 +1134,8 @@ defmodule WhoseJam.Game.Server do
       round_state: state.round_state,
       theme: theme_view(state.theme),
       music: music_view(state.music),
+      background: state.host.background,
+      phone_hosts: state.host.phone_hosts,
       config: config_view(state),
       players: players_view(state),
       audience: audience_view(state),
@@ -1206,7 +1295,7 @@ defmodule WhoseJam.Game.Server do
     config = current_config(state)
 
     %{
-      answer_timer_s: config.answer_timer_s,
+      answer_s_per_question: config.answer_s_per_question,
       vote_timer_s: config.vote_timer_s,
       vote_delay_s: config.vote_delay_s,
       questions_per_player: config.questions_per_player,
@@ -1216,7 +1305,10 @@ defmodule WhoseJam.Game.Server do
       quick_reveals?: config.quick_reveals?,
       name_non_voters?: config.name_non_voters?,
       show_places?: config.show_places?,
-      final_suspense?: config.final_suspense?
+      final_suspense?: config.final_suspense?,
+      score_correct?: config.score_correct?,
+      score_fooled?: config.score_fooled?,
+      score_predictions?: config.score_predictions?
     }
   end
 
@@ -1423,9 +1515,14 @@ defmodule WhoseJam.Game.Server do
 
   defp validate_can_vote(state, voter_id) do
     cond do
-      voter_id not in locked_in(state.round) -> :ok
-      current_config(state).allow_vote_change? -> :ok
-      true -> {:error, :already_voted}
+      voter_id not in locked_in(state.round) ->
+        :ok
+
+      current_config(state).allow_vote_change? ->
+        :ok
+
+      true ->
+        {:error, :already_voted}
     end
   end
 

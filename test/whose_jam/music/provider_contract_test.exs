@@ -38,6 +38,15 @@ defmodule WhoseJam.Music.ProviderContractTest do
         end
       end
 
+      test "has a default background track the provider itself accepts" do
+        # Autoselected when the host connects the service; `Music` drops one the
+        # provider would not accept as a song.
+        track = Music.default_background(@provider)
+
+        assert %{uri: uri} = track, "#{inspect(@provider)} has no valid default background"
+        assert @provider.valid_uri?(uri)
+      end
+
       test "a redirect provider can build its authorize URL" do
         # `authorize_url/2` is optional in the behaviour, but the OAuth
         # controller calls it for every :oauth_redirect provider.

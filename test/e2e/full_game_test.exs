@@ -125,7 +125,7 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     |> click_button("Settings")
     # The Mock player hook is running in this browser.
     |> assert_has("p", text: "This screen is ready to play the music.")
-    |> fill_in("Time to pick", with: "120")
+    |> fill_in("Time per question", with: "120")
     |> fill_in("Prompts per player", with: "1")
     # Ten seconds of listening (the default). A made-up Mock song opens
     # voting early, when the TV's player reports its five seconds ended (so

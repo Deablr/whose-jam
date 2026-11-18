@@ -55,6 +55,17 @@ defmodule WhoseJam.Music.Providers.Spotify do
   @impl true
   def search_debounce_ms, do: 300
 
+  # https://open.spotify.com/track/4qDHt2ClApBBzDAvhNGWFd
+  @impl true
+  def default_background do
+    %{
+      uri: "spotify:track:4qDHt2ClApBBzDAvhNGWFd",
+      name: "Default background track",
+      artist: "",
+      album_art_url: nil
+    }
+  end
+
   @impl true
   def valid_uri?(uri), do: Regex.match?(@uri_regex, uri)
 

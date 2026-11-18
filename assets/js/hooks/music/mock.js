@@ -11,6 +11,7 @@ export default {
     let timer = null
     let readyTimer = null
     let audio = null
+    let volume = 1
 
     const stopAudio = () => {
       if (!audio) return
@@ -35,6 +36,7 @@ export default {
         if (!src) return fakeEnd()
 
         const song = new Audio(src)
+        song.volume = volume
         audio = song
         song.onended = () => { if (audio === song) { audio = null; ctx.onEnded() } }
         song.onerror = () => { if (audio === song) { audio = null; fakeEnd() } }
@@ -44,6 +46,11 @@ export default {
       pause() {
         clearTimeout(timer)
         stopAudio()
+      },
+
+      setVolume(level) {
+        volume = Math.min(1, Math.max(0, level))
+        if (audio) audio.volume = volume
       },
 
       updateConfig(next) { config = next },

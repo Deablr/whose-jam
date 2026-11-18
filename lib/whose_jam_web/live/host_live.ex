@@ -34,8 +34,13 @@ defmodule WhoseJamWeb.HostLive do
     * `data-config` — the provider's `client_config/1` as JSON (for Spotify the
       host's access token, refreshed server-side on a timer via
       `WhoseJam.Music.refresh_if_due/2` + `Game.set_music/3`).
-    * `data-uri` — the song URI to be playing *right now*, or `""`.
-    * `data-round` — the current round's identity (sub-round + round index).
+    * `data-uri` — the song URI to be playing *right now*, or `""`: the
+      round's song while one plays, else the host's background track during
+      the lobby and the song-picking.
+    * `data-round` — the current round's identity (sub-round + round index),
+      or `"background"` for the background track.
+    * `data-background` — `"true"` while it is the background track, which the
+      hook plays quietly and on a loop, never reporting its end.
 
   `data-uri` holds the current round's song for the whole `:playing` phase
   (listening, voting and the reveal), and `data-round` identifies the round so
@@ -64,6 +69,9 @@ defmodule WhoseJamWeb.HostLive do
   alias WhoseJam.Game.{Awards, Config, Standings}
   alias WhoseJam.Music
 
+  # Longest background search the server sends on (as PlayLive's).
+  @max_query_bytes 400
+
   @impl true
   def mount(%{"code" => code}, _session, socket) do
     if connected?(socket) do
@@ -91,7 +99,15 @@ defmodule WhoseJamWeb.HostLive do
         music_question_dismissed?: false,
         playback_ready?: false,
         playback_error: nil,
-        refresh_timer: nil
+        refresh_timer: nil,
+        background_open?: false,
+        bg_results: [],
+        bg_query: "",
+        bg_error: nil,
+        # {ref, timer} of a background search waiting its turn, and when the
+        # last one ran (see search_background/2)
+        bg_pending: nil,
+        bg_last_ms: nil
       )
       |> assign_playback()
 
@@ -126,6 +142,18 @@ defmodule WhoseJamWeb.HostLive do
   def handle_info({:game_ended, reason}, socket) do
     {:noreply, socket |> put_flash(:info, ended_message(reason)) |> push_navigate(to: ~p"/")}
   end
+
+  # A background search that waited its turn; a newer one replaces it.
+  # Only while the picker is open: closing it cancels the wait, and this
+  # makes sure a search that slipped past that is never spent.
+  def handle_info(
+        {:bg_search, ref, query},
+        %{assigns: %{bg_pending: {ref, _timer}, background_open?: true}} = socket
+      ) do
+    {:noreply, run_background_search(assign(socket, bg_pending: nil), query)}
+  end
+
+  def handle_info({:bg_search, _ref, _query}, socket), do: {:noreply, socket}
 
   def handle_info(:refresh_token, socket) do
     {:noreply, assign_playback(socket)}
@@ -163,6 +191,70 @@ defmodule WhoseJamWeb.HostLive do
 
   def handle_event("answer_music_question", _params, socket) do
     {:noreply, put_flash(socket, :error, "Couldn’t save that answer. Please try again.")}
+  end
+
+  # The host lets a player start the game from their phone, or takes it back.
+  def handle_event("toggle_phone_host", %{"id" => id}, socket) when is_binary(id) do
+    host? = id not in socket.assigns.view.phone_hosts
+
+    case Game.set_phone_host(socket.assigns.code, id, host?) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn’t change that. Please try again.")}
+    end
+  end
+
+  def handle_event("toggle_phone_host", _params, socket), do: {:noreply, socket}
+
+  def handle_event("open_background", _params, socket) do
+    {:noreply,
+     socket
+     |> cancel_background_search()
+     |> assign(background_open?: true, bg_results: [], bg_query: "", bg_error: nil)}
+  end
+
+  def handle_event("close_background", _params, socket) do
+    {:noreply, close_background(socket)}
+  end
+
+  # Search the room's music service for the background track: only while the
+  # picker is open in the lobby, never with a query longer than a title needs,
+  # and (as the phones do) never sooner after the last search than the
+  # service's own search spacing, whatever the browser sends. Anyone with the
+  # room code can open this screen, and a search can cost the service's quota.
+  def handle_event("search_background", %{"q" => query}, socket)
+      when is_binary(query) and byte_size(query) <= @max_query_bytes do
+    if socket.assigns.background_open? and socket.assigns.view.phase == :lobby do
+      {:noreply, search_background(socket, query)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("search_background", _params, socket), do: {:noreply, socket}
+
+  # Only a song the search above returned can be picked, whatever the client says.
+  def handle_event("pick_background", %{"uri" => uri}, socket) when is_binary(uri) do
+    with %{} = song <- Enum.find(socket.assigns.bg_results, &(&1.uri == uri)),
+         :ok <- Game.set_background(socket.assigns.code, song) do
+      {:noreply, close_background(socket)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Couldn’t set that track. Please try again.")}
+    end
+  end
+
+  def handle_event("pick_background", _params, socket), do: {:noreply, socket}
+
+  def handle_event("clear_background", _params, socket) do
+    case Game.set_background(socket.assigns.code, nil) do
+      :ok ->
+        {:noreply, close_background(socket)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn’t turn that off. Please try again.")}
+    end
   end
 
   def handle_event("set_config", params, socket) do
@@ -252,12 +344,63 @@ defmodule WhoseJamWeb.HostLive do
     {:noreply, put_flash(socket, :error, "Unknown music service.")}
   end
 
+  # Every way the background picker closes (Close, a pick, turning it off)
+  # drops the search still waiting its turn with it.
+  defp close_background(socket) do
+    socket |> cancel_background_search() |> assign(background_open?: false)
+  end
+
+  # A search still waiting its turn is dropped (its message, if already
+  # sent, no longer matches `bg_pending`).
+  defp cancel_background_search(%{assigns: %{bg_pending: {_ref, timer}}} = socket) do
+    Process.cancel_timer(timer)
+    assign(socket, bg_pending: nil)
+  end
+
+  defp cancel_background_search(socket), do: socket
+
+  defp search_background(socket, query) do
+    socket = cancel_background_search(socket)
+
+    spacing = (socket.assigns.view.music && socket.assigns.view.music.search_debounce_ms) || 0
+
+    wait =
+      case socket.assigns.bg_last_ms do
+        nil -> 0
+        last -> spacing - (System.monotonic_time(:millisecond) - last)
+      end
+
+    if wait <= 0 do
+      run_background_search(assign(socket, bg_pending: nil), query)
+    else
+      ref = make_ref()
+      timer = Process.send_after(self(), {:bg_search, ref, query}, wait)
+      assign(socket, bg_pending: {ref, timer})
+    end
+  end
+
+  defp run_background_search(socket, query) do
+    socket = assign(socket, bg_last_ms: System.monotonic_time(:millisecond), bg_query: query)
+
+    case Game.search_songs(socket.assigns.code, query) do
+      {:ok, results} ->
+        assign(socket, bg_results: Enum.take(results, 6), bg_error: nil)
+
+      {:error, _reason} ->
+        assign(socket,
+          bg_results: [],
+          bg_error: "Couldn’t search just now. Try again in a moment."
+        )
+    end
+  end
+
   # How many of the night's songs the final screen lists.
   @playlist_shown 10
 
-  @host_settings ~w(answer_timer_s vote_delay_s vote_timer_s questions_per_player
+  @host_settings ~w(answer_s_per_question vote_delay_s vote_timer_s questions_per_player
                     subrounds_enabled? allow_vote_change? min_players quick_reveals?
-                    name_non_voters? show_places? final_suspense?)
+                    name_non_voters? show_places? final_suspense?
+                    score_correct? score_fooled? score_predictions?)
 
   # Forward only the setting the host just changed. The form posts every field,
   # and untouched ones still hold player-count-derived defaults — sending them
@@ -433,6 +576,29 @@ defmodule WhoseJamWeb.HostLive do
     do: "#{sub}-#{index}"
 
   defp play_round(_view), do: ""
+
+  # The host's background track plays under the lobby and the song-picking,
+  # quietly and on a loop, until the first song of the game.
+  defp background_uri(%{phase: phase, background: %{uri: uri}})
+       when phase in [:lobby, :answering] and is_binary(uri),
+       do: uri
+
+  defp background_uri(_view), do: ""
+
+  # What the player is to be playing: the round's song, else the background.
+  defp player_uri(view) do
+    case play_uri(view) do
+      "" -> background_uri(view)
+      uri -> uri
+    end
+  end
+
+  defp player_round(view) do
+    case play_round(view) do
+      "" -> if background_uri(view) == "", do: "", else: "background"
+      round -> round
+    end
+  end
 
   # The size a video player takes on screen. The playing layout reserves this
   # much room (in place of the album art) and the player is placed over it.
@@ -660,8 +826,9 @@ defmodule WhoseJamWeb.HostLive do
         phx-hook="MusicPlayer"
         data-provider={@music_provider}
         data-config={@music_config}
-        data-uri={play_uri(@view)}
-        data-round={play_round(@view)}
+        data-uri={player_uri(@view)}
+        data-round={player_round(@view)}
+        data-background={to_string(background_uri(@view) != "" and play_uri(@view) == "")}
         class={player_class(@music_video?, play_uri(@view) != "")}
       >
         <div
@@ -707,6 +874,7 @@ defmodule WhoseJamWeb.HostLive do
       {music_prompt(assigns)}
       {music_question(assigns)}
       {settings_panel(assigns)}
+      {background_modal(assigns)}
     </div>
     """
   end
@@ -1076,12 +1244,12 @@ defmodule WhoseJamWeb.HostLive do
                 <div class="jam-unit sm:col-span-3" data-unit="seconds">
                   <.input
                     type="number"
-                    id="answer_timer_s"
-                    name="answer_timer_s"
-                    label="Time to pick"
-                    value={@view.config.answer_timer_s}
-                    min={Config.range(:answer_timer_s).first}
-                    max={Config.range(:answer_timer_s).last}
+                    id="answer_s_per_question"
+                    name="answer_s_per_question"
+                    label="Time per question"
+                    value={@view.config.answer_s_per_question}
+                    min={Config.range(:answer_s_per_question).first}
+                    max={Config.range(:answer_s_per_question).last}
                   />
                 </div>
                 <%!-- A count steps one at a time, its number in the scores'
@@ -1168,6 +1336,11 @@ defmodule WhoseJamWeb.HostLive do
             <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Music service</h3>
             {music_service_list(assigns)}
           </section>
+
+          <section :if={@active_service} class="space-y-3">
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Background music</h3>
+            {background_row(assign(assigns, :prefix, "settings-"))}
+          </section>
         </div>
         <div class="space-y-6">
           <section class="space-y-3">
@@ -1225,6 +1398,41 @@ defmodule WhoseJamWeb.HostLive do
                   name="allow_vote_change?"
                   label="Allow changing a vote"
                   checked={@view.config.allow_vote_change?}
+                />
+              </fieldset>
+            </form>
+          </section>
+
+          <%!-- Each way of scoring a point, on or off. Off, it just doesn't
+               score (switching predictions off also stops asking the picker
+               for one). --%>
+          <section class="space-y-3">
+            <h3 class="text-[1.6rem] font-bold tracking-[-0.01em]">Scoring</h3>
+            <form phx-change="set_config" id="scoring-settings" class="grid gap-1">
+              <fieldset disabled={@view.phase != :lobby} class="contents">
+                <.input
+                  type="checkbox"
+                  class="toggle"
+                  id="score_correct?"
+                  name="score_correct?"
+                  label="Correct guesses: +1 for calling it"
+                  checked={@view.config.score_correct?}
+                />
+                <.input
+                  type="checkbox"
+                  class="toggle"
+                  id="score_fooled?"
+                  name="score_fooled?"
+                  label="Fooling: +1 for each player fooled"
+                  checked={@view.config.score_fooled?}
+                />
+                <.input
+                  type="checkbox"
+                  class="toggle"
+                  id="score_predictions?"
+                  name="score_predictions?"
+                  label="Predictions: +1 for the blame"
+                  checked={@view.config.score_predictions?}
                 />
               </fieldset>
             </form>
@@ -1330,15 +1538,15 @@ defmodule WhoseJamWeb.HostLive do
             id="how-to-score"
             class="mt-6 max-w-[40rem] space-y-1.5 text-[1.65rem] font-medium leading-snug text-jam-cream/85"
           >
-            <li class="flex gap-4">
+            <li :if={@view.config.score_correct?} class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
               <span>for each correct guess</span>
             </li>
-            <li class="flex gap-4">
+            <li :if={@view.config.score_fooled?} class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
               <span>for each player your song fools</span>
             </li>
-            <li class="flex gap-4">
+            <li :if={@view.config.score_predictions?} class="flex gap-4">
               <span class="w-10 shrink-0 font-display text-jam-orange">+1</span>
               <span class="text-balance">for predicting the most common wrong guess</span>
             </li>
@@ -1412,7 +1620,10 @@ defmodule WhoseJamWeb.HostLive do
           <li
             :for={p <- @view.players}
             id={"seat-#{p.id}"}
-            class={["jam-pop flex min-w-0", p.connected? || "opacity-40"]}
+            class={[
+              "jam-pop flex min-w-0 flex-col items-center gap-1.5",
+              p.connected? || "opacity-40"
+            ]}
           >
             <%!-- In the paper tone, a step down from the ticket's white, so
                  the room code stays the thing to look at until all are in. --%>
@@ -1422,6 +1633,29 @@ defmodule WhoseJamWeb.HostLive do
               wrap?
               class={["jam-tape-paper max-w-full px-4 py-3", @seat_size]}
             />
+            <%!-- A host can start the game from their phone. --%>
+            <button
+              type="button"
+              id={"phone-host-#{p.id}"}
+              phx-click="toggle_phone_host"
+              phx-value-id={p.id}
+              aria-pressed={to_string(p.id in @view.phone_hosts)}
+              class={[
+                "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-lg font-bold transition-colors",
+                if(p.id in @view.phone_hosts,
+                  do: "bg-jam-cream text-jam-ink hover:bg-white",
+                  else:
+                    "bg-jam-cream/[0.08] text-jam-cream/70 hover:bg-jam-cream/15 hover:text-jam-cream"
+                )
+              ]}
+            >
+              <.icon
+                :if={p.id in @view.phone_hosts}
+                name="hero-device-phone-mobile-solid"
+                class="size-5"
+              />
+              {if p.id in @view.phone_hosts, do: "Host", else: "Make host"}
+            </button>
           </li>
           <li
             :for={seat <- 1..@open_seats//1}
@@ -1481,8 +1715,120 @@ defmodule WhoseJamWeb.HostLive do
             </button>
           </p>
         </div>
+
+        <%!-- Asked in the lobby, not buried in Settings: what plays while
+             everyone picks. The service's default is already chosen. --%>
+        <div :if={@active_service} id="background-prompt" class="border-t-2 border-jam-cream/10 pt-5">
+          {background_row(assigns)}
+        </div>
       </div>
     </div>
+    """
+  end
+
+  # The background track: what is chosen (the service's default, at first),
+  # and the way to change it or turn it off.
+  defp background_row(assigns) do
+    assigns = assign_new(assigns, :prefix, fn -> "" end)
+
+    ~H"""
+    <div id={@prefix <> "background-row"} class="flex items-center gap-4">
+      <.icon name="hero-musical-note-solid" class="size-7 shrink-0 text-jam-cream/60" />
+      <div class="min-w-0 flex-1">
+        <p class="text-lg font-semibold text-jam-cream/65">Background music while you pick</p>
+        <p
+          :if={@view.background}
+          id={@prefix <> "background-track"}
+          class="truncate text-xl font-bold"
+        >
+          {@view.background.name}
+        </p>
+        <p
+          :if={@view.background && @view.background.artist != ""}
+          class="truncate text-lg font-medium text-jam-cream/65"
+        >
+          {@view.background.artist}
+        </p>
+        <p
+          :if={is_nil(@view.background)}
+          id={@prefix <> "background-track"}
+          class="text-xl font-bold text-jam-cream/65"
+        >
+          None
+        </p>
+      </div>
+      <div :if={@view.phase == :lobby} class="flex shrink-0 gap-2">
+        <button
+          type="button"
+          id={@prefix <> "change-background"}
+          phx-click="open_background"
+          class="cursor-pointer rounded-md bg-jam-cream/[0.1] px-3.5 py-2 text-lg font-bold hover:bg-jam-cream/20"
+        >
+          {if @view.background, do: "Change", else: "Pick a track"}
+        </button>
+        <button
+          :if={@view.background}
+          type="button"
+          id={@prefix <> "clear-background"}
+          phx-click="clear_background"
+          class="cursor-pointer rounded-md px-3 py-2 text-lg font-bold text-jam-cream/70 hover:bg-jam-cream/10"
+        >
+          Off
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  # Searching the room's music service for the background track.
+  defp background_modal(assigns) do
+    ~H"""
+    <.modal
+      :if={@background_open?}
+      id="background-modal"
+      on_close="close_background"
+      class="max-w-2xl"
+      body_class="space-y-4"
+    >
+      <h2 class="font-display text-[2.25rem] leading-none">Background music</h2>
+      <p class="text-lg font-medium text-jam-cream/70">
+        Plays quietly while everyone picks their songs.
+      </p>
+      <form id="background-search" phx-change="search_background" phx-submit="search_background">
+        <input
+          type="text"
+          name="q"
+          value={@bg_query}
+          placeholder="Search for a song"
+          autocomplete="off"
+          autofocus
+          phx-debounce={@view.music && @view.music.search_debounce_ms}
+          class="input w-full text-xl"
+        />
+      </form>
+      <p :if={@bg_error} class="text-lg font-semibold text-jam-orange">{@bg_error}</p>
+      <ul id="background-results" class="space-y-1">
+        <li :for={track <- @bg_results}>
+          <button
+            type="button"
+            phx-click="pick_background"
+            phx-value-uri={track.uri}
+            class="flex w-full cursor-pointer items-center gap-4 rounded-md bg-jam-cream/[0.07] p-2.5 text-left hover:bg-jam-cream/[0.14]"
+          >
+            <img
+              :if={track.album_art_url}
+              src={track.album_art_url}
+              alt=""
+              class="size-14 shrink-0 object-cover"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-xl font-bold">{track.name}</p>
+              <p class="truncate text-lg text-jam-cream/65">{track.artist}</p>
+            </div>
+          </button>
+        </li>
+      </ul>
+    </.modal>
     """
   end
 
@@ -2259,7 +2605,9 @@ defmodule WhoseJamWeb.HostLive do
 
       <div class="jam-rise jam-beat-2 space-y-6">
         <div :if={@breakdown.right != []} id="called-it" class="space-y-3">
-          <p class="jam-eyebrow !text-jam-mint">Called it, +1 each</p>
+          <p class="jam-eyebrow !text-jam-mint">
+            Called it<span :if={@view.config.score_correct?}>, +1 each</span>
+          </p>
           <div class="flex flex-wrap gap-2.5">
             <span :for={name <- @breakdown.right} class="jam-chip text-3xl">{name}</span>
           </div>
@@ -3297,12 +3645,15 @@ defmodule WhoseJamWeb.HostLive do
       missing: missing,
       # What fooling the room was worth: the picker's points, less the one
       # for a guess that came true (which gets a line of its own).
-      fool_points: Map.get(round.deltas || %{}, round.submitter_id, 0) - forecast_point(round)
+      fool_points:
+        Map.get(round.deltas || %{}, round.submitter_id, 0) - forecast_point(view, round)
     }
   end
 
-  defp forecast_point(%{forecast: %{right?: true}}), do: 1
-  defp forecast_point(_round), do: 0
+  defp forecast_point(%{config: %{score_predictions?: true}}, %{forecast: %{right?: true}}),
+    do: 1
+
+  defp forecast_point(_view, _round), do: 0
 
   # The picker's prediction (which wrong answer the room would fall for), and
   # whether it came true: `{text, right?}` (with nobody fooled, nobody took the
@@ -3316,7 +3667,8 @@ defmodule WhoseJamWeb.HostLive do
     nobody = "Predicted nobody would fall for it"
 
     case blamed(view, round) do
-      _nobody when right? -> {nobody, true}
+      # Its sticker, as any right one, only when predictions are scored.
+      _nobody when right? -> {nobody, view.config.score_predictions?}
       [] -> {"#{nobody}, but no player voted", false}
       took -> {"#{nobody}, but #{join_names(took)} took the blame", false}
     end
@@ -3328,8 +3680,10 @@ defmodule WhoseJamWeb.HostLive do
       [] ->
         {"Predicted #{choice_name(view, round, choice)}, but nobody was fooled", false}
 
+      # A right one earns its sticker only when predictions are scored.
       took ->
-        {prediction(choice_name(view, round, choice), took, right?), right?}
+        {prediction(choice_name(view, round, choice), took, right?),
+         right? and view.config.score_predictions?}
     end
   end
 

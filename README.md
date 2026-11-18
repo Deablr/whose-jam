@@ -347,9 +347,9 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 | `YOUTUBE_CLIENT_SECRET` | For YouTube | — | Its client secret. |
 | `YOUTUBE_REDIRECT_URI` | No | With `PHX_SCHEME=https`: `https://<PHX_HOST>/auth/youtube/callback`. Otherwise `http://localhost:<url port>/auth/youtube/callback` | OAuth redirect sent to Google; must exactly match a URI registered on the OAuth client. Set it only if neither default is the address you registered, and use a hostname, not an IP address: the host screen stays on this host after sign-in, and YouTube won't play on an IP-address page. |
 
-Host-facing **game** settings (answer timer, listening delay before voting,
+Host-facing **game** settings (time per question, listening delay before voting,
 vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
-players needed to start) are not env vars — they're chosen per game in the host
+players needed to start, a switch for each way of scoring) are not env vars — they're chosen per game in the host
 screen's Settings panel and default to a ~20-minute session.
 
 ---

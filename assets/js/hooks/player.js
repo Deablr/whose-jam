@@ -93,4 +93,89 @@ const Progress = {
   },
 }
 
-export default { Countdown, Progress }
+// SeatKeeper — keeps a phone's seat in a game on the phone. The session
+// cookie holds one seat (the latest game joined) and is lost with the browser
+// session; local storage keeps one per room code, so a phone that comes back
+// to a game by the back button, a reload or a closed tab is the same player,
+// not a stranger who would join the audience, and a game it has since left
+// for another stays its own.
+//
+//   * "seat:save" {code, token}  — the server has this phone seated: keep it.
+//   * "seat:forget" {code}       — the game no longer knows the seat.
+//   * on mount, a phone with no seat on screen offers the saved one back
+//     ("resume_seat"), once per mount.
+const SEAT_PREFIX = "whose-jam:seat:"
+// A saved seat is dropped this long after the phone last held it (each visit
+// to the game saves it again): as long as a token is good for
+// (`WhoseJamWeb.PlayerToken`), so a seat still offered may yet be one the
+// server refuses, and then forgets.
+const SEAT_MAX_AGE_MS = 4 * 60 * 60 * 1000
+
+function seatKey(code) { return SEAT_PREFIX + String(code).toUpperCase() }
+
+// A saved seat is `{token, at}` (when it was saved, ms), or null.
+function parseSeat(raw) {
+  try {
+    const seat = JSON.parse(raw)
+    if (seat && typeof seat.token === "string" && typeof seat.at === "number") return seat
+  } catch (_e) {}
+  return null
+}
+
+function readSeat(code) {
+  try {
+    const seat = parseSeat(window.localStorage.getItem(seatKey(code)))
+    return seat && Date.now() - seat.at < SEAT_MAX_AGE_MS ? seat.token : null
+  } catch (_e) { return null }
+}
+
+function writeSeat(code, token) {
+  try { window.localStorage.setItem(seatKey(code), JSON.stringify({token, at: Date.now()})) } catch (_e) {}
+}
+
+function dropSeat(code) {
+  try { window.localStorage.removeItem(seatKey(code)) } catch (_e) {}
+}
+
+const SeatKeeper = {
+  mounted() {
+    this.handleEvent("seat:save", ({code, token}) => {
+      if (code && typeof token === "string" && token) writeSeat(code, token)
+    })
+    this.handleEvent("seat:forget", ({code}) => { if (code) dropSeat(code) })
+
+    if (this.el.dataset.seated !== "true") {
+      const token = readSeat(this.el.dataset.code)
+      if (token) this.pushEvent("resume_seat", {token})
+    }
+  },
+}
+
+// SeatFinder — on the home page: offers the seats this phone saved, newest
+// first ("saved_seats"), so the page can show the way back to a game that is
+// on. Seats too old to be good any more are cleared out on the way.
+const SeatFinder = {
+  mounted() {
+    const seats = []
+    try {
+      const keys = []
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i)
+        if (key && key.startsWith(SEAT_PREFIX)) keys.push(key)
+      }
+      for (const key of keys) {
+        const seat = parseSeat(window.localStorage.getItem(key))
+        if (seat && Date.now() - seat.at < SEAT_MAX_AGE_MS) {
+          seats.push(seat)
+        } else {
+          window.localStorage.removeItem(key)
+        }
+      }
+    } catch (_e) {}
+
+    seats.sort((a, b) => b.at - a.at)
+    if (seats.length > 0) this.pushEvent("saved_seats", {tokens: seats.slice(0, 10).map((s) => s.token)})
+  },
+}
+
+export default { Countdown, Progress, SeatKeeper, SeatFinder }

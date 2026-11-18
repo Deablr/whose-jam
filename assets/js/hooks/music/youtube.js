@@ -78,6 +78,7 @@ export default {
     // is cleared as soon as the video is left (the next play, or a stop), not
     // only when a later one happens to start playing.
     let failed = false
+    let volume = 100
 
     // `ctx.onReady()` clears the banner; its re-sync finds nothing to change.
     const clearFailure = () => {
@@ -167,6 +168,7 @@ export default {
           return
         }
 
+        try { player.setVolume(volume) } catch (_e) {}
         player.loadVideoById(id)
       },
 
@@ -174,6 +176,12 @@ export default {
         started = false
         clearFailure()
         if (player) { try { player.stopVideo() } catch (_e) {} }
+      },
+
+      // 0 to 1 (the IFrame API takes 0 to 100).
+      setVolume(level) {
+        volume = Math.round(Math.min(1, Math.max(0, level)) * 100)
+        if (player && player.setVolume) { try { player.setVolume(volume) } catch (_e) {} }
       },
 
       updateConfig(_next) {},
