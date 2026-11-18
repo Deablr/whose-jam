@@ -14,7 +14,9 @@ defmodule WhoseJamWeb.PlayLive do
   While a round's vote is open, the phone of the player who picked the song
   keeps everyone's layout (anything else would give its owner away): they
   lock in through the same buttons, and what they send is their forecast of
-  who takes the blame (see `WhoseJam.Game.cast_vote/3`).
+  who takes the blame, or, naming themselves, that nobody will (see
+  `WhoseJam.Game.cast_vote/3`). So every phone lists every player, its own
+  owner included.
 
   When the game ends (`{:game_ended, reason}`: the host ended it, closed the
   host screen, or it sat idle) the phone says so and offers the way home. A
@@ -663,7 +665,12 @@ defmodule WhoseJamWeb.PlayLive do
         <%!-- Who this is: their tape, with their points stuck on its end as
              a small orange sticker. --%>
         <span :if={@my_name} id="me" class="flex min-w-0 items-center">
-          <.name_tape player_id={@player_id} name={@my_name} class="max-w-[9rem] text-base" />
+          <.name_tape
+            player_id={@player_id}
+            name={@my_name}
+            wrap?
+            class={["max-w-[9rem]", header_tape_size(@my_name)]}
+          />
           <%!-- At a reveal the score waits for the answer, as the TV's does:
                the number, its unit and the sticker's colour all stay the old
                total's until the reveal's last beat. Orange from the first
@@ -708,6 +715,17 @@ defmodule WhoseJamWeb.PlayLive do
       </div>
     </div>
     """
+  end
+
+  # The header's tape: names run to 24 characters and its strip to 9rem, so a
+  # long one is set a size or two down (and the longest wraps onto a second
+  # line, rather than being cut short).
+  defp header_tape_size(name) do
+    case String.length(name) do
+      n when n <= 10 -> "text-base"
+      n when n <= 13 -> "text-sm"
+      _ -> "text-xs"
+    end
   end
 
   defp in_play?(%{phase: phase}), do: phase in [:answering, :playing, :finished]
@@ -1388,10 +1406,12 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   defp own_song_explanation(%{score_predictions?: true}),
-    do: "When your song plays, predict the most common wrong guess. +1 if you’re right."
+    do:
+      "When your song plays, predict the most common wrong guess, or pick yourself if nobody will fall for it. +1 if you’re right."
 
   defp own_song_explanation(_config),
-    do: "When your song plays, predict the most common wrong guess, just for fun."
+    do:
+      "When your song plays, predict the most common wrong guess, or pick yourself if nobody will fall for it, just for fun."
 
   defp all_picked?(%{answering: %{progress: progress}}),
     do: Enum.all?(progress, fn {_id, p} -> p.submitted >= p.total end)
@@ -1790,8 +1810,8 @@ defmodule WhoseJamWeb.PlayLive do
 
       assigns =
         assign(assigns,
-          choices: vote_choices(assigns.round, assigns.player_id),
-          cols: grid_cols(assigns.round, vote_choices(assigns.round, assigns.player_id)),
+          choices: assigns.round.choices,
+          cols: grid_cols(assigns.round, assigns.round.choices),
           change?: change?,
           chosen: chosen,
           chosen_label: chosen && choice_label(assigns.round, chosen)
@@ -1851,6 +1871,12 @@ defmodule WhoseJamWeb.PlayLive do
         <%!-- Names are short, so they sit two to a row and all fit on a
              small phone; prompts need the full width. They follow the
              question; the button that commits is under the thumb. --%>
+        <%!-- Every player, on every phone, in the same place all game. The
+             picker needs their own name (naming themselves predicts that
+             nobody falls for their song), so every phone lists its owner
+             too: a list one name shorter would point at the picker. Who has
+             already had a song is for the room to remember; a list that
+             dimmed them would end by pointing at the answer. --%>
         <div class={
           [
             "grid gap-2",
@@ -1867,7 +1893,7 @@ defmodule WhoseJamWeb.PlayLive do
             # (Names only: a prompt's tile is as tall as its words.)
             "auto-rows-fr",
             @round.style == :guess_who && "grow-[100] basis-0 lg:flex-none",
-            @round.style == :guess_who && grid_cap(@choices),
+            @round.style == :guess_who && grid_cap(@choices, @cols),
             @cols == 2 && "grid-cols-2"
           ]
         }>
@@ -2025,12 +2051,15 @@ defmodule WhoseJamWeb.PlayLive do
     """
   end
 
-  # A picked player's tape on the ballot, as large as fits.
+  # A picked player's tape on the ballot, as large as fits the narrowest
+  # phone's slip (about 15.5rem inside, at 0.6em a character).
   defp locked_tape_size(name) do
     case String.length(name) do
       n when n <= 8 -> "text-[2.25rem]"
-      n when n <= 13 -> "text-[1.85rem]"
-      _ -> "text-[1.4rem]"
+      n when n <= 12 -> "text-[1.85rem]"
+      n when n <= 16 -> "text-[1.4rem]"
+      n when n <= 20 -> "text-[1.15rem]"
+      _ -> "text-[0.95rem]"
     end
   end
 
@@ -2121,16 +2150,6 @@ defmodule WhoseJamWeb.PlayLive do
   defp round_key(%{subround_index: sub, round: %{index: index}}), do: {sub, index}
   defp round_key(_view), do: nil
 
-  # Nobody needs to be offered their own name: a round that asks "whose jam
-  # is this?" is never theirs to guess (and the picker only pretends to).
-  # Every other player stays on the list all game, in the same place: who has
-  # already had a song is for the room to remember, and a list that dimmed
-  # them would end by pointing at the answer.
-  defp vote_choices(%{style: :guess_who, choices: choices}, player_id),
-    do: Enum.reject(choices, &(&1.id == player_id))
-
-  defp vote_choices(%{choices: choices}, _player_id), do: choices
-
   defp long_names?(choices), do: Enum.any?(choices, &(String.length(&1[:name] || "") > 10))
 
   # How many names sit to a row: two, or one when any is too long for half
@@ -2140,10 +2159,11 @@ defmodule WhoseJamWeb.PlayLive do
 
   defp grid_cols(_round, _choices), do: 1
 
-  # The vote grid's greatest height: 4rem a row (two to a row) and the gaps
-  # between. Each a whole class, so the stylesheet has it.
-  defp grid_cap(choices) do
-    case div(length(choices) + 1, 2) do
+  # The vote grid's greatest height: 4rem a row (as many rows as its columns
+  # make: one name to a row when a name is long) and the gaps between. Each a
+  # whole class, so the stylesheet has it.
+  defp grid_cap(choices, cols) do
+    case div(length(choices) + cols - 1, cols) do
       1 -> "max-h-[4rem]"
       2 -> "max-h-[8.5rem]"
       3 -> "max-h-[13rem]"
@@ -2496,7 +2516,26 @@ defmodule WhoseJamWeb.PlayLive do
 
   # The TV's sentence: whom the fooled blamed and whether this player called
   # it, led by its point when it scored one (a miss has none, and nor does a
-  # right one when predictions aren't scored).
+  # right one when predictions aren't scored). Naming themselves, they
+  # predicted that nobody would fall for it.
+  defp blame_line(
+         view,
+         %{forecast: %{choice: choice, right?: right?}, correct_choice: choice} = round
+       ) do
+    case blamed(round) do
+      _nobody when right? ->
+        if view.config.score_predictions?,
+          do: "+1 for predicting nobody would fall for it.",
+          else: "Predicted nobody would fall for it."
+
+      nil ->
+        "Predicted nobody would fall for it, but no player voted."
+
+      took ->
+        "Predicted nobody would fall for it, but #{join_names(took)} took the blame."
+    end
+  end
+
   defp blame_line(view, %{forecast: %{choice: choice, right?: right?}} = round) do
     case blamed(round) do
       nil ->
@@ -2871,9 +2910,12 @@ defmodule WhoseJamWeb.PlayLive do
                       <span :if={row.tied?} class="font-body text-xs font-semibold">tied</span>
                     </span>
                   </span>
+                  <%!-- A name too long for the strip wraps onto a second
+                       line rather than being cut short. --%>
                   <.name_tape
                     player_id={row.id}
                     name={row.name}
+                    wrap?
                     class={[
                       "max-w-[10rem]",
                       if(list_id == "final-scores" and row.rank == 1,

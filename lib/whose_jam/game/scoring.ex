@@ -21,8 +21,10 @@ defmodule WhoseJam.Game.Scoring do
       which *wrong* answer the room will fall for. A round may carry that
       `forecast` (a choice). It earns the submitter +1 when it is the wrong
       answer most players gave, or one of them when several tie for most. A
-      forecast of the correct answer, or of an answer no player gave, earns
-      nothing; audience votes don't count towards it.
+      forecast of an answer no player gave earns nothing. A forecast of the
+      correct answer (the submitter naming themselves) predicts that nobody
+      falls for it: +1 when at least one player voted and none was fooled.
+      Audience votes count towards neither.
 
   ## Return shape
 
@@ -86,8 +88,9 @@ defmodule WhoseJam.Game.Scoring do
 
   @doc """
   Whether the round's `forecast` came true: it names the wrong answer most
-  players gave (or one of those tied for most). `false` for a round without a
-  forecast.
+  players gave (or one of those tied for most), or it names the correct
+  answer and every player who voted (at least one) gave it. `false` for a
+  round without a forecast.
 
   ## Examples
 
@@ -98,15 +101,18 @@ defmodule WhoseJam.Game.Scoring do
   """
   @spec forecast_right?(round(), [vote()]) :: boolean()
   def forecast_right?(%{forecast: forecast, correct_choice: correct_choice}, votes)
-      when not is_nil(forecast) and forecast != correct_choice and is_list(votes) do
+      when not is_nil(forecast) and is_list(votes) do
+    player_votes = Enum.reject(votes, &(&1.voter_role == :audience))
+
     wrong =
-      votes
-      |> Enum.filter(&(&1.voter_role != :audience and &1.choice != correct_choice))
+      player_votes
+      |> Enum.reject(&(&1.choice == correct_choice))
       |> Enum.frequencies_by(& &1.choice)
 
-    case Map.get(wrong, forecast) do
-      nil -> false
-      count -> count == wrong |> Map.values() |> Enum.max()
+    cond do
+      forecast == correct_choice -> player_votes != [] and wrong == %{}
+      Map.has_key?(wrong, forecast) -> wrong[forecast] == wrong |> Map.values() |> Enum.max()
+      true -> false
     end
   end
 

@@ -10,6 +10,7 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
   use WhoseJamWeb, :verified_routes
 
   alias WhoseJam.Game.Standings
+  alias WhoseJamWeb.E2E.Fit
   alias WhoseJamWeb.E2E.Stage
 
   @moduletag :e2e
@@ -60,9 +61,11 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
       join(devices.ben, join_url, "Ben")
       join(devices.cleo, join_url, "Cleo")
 
+      # The longest name a player may have is whole in the lobby.
       # The host makes Ben a host; the game starts from Ben's phone.
       devices.host
       |> assert_has("#player-count", text: "4/")
+      |> Fit.assert_whole("#lobby-players", :lobby)
       |> within("#lobby-players li:has-text('Ben')", &click_button(&1, "Make host"))
       |> assert_has("#lobby-players li:has-text('Ben') button", text: "Host")
 
@@ -79,6 +82,12 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
       scores = play_rounds(devices)
 
       assert_tie_at_the_top(devices.host, scores)
+
+      # The smallest phone keeps the longest name whole on its own board.
+      devices.max
+      |> assert_has("#final-scores li", text: "Maximiliana-Rose", timeout: @wait)
+      |> Fit.assert_whole("#final-scores", :iphone_se)
+
       Stage.hold(to_timeout(second: 10))
 
       play_again(devices)
@@ -240,6 +249,8 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
       # "everyone" who saw through it. Every place shows on the strip.
       if round == 1 do
         devices.host
+        |> Fit.assert_whole("#score-strip", :reveal)
+        |> Fit.assert_whole("#room-said", :reveal)
         |> assert_has("#said-none", text: "1 didn’t vote")
         |> refute_has("#said-none", text: name_of(slacker))
         |> assert_has("#reveal-summary", text: "Nobody fell for it.")
@@ -365,6 +376,8 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     host
     |> assert_has("#winner-margin", text: "share the win", timeout: @wait)
     |> then(fn host -> Enum.reduce(winners, host, &assert_has(&2, "h1#winner", text: &1)) end)
+    |> Fit.assert_whole("#final-scores", :final)
+    |> Fit.assert_whole("h1#winner", :final)
   end
 
   # Play again keeps everyone in and goes back to the lobby; the latecomer

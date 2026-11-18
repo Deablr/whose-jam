@@ -264,10 +264,11 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       # the phones alike.
       prompt = text_of(devices.host, "#round-prompt blockquote")
 
-      # The picker's phone keeps everyone's layout (the same names, button
-      # and locked-in screen), but asks them their own question: whom the
-      # room will wrongly blame for their song. What they lock in is no vote:
-      # it is their prediction, worth a point when it comes true.
+      # The picker's phone keeps everyone's layout (the same names, their
+      # own among them, the same button and locked-in screen), but asks them
+      # their own question: whom the room will wrongly blame for their song.
+      # What they lock in is no vote: it is their prediction, worth a point
+      # when it comes true.
       bluff = picker_guess(round, submitter)
 
       devices
@@ -280,7 +281,8 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
         text: "Pick who they’ll blame. +1 if you’re right."
       )
       |> assert_has("#round-prompt blockquote", text: prompt)
-      |> refute_has("#phone-voting button", text: submitter_name, exact: true)
+      |> assert_has("#phone-voting button[phx-value-choice]", count: length(@players))
+      |> assert_has("#phone-voting button", text: submitter_name, exact: true)
       |> snap_if(first?, submitter, "picker-vote")
       |> click_button(nil, name_of(bluff), exact: true)
       |> click_button("Lock in #{name_of(bluff)}")
@@ -340,8 +342,10 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     devices
     |> Map.fetch!(voter)
     |> assert_has("#phone-voting h1", text: "Whose jam is this?", timeout: @wait)
-    # Nobody is offered their own name.
-    |> refute_has("#phone-voting button", text: voter_name, exact: true)
+    # Every phone lists every player, its own included: the picker's, which
+    # lists theirs (they may predict nobody falls for it), is no different.
+    |> assert_has("#phone-voting button[phx-value-choice]", count: length(@players))
+    |> assert_has("#phone-voting button", text: voter_name, exact: true)
     # A tap chooses; locking it in is the vote.
     |> assert_has("#vote-hint", text: "Pick who chose it. +1 if you’re right.")
     |> refute_has("#phone-voting", text: "blame")

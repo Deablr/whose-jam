@@ -31,9 +31,10 @@ defmodule WhoseJam.Game.Server do
   When the countdown hits zero the round moves to `:results`.
 
   The submitter is one of those voters. They don't guess whose song it is:
-  their choice is a *forecast* of the wrong answer the room will fall for,
-  kept apart from the votes (it is never counted as one) and worth a point if
-  it comes true (`WhoseJam.Game.Scoring.forecast_right?/2`). Because everyone
+  their choice is a *forecast* of the wrong answer the room will fall for
+  (or, naming themselves, that nobody will fall for it), kept apart from the
+  votes (it is never counted as one) and worth a point if it comes true
+  (`WhoseJam.Game.Scoring.forecast_right?/2`). Because everyone
   in the room has something to lock in, who has done so says nothing about
   whose song is playing.
 

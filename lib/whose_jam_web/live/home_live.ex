@@ -161,7 +161,10 @@ defmodule WhoseJamWeb.HomeLive do
                hosting on a TV. --%>
           <%!-- Straight on the stage (no card: the ticket is the prop), and
                on a TV under a hairline. --%>
-          <section class="order-1 space-y-4 pt-2 lg:order-2 lg:flex lg:items-center lg:gap-6 lg:space-y-0 lg:border-t lg:border-jam-cream/12 lg:pt-10">
+          <%!-- The ticket never narrower than a whole code: where the
+               column is too narrow for it beside its heading (a laptop
+               between the phone and TV layouts), it goes under it. --%>
+          <section class="order-1 space-y-4 pt-2 lg:order-2 lg:flex lg:flex-wrap lg:items-center lg:gap-x-6 lg:gap-y-4 lg:space-y-0 lg:border-t lg:border-jam-cream/12 lg:pt-10">
             <h2 class="text-2xl font-extrabold tracking-[-0.015em] lg:shrink-0 lg:text-xl lg:font-bold lg:text-jam-cream/75 xl:text-2xl">
               {if @seat, do: "Join another game", else: "Join a game"}
             </h2>
@@ -178,7 +181,7 @@ defmodule WhoseJamWeb.HomeLive do
                    so it follows the ticket's cut ends. Flat on the stage:
                    a lifting shadow would fall into its notches (dark dots)
                    and onto the button under it. --%>
-              <div class="min-w-0 flex-1">
+              <div class="min-w-0 flex-1 lg:min-w-[14rem]">
                 <div class="jam-ticket [--jam-notch:0.55rem] lg:bg-transparent lg:[mask:none]">
                   <input
                     type="text"

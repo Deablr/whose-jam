@@ -170,7 +170,7 @@ defmodule WhoseJam.Game.ScoringTest do
 
   # The submitter's forecast ---------------------------------------------------
 
-  describe "the submitter's forecast of the room's top wrong answer" do
+  describe "the submitter's forecast of the room's top wrong answer (or of none)" do
     defp forecast(round, choice), do: Map.put(round, :forecast, choice)
 
     test "earns +1 on top of the fool-points when it names the most-given wrong answer" do
@@ -207,12 +207,39 @@ defmodule WhoseJam.Game.ScoringTest do
       assert Scoring.score_round(round, []) == %{}
     end
 
-    test "earns nothing for forecasting the correct answer, however many gave it" do
+    # The picker may name themselves (their prompt, in a guess-the-prompt
+    # round): a forecast that the room sees through, and nobody falls for it.
+    test "of the correct answer earns +1 when every player who voted called it" do
+      round = "sub" |> guess_who_round() |> forecast("sub")
+      votes = [vote("p1", "sub"), vote("p2", "sub")]
+
+      assert Scoring.forecast_right?(round, votes)
+      assert Scoring.score_round(round, votes) == %{"p1" => 1, "p2" => 1, "sub" => 1}
+    end
+
+    test "of the correct answer earns nothing once a single player is fooled" do
       round = %{style: :guess_question, submitter_id: "sub", correct_choice: "q1", forecast: "q1"}
       votes = [vote("p1", "q1"), vote("p2", "q1"), vote("p3", "q2")]
 
       refute Scoring.forecast_right?(round, votes)
       assert Scoring.score_round(round, votes) == %{"p1" => 1, "p2" => 1, "sub" => 1}
+    end
+
+    test "of the correct answer needs a player to have called it" do
+      round = "sub" |> guess_who_round() |> forecast("sub")
+
+      # Nobody voted, or only the audience did: nobody saw through it.
+      refute Scoring.forecast_right?(round, [])
+      refute Scoring.forecast_right?(round, [vote("a1", "sub", :audience)])
+      assert Scoring.score_round(round, []) == %{}
+    end
+
+    test "of the correct answer counts players only: a fooled audience doesn't spoil it" do
+      round = "sub" |> guess_who_round() |> forecast("sub")
+      votes = [vote("p1", "sub"), vote("a1", "p1", :audience)]
+
+      assert Scoring.forecast_right?(round, votes)
+      assert Scoring.score_round(round, votes) == %{"p1" => 1, "sub" => 1}
     end
 
     test "is decided by players' votes: the audience's don't count towards it" do
