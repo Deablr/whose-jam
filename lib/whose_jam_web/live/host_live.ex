@@ -353,8 +353,14 @@ defmodule WhoseJamWeb.HostLive do
     end
   end
 
+  # The player says which song ended, so the server can tell a stale report.
+  def handle_event("song_ended", %{"uri" => uri}, socket) when is_binary(uri) do
+    _ = Game.song_ended(socket.assigns.code, uri)
+    {:noreply, socket}
+  end
+
   def handle_event("song_ended", _params, socket) do
-    Game.song_ended(socket.assigns.code)
+    _ = Game.song_ended(socket.assigns.code)
     {:noreply, socket}
   end
 

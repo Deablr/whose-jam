@@ -127,7 +127,7 @@ defmodule WhoseJam.Game.Server do
   @finale_shutdown_ms 10 * 60 * 1000
   @abandoned_ttl_ms 60 * 60 * 1000
   # Defensive ceiling on uncounted voting, in case the TV never reports the song
-  # ending and nobody votes. Real clients call `song_ended/1` well before this.
+  # ending and nobody votes. Real clients call `song_ended/2` well before this.
   @voting_safety_extra_s 120
   # Once every eligible voter has voted the countdown drops to this (never
   # lengthening a shorter remaining countdown): long enough for the room to
@@ -153,8 +153,8 @@ defmodule WhoseJam.Game.Server do
   # how far into each song its clip starts.
   @vs_clip_s 15
   @vs_start_s 15
-  # Once both clips are heard and everyone is in, the room's pick plays at
-  # least this much longer before the reveal.
+  # Once both clips are heard and everyone is in, the clock is cut to this
+  # (never lengthened), so the room's pick is heard before the reveal.
   @vs_all_in_s 10
   # A tap on "one more second" faster than this is the same tap.
   @extend_tap_ms 150
@@ -327,10 +327,13 @@ defmodule WhoseJam.Game.Server do
     {:reply, {:error, :finished}, state}
   end
 
+  # More seats seat whoever an earlier cap sent to the audience, in the order
+  # they joined.
   def handle_call({:set_config, overrides}, _from, %{phase: :lobby} = state)
       when is_map(overrides) do
-    merged = Map.merge(state.overrides, overrides)
-    {:reply, :ok, broadcast(touch(%{state | overrides: merged}))}
+    state = %{state | overrides: Map.merge(state.overrides, overrides)}
+    state = %{state | participants: seat_audience(state)}
+    {:reply, :ok, broadcast(touch(state))}
   end
 
   def handle_call({:set_config, _overrides}, _from, state) do
@@ -457,9 +460,20 @@ defmodule WhoseJam.Game.Server do
   end
 
   # The song is over: open voting if it wasn't already, and make sure the
-  # countdown is running so the round can't stall.
+  # countdown is running so the round can't stall. A report about a song the
+  # round isn't playing (it has moved on, as a head-to-head matchup does when
+  # the lead changes) is stale, and changes nothing.
   def handle_call(
-        :song_ended,
+        {:song_ended, uri},
+        _from,
+        %{phase: :playing, round: %{song: %{uri: playing}}} = state
+      )
+      when is_binary(uri) and uri != playing do
+    {:reply, :ok, state}
+  end
+
+  def handle_call(
+        {:song_ended, _uri},
         _from,
         %{phase: :playing, round_state: :voting, round: %{style: :vs} = round} = state
       ) do
@@ -467,15 +481,15 @@ defmodule WhoseJam.Game.Server do
     {:reply, :ok, broadcast(state)}
   end
 
-  def handle_call(:song_ended, _from, %{phase: :playing, round_state: :revealing} = state) do
+  def handle_call({:song_ended, _uri}, _from, %{phase: :playing, round_state: :revealing} = state) do
     {:reply, :ok, broadcast(state |> begin_voting() |> start_countdown())}
   end
 
-  def handle_call(:song_ended, _from, %{phase: :playing, round_state: :voting} = state) do
+  def handle_call({:song_ended, _uri}, _from, %{phase: :playing, round_state: :voting} = state) do
     {:reply, :ok, broadcast(start_countdown(state))}
   end
 
-  def handle_call(:song_ended, _from, state) do
+  def handle_call({:song_ended, _uri}, _from, state) do
     {:reply, {:error, :not_playing}, state}
   end
 
@@ -668,9 +682,11 @@ defmodule WhoseJam.Game.Server do
     {:noreply, broadcast(end_intro(state))}
   end
 
-  def handle_info({:vs_next, si, ri}, state) do
+  # Each clip's timer names its song, so one that fired as a song_ended
+  # call started the next clip doesn't cut that one short too.
+  def handle_info({:vs_next, si, ri, side}, state) do
     if state.phase == :playing and state.round_state == :voting and
-         match?(%{style: :vs, clips_done?: false}, state.round) and
+         match?(%{style: :vs, clips_done?: false, playing: ^side}, state.round) and
          state.subround_index == si and state.round_index == ri do
       {:noreply, broadcast(vs_next(state))}
     else
@@ -797,7 +813,7 @@ defmodule WhoseJam.Game.Server do
 
   defp start_game(state) do
     player_ids = player_ids(state)
-    config = Config.build(state.overrides, length(player_ids))
+    config = state.overrides |> Config.build(length(player_ids)) |> seats_for(length(player_ids))
 
     subrounds = Enum.flat_map(state.themes, &build_subrounds(&1, config, player_ids))
 
@@ -1121,7 +1137,7 @@ defmodule WhoseJam.Game.Server do
   defp start_clip(state, side) do
     state = cancel_timer(state, :vote_delay_ref)
     ms = vs_clip_ms()
-    ref = schedule({:vs_next, state.subround_index, state.round_index}, ms)
+    ref = schedule({:vs_next, state.subround_index, state.round_index, side}, ms)
     clip = %{deadline_ms: now_ms() + ms, duration_ms: ms}
     %{state | round: play_side(%{state.round | clip: clip}, side), vote_delay_ref: ref}
   end
@@ -2349,8 +2365,14 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp current_config(state) do
-    state.config || Config.build(state.overrides, max(role_count(state, :player), 1))
+    players = role_count(state, :player)
+    state.config || state.overrides |> Config.build(max(players, 1)) |> seats_for(players)
   end
+
+  # Never fewer seats than players already seated: a host lowering the cap
+  # takes it down to them, not below.
+  defp seats_for(config, players),
+    do: %{config | max_players: max(config.max_players, players)}
 
   defp ordered_participants(state) do
     Enum.map(state.order, fn id -> Map.fetch!(state.participants, id) end)

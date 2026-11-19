@@ -277,9 +277,13 @@ defmodule WhoseJam.Game do
   opens voting early; in `:revealing` or `:voting` it starts the vote countdown
   if it isn't already running (a running countdown is left unchanged). Any
   other state returns `{:error, :not_playing}`.
+
+  `uri` is the song that ended, when the screen knows it: a report about
+  any song but the one the round has playing (one the round has since moved
+  on from) is ignored, and answers `:ok`.
   """
-  @spec song_ended(String.t()) :: :ok | {:error, term()}
-  def song_ended(code), do: command(code, :song_ended)
+  @spec song_ended(String.t(), String.t() | nil) :: :ok | {:error, term()}
+  def song_ended(code, uri \\ nil), do: command(code, {:song_ended, uri})
 
   @doc "Reset a finished game back to the lobby, keeping the player roster."
   @spec play_again(String.t()) :: :ok | {:error, term()}

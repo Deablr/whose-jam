@@ -2631,6 +2631,38 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.round.deadline_ms - System.system_time(:millisecond) > 30_000
     end
 
+    test "a report about a song the matchup has moved on from changes nothing" do
+      put_test_env(:vs_all_in_ms, 60_000)
+      {code, [p1, p2, p3 | _]} = vs_game(4, %{vote_timer_s: 120})
+      :ok = Game.song_ended(code)
+      :ok = Game.song_ended(code)
+      a = Game.get_state(code).round.vs.a.uri
+
+      :ok = Game.cast_vote(code, p1, "a")
+      :ok = Game.cast_vote(code, p2, "b")
+      :ok = Game.cast_vote(code, p3, "b")
+      assert Game.get_state(code).round.vs.playing == "b"
+
+      # "a" ends on the TV just as the lead passes to "b": "b" plays on.
+      assert Game.song_ended(code, a) == :ok
+      assert Game.get_state(code).round.vs.playing == "b"
+
+      # "b" ending is about "b", and hands back to "a".
+      assert Game.song_ended(code, Game.get_state(code).round.vs.b.uri) == :ok
+      assert Game.get_state(code).round.vs.playing == "a"
+    end
+
+    test "a clip's end, reported late, doesn't cut the next clip short" do
+      {code, _ids} = vs_game(4)
+      a = Game.get_state(code).round.vs.a.uri
+
+      :ok = Game.song_ended(code, a)
+      assert %{playing: "b", clips_done?: false} = Game.get_state(code).round.vs
+
+      :ok = Game.song_ended(code, a)
+      assert %{playing: "b", clips_done?: false} = Game.get_state(code).round.vs
+    end
+
     test "a song that runs out after the clips gives way to the other" do
       put_test_env(:vs_all_in_ms, 60_000)
       {code, [p1 | _]} = vs_game(4, %{vote_timer_s: 120})
@@ -2849,6 +2881,21 @@ defmodule WhoseJam.Game.ServerTest do
       assert view.intro.round == 2
     end
 
+    test "someone leaving during the how-to-play isn't asked to pick" do
+      put_test_env(:intro_ms, 60_000)
+      {code, [leaver | stayers]} = lobby_with_players(guess_who_theme(), 4)
+      :ok = Game.start_game(code)
+      assert Game.get_state(code).phase == :intro
+
+      :ok = Game.leave(code, leaver)
+      :ok = Game.skip_song(code)
+
+      view = Game.get_state(code)
+      assert view.phase == :answering
+      refute Map.has_key?(view.answering.progress, leaver)
+      for id <- stayers, do: assert(Game.player_view(code, id).me.assigned != [])
+    end
+
     test "the picking starts by itself when the how-to-play is over" do
       put_test_env(:intro_ms, 40)
       {code, _ids} = lobby_with_players(guess_who_theme(), 3)
@@ -2872,9 +2919,46 @@ defmodule WhoseJam.Game.ServerTest do
       assert Game.get_state(code).config.max_players == 3
       assert {:ok, %{role: :audience}} = Game.join(code, "Late")
 
-      # More seats: the next joiner plays.
-      :ok = Game.set_config(code, %{max_players: 4})
+      # Two more seats: one for the late joiner waiting, one for the next.
+      :ok = Game.set_config(code, %{max_players: 5})
       assert {:ok, %{role: :player}} = Game.join(code, "Later")
+      assert Game.get_state(code).audience == []
+    end
+
+    test "more seats seat whoever a smaller cap sent to the audience, in the order they joined" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 3, %{max_players: 3})
+      {:ok, %{player_id: first, role: :audience}} = Game.join(code, "First late")
+      {:ok, %{player_id: second, role: :audience}} = Game.join(code, "Second late")
+
+      :ok = Game.set_config(code, %{max_players: 4})
+      view = Game.get_state(code)
+      assert List.last(view.players).id == first
+      assert Enum.map(view.audience, & &1.id) == [second]
+    end
+
+    test "never seats fewer than are seated already" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 5)
+      :ok = Game.set_config(code, %{max_players: 2})
+
+      view = Game.get_state(code)
+      assert view.config.max_players == 5
+      assert length(view.players) == 5
+      assert {:ok, %{role: :audience}} = Game.join(code, "Late")
+    end
+
+    test "play again fills the host's seats, not the default eight" do
+      {code, ids} = lobby_with_players(guess_who_theme(), 3, %{max_players: 4})
+      :ok = Game.start_game(code)
+      {:ok, %{player_id: first}} = Game.join(code, "First late")
+      {:ok, %{player_id: second}} = Game.join(code, "Second late")
+      Phoenix.PubSub.subscribe(WhoseJam.PubSub, "game:" <> code)
+      for pid <- ids, do: submit_all(code, pid)
+      assert play_to_finish(code).phase == :finished
+
+      :ok = Game.play_again(code)
+      view = Game.get_state(code)
+      assert Enum.map(view.players, & &1.id) == ids ++ [first]
+      assert Enum.map(view.audience, & &1.id) == [second]
     end
 
     test "never needs more players to start than it seats" do

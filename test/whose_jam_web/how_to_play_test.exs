@@ -29,6 +29,33 @@ defmodule WhoseJamWeb.HowToPlayTest do
     refute Enum.at(off, 2).body =~ "fools"
   end
 
+  test "the split-the-room point is told while it's on" do
+    on = HowToPlay.steps(%{style_sequence: [:guess_who]}, Map.put(@all_on, :score_split?, true))
+    assert Enum.at(on, 2).body =~ "some call and some don’t"
+
+    off = HowToPlay.steps(%{style_sequence: [:guess_who]}, Map.put(@all_on, :score_split?, false))
+    refute Enum.at(off, 2).body =~ "some call"
+
+    alone = HowToPlay.steps(%{style_sequence: [:guess_who]}, %{score_fooled?: false})
+    assert Enum.at(alone, 2).body =~ "A song some call and some don’t is a point for you."
+  end
+
+  test "the audience is told what it does, and that a right guess always scores" do
+    steps = HowToPlay.steps(%{style_sequence: [:guess_who]}, %{score_correct?: false}, :audience)
+
+    assert [%{title: "The players pick songs"}, %{body: guess}, %{title: "Don’t be fooled"}] =
+             steps
+
+    assert guess =~ "a point for every right guess"
+    refute Enum.any?(steps, &(&1.body =~ "Your phone gives you"))
+
+    assert [%{body: pick}, _, %{body: points}] =
+             HowToPlay.steps(%{style_sequence: [:vs]}, @all_on, :audience)
+
+    assert pick == "Every player picks a song for the same prompt."
+    assert points =~ "whoever picked it"
+  end
+
   test "a prompt round asks for the prompt, and head to head has its own steps" do
     assert [_, %{title: "Guess the prompt"}, _] =
              HowToPlay.steps(%{style_sequence: [:guess_question]}, @all_on)

@@ -12,7 +12,8 @@
 //     play in a round starts `data-start-ms` in (0 unless the round says
 //     otherwise). It reports back with pushed events: "playback_ready",
 //     "song_ended" and "playback_error" (so the LiveView can show a banner
-//     instead of the game silently dying).
+//     instead of the game silently dying). "song_ended" carries the `uri`
+//     that ended.
 //
 //     While `data-background="true"` the song is the host's background track,
 //     played under the lobby and the song-picking: quietly (`setVolume`), on
@@ -89,13 +90,16 @@ const MusicPlayer = {
       },
       onNotReady: () => { this.ready = false },
       onEnded: () => {
-        if (this.currentUri) delete this.positions[this.currentUri]
+        const ended = this.currentUri
+        if (ended) delete this.positions[ended]
         this.playingFrom = null
         this.currentUri = null
         if (this.background) {
           this.sync()
         } else {
-          this.pushEvent("song_ended", {})
+          // Which song, so the server can tell a report the round has
+          // already moved on from.
+          this.pushEvent("song_ended", ended ? {uri: ended} : {})
         }
       },
       onError: (reason, message) => {

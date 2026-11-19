@@ -1212,7 +1212,10 @@ defmodule WhoseJamWeb.PlayLive do
   end
 
   defp intro_screen(assigns) do
-    assigns = assign(assigns, steps: HowToPlay.steps(assigns.view.theme, assigns.view.config))
+    assigns =
+      assign(assigns,
+        steps: HowToPlay.steps(assigns.view.theme, assigns.view.config, assigns.role)
+      )
 
     ~H"""
     <div id="phone-intro" class={["flex flex-1 flex-col pt-2 lg:mt-[4vh]", @narrow]}>
