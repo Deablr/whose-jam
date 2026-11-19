@@ -157,7 +157,7 @@ export default {
           .catch(() => ctx.onError("sdk_load_failed"))
       },
 
-      play(uri) {
+      play(uri, fromMs = 0) {
         const id = videoId(uri)
         started = false
         clearFailure()
@@ -169,7 +169,7 @@ export default {
         }
 
         try { player.setVolume(volume) } catch (_e) {}
-        player.loadVideoById(id)
+        player.loadVideoById({videoId: id, startSeconds: Math.max(0, fromMs) / 1000})
       },
 
       pause() {

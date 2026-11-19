@@ -1,8 +1,10 @@
 defmodule WhoseJamWeb.E2E.HeadToHeadTest do
   # A head-to-head game: three friends answer the same prompt, then their
   # songs meet two at a time (the third has a bye) until one is left. The
-  # room votes for the better song of each matchup; a vote for one's own
-  # doesn't count. In real browsers against the real server (see
+  # round opens with how it's played. The room votes for the better song of
+  # each matchup, in the open, from the first note; a vote for one's own
+  # doesn't count. Once both songs are heard the room's pick plays, and
+  # anyone who has voted can keep it playing. In real browsers against the real server (see
   # `mix test.e2e`); only the music service is fake (made-up Mock songs,
   # which report their end after a few seconds, so each clip is short).
   use PhoenixTest.Playwright.Case, async: false
@@ -28,6 +30,17 @@ defmodule WhoseJamWeb.E2E.HeadToHeadTest do
     previous = Application.fetch_env!(:whose_jam, :results_pause_ms)
     Application.put_env(:whose_jam, :results_pause_ms, 6_000)
     on_exit(fn -> Application.put_env(:whose_jam, :results_pause_ms, previous) end)
+
+    # Long enough that the host's Start picking is what moves it on.
+    previous_intro = Application.fetch_env(:whose_jam, :intro_ms)
+    Application.put_env(:whose_jam, :intro_ms, 60_000)
+
+    on_exit(fn ->
+      case previous_intro do
+        {:ok, ms} -> Application.put_env(:whose_jam, :intro_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :intro_ms)
+      end
+    end)
   end
 
   test "three songs meet head to head until one is left", context do
@@ -48,8 +61,16 @@ defmodule WhoseJamWeb.E2E.HeadToHeadTest do
       end
 
       devices.host
-      |> assert_has("#how-to-score", text: "for each vote your song wins head to head")
+      |> refute_has("#how-to-score")
       |> click_button("Start game")
+      |> assert_has("#tv-intro", text: "Battle it out", timeout: @wait)
+
+      devices.ava
+      |> assert_has("#phone-intro", text: "Last song standing", timeout: @wait)
+
+      Stage.hold(2_000)
+      Stage.snap(devices, [:host, :ava], "vs-how-to-play")
+      click_button(devices.host, "Start picking")
 
       pick_songs(devices)
 
@@ -106,38 +127,53 @@ defmodule WhoseJamWeb.E2E.HeadToHeadTest do
     |> refute_has("#done-picking", text: "Neon Overdrive")
   end
 
-  # A matchup: the two songs play in turn, everyone votes for the first,
-  # and the reveal names the pickers and the one that goes through.
+  # A matchup: the vote is open from the first note and public. Everyone
+  # votes for the first song while it plays; the TV shows who backs it.
+  # Once both are heard the room's pick plays, and a voter keeps it playing.
+  # The reveal names the pickers and the one that goes through.
   defp matchup(devices, stage, headline, tape) do
     devices.host
     |> assert_has("#tv-vs #round-prompt p", text: stage, timeout: @wait)
-    |> assert_has("#tv-vs", text: "Song 1 of 2")
+    |> assert_has("#vs-status", text: "Song 1 of 2")
     |> Stage.then_hold(2_500)
     |> Stage.then_snap(:host, "vs-#{stage}-listening")
 
-    devices.ava
-    |> assert_has("#vs-listening", text: "is playing on the TV", timeout: @wait)
-
-    for {key, _name, _device, _search, _song} <- @players do
+    for {key, name, _device, _search, _song} <- @players do
       devices
       |> Map.fetch!(key)
       |> assert_has("#phone-voting h1", text: "Which is better?", timeout: @wait)
       |> assert_has("#vote-hint", text: "A vote for your own doesn’t count.")
       |> click_button("#vs-choice-a", "Song 1")
       |> click_button("Lock in song 1")
-      |> assert_has("#locked-note", text: "Locked in")
+      |> assert_has("#locked-note", text: "Locked in: song 1")
+
+      # In the open, on the TV, as it lands.
+      assert_has(devices.host, "#vs-ballot-a", text: name, timeout: @wait)
     end
+
+    devices.ben
+    |> assert_has("#vs-backers-a", text: "Cleo")
 
     Stage.snap(devices, [:host, :ben], "vs-#{stage}-voted")
 
+    # Both heard: the room's pick plays, and the clock runs.
     devices.host
+    |> assert_has("#vs-status", text: "The room’s pick is playing", timeout: @wait)
+
+    devices.cleo
+    |> click_button("#more-song-button", "Keep it playing")
+    |> assert_has("#more-song-button[disabled]")
+    |> Stage.then_snap(:cleo, "vs-#{stage}-keep-playing")
+
+    devices.host
+    |> assert_has("#more-song-note", text: "+1s", timeout: @wait)
     |> assert_has("#tv-vs p", text: headline, timeout: @wait)
     |> assert_has("#vs-side-a", text: tape)
     |> Stage.then_hold(1_500)
     |> Stage.then_snap(:host, "vs-#{stage}-result")
 
     # Two of the three votes count for song 1: its picker's own doesn't.
-    assert_has(devices.host, "#vs-side-a", text: "2")
+    assert_has(devices.host, "#vs-ballot-a", text: "2")
   end
 
   defp assert_connected(session), do: assert_has(session, "[data-phx-main].phx-connected")

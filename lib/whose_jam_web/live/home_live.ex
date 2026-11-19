@@ -150,7 +150,7 @@ defmodule WhoseJamWeb.HomeLive do
 
     <main
       data-theme="jam"
-      class="jam-stage jam-home min-h-screen flex items-start px-6 pt-12 pb-10 sm:px-12 lg:items-center lg:px-20 lg:py-20"
+      class="jam-stage jam-home jam-scroll flex h-dvh items-start overflow-y-auto px-6 pb-10 pt-12 sm:px-12 lg:items-[safe_center] lg:px-20 lg:py-20"
     >
       <div class="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-[6vw] lg:items-center text-center lg:text-left">
         <header class="flex flex-col items-center lg:items-start gap-4 lg:gap-6">

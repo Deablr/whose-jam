@@ -45,6 +45,17 @@ defmodule WhoseJamWeb.E2E.RoughNightTest do
     previous = Application.fetch_env!(:whose_jam, :results_pause_ms)
     Application.put_env(:whose_jam, :results_pause_ms, 7_000)
     on_exit(fn -> Application.put_env(:whose_jam, :results_pause_ms, previous) end)
+
+    # Each round opens with how it's played; long enough here to see it.
+    previous_intro = Application.fetch_env(:whose_jam, :intro_ms)
+    Application.put_env(:whose_jam, :intro_ms, 1_500)
+
+    on_exit(fn ->
+      case previous_intro do
+        {:ok, ms} -> Application.put_env(:whose_jam, :intro_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :intro_ms)
+      end
+    end)
   end
 
   test "a rough night: mistakes, dropouts, a latecomer and a tie", context do

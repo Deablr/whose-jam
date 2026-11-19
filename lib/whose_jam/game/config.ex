@@ -31,7 +31,11 @@ defmodule WhoseJam.Game.Config do
     * `allow_vote_change?` — let voters change a cast vote. Defaults to `false`.
     * `min_players` — players needed before the host can start. Defaults to
       `3` (so guessing is non-trivial); can be lowered to `2` for development
-      and small groups. Clamped to `2..8` (see `min_players_range/0`).
+      and small groups. Clamped to `2..8` (see `min_players_range/0`), and
+      never more than `max_players`.
+    * `max_players` — how many joiners get a player's seat; anyone after
+      that (or once the game has started) joins the audience. Defaults to
+      `8`, clamped to `2..12`.
     * `name_max_length` — the most characters (codepoints) a joiner's name
       keeps. Defaults to `12`, so a name fits its tape on every screen.
     * `songs_played_pct` — the share of the submitted songs that are played,
@@ -65,13 +69,14 @@ defmodule WhoseJam.Game.Config do
   Every integer override is clamped to a safe range, so a hand-crafted
   `set_config` can never produce a negative or timer-overflowing value:
   `answer_s_per_question` `1..300`, `vote_delay_s` `0..60`, `vote_timer_s` `1..300`,
-  `questions_per_player` `1..10`, `min_players` `2..8`, `name_max_length`
+  `questions_per_player` `1..10`, `min_players` `2..8` (and at most
+  `max_players`), `max_players` `2..12`, `name_max_length`
   `4..24`, `songs_played_pct` `10..100` (see `range/1`). The derived
   `questions_per_player` default is clamped into its range too.
 
   Internal (fixed values that shape `estimated_runtime_s/3`; `song_playback_s`
   also sizes the server's voting safety timeout). They are **not** overridable
-  via `build/2` — only the seventeen host-facing settings above can be overridden:
+  via `build/2` — only the eighteen host-facing settings above can be overridden:
 
     * `song_playback_s` — typical listening time before most votes are in.
       Default `30`.
@@ -88,6 +93,8 @@ defmodule WhoseJam.Game.Config do
   @default_results_padding_s 5
   @default_min_players 3
   @min_players_range 2..8
+  @default_max_players 8
+  @max_players_range 2..12
   @default_name_max_length 12
   @name_max_length_range 4..24
   @default_songs_played_pct 80
@@ -105,6 +112,7 @@ defmodule WhoseJam.Game.Config do
           subrounds_enabled?: boolean(),
           allow_vote_change?: boolean(),
           min_players: pos_integer(),
+          max_players: pos_integer(),
           name_max_length: pos_integer(),
           songs_played_pct: pos_integer(),
           quick_reveals?: boolean(),
@@ -127,6 +135,7 @@ defmodule WhoseJam.Game.Config do
             subrounds_enabled?: true,
             allow_vote_change?: false,
             min_players: @default_min_players,
+            max_players: @default_max_players,
             name_max_length: @default_name_max_length,
             songs_played_pct: @default_songs_played_pct,
             quick_reveals?: false,
@@ -148,9 +157,9 @@ defmodule WhoseJam.Game.Config do
   may use atom or string keys (LiveView forms send strings), and string values
   are coerced for known fields (`"45"` → `45`, `"true"` → `true`).
 
-  Only the seventeen host-facing settings can be overridden (`answer_s_per_question`,
+  Only the eighteen host-facing settings can be overridden (`answer_s_per_question`,
   `vote_timer_s`, `vote_delay_s`, `questions_per_player`, `subrounds_enabled?`,
-  `allow_vote_change?`, `min_players`, `name_max_length`, `songs_played_pct`,
+  `allow_vote_change?`, `min_players`, `max_players`, `name_max_length`, `songs_played_pct`,
   `quick_reveals?`, `name_non_voters?`, `show_places?`, `final_suspense?`,
   `score_correct?`, `score_fooled?`, `score_predictions?`, `score_split?`); any other key in `overrides` is ignored. The internal
   estimator fields stay fixed at their constant defaults. Integer overrides are
@@ -176,6 +185,8 @@ defmodule WhoseJam.Game.Config do
         @questions_per_player_range
       )
 
+    max_players = fetch_int(overrides, :max_players, @default_max_players, @max_players_range)
+
     %__MODULE__{
       answer_s_per_question:
         fetch_int(
@@ -189,7 +200,11 @@ defmodule WhoseJam.Game.Config do
       questions_per_player: qpp,
       subrounds_enabled?: fetch_bool(overrides, :subrounds_enabled?, true),
       allow_vote_change?: fetch_bool(overrides, :allow_vote_change?, false),
-      min_players: fetch_int(overrides, :min_players, @default_min_players, @min_players_range),
+      min_players:
+        overrides
+        |> fetch_int(:min_players, @default_min_players, @min_players_range)
+        |> min(max_players),
+      max_players: max_players,
       name_max_length:
         fetch_int(
           overrides,
@@ -298,7 +313,7 @@ defmodule WhoseJam.Game.Config do
   The clamp range for a host-facing integer setting.
 
   `key` is one of `:answer_s_per_question`, `:vote_delay_s`, `:vote_timer_s`,
-  `:questions_per_player`, `:min_players`, `:name_max_length` or
+  `:questions_per_player`, `:min_players`, `:max_players`, `:name_max_length` or
   `:songs_played_pct`. Overrides outside the range are
   clamped to its nearest edge by `build/2`.
   """
@@ -308,6 +323,7 @@ defmodule WhoseJam.Game.Config do
   def range(:vote_timer_s), do: @vote_timer_range
   def range(:questions_per_player), do: @questions_per_player_range
   def range(:min_players), do: @min_players_range
+  def range(:max_players), do: @max_players_range
   def range(:name_max_length), do: @name_max_length_range
   def range(:songs_played_pct), do: @songs_played_pct_range
 

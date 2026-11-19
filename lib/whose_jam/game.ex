@@ -30,13 +30,6 @@ defmodule WhoseJam.Game do
   @max_code_attempts 25
 
   @doc """
-  How many joiners a game seats as players. Anyone who joins after that, or
-  once the game has started, is audience.
-  """
-  @spec max_players() :: pos_integer()
-  defdelegate max_players, to: Server
-
-  @doc """
   Create a new game for a theme, or for several played one after another
   (a list of theme ids, in the order they are played; the same theme twice
   counts once), optionally with host setting `overrides`.

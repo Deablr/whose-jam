@@ -29,7 +29,7 @@ export default {
     return {
       init() { readyTimer = setTimeout(() => ctx.onReady(), 0) },
 
-      play(uri) {
+      play(uri, fromMs = 0) {
         clearTimeout(timer)
         stopAudio()
         const src = config.audio && config.audio[uri]
@@ -37,6 +37,7 @@ export default {
 
         const song = new Audio(src)
         song.volume = volume
+        if (fromMs > 0) song.currentTime = fromMs / 1000
         audio = song
         song.onended = () => { if (audio === song) { audio = null; ctx.onEnded() } }
         song.onerror = () => { if (audio === song) { audio = null; fakeEnd() } }

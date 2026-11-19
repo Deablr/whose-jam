@@ -351,7 +351,7 @@ shell for local dev). Read at runtime by `config/runtime.exs` and wired through
 
 Host-facing **game** settings (time per question, listening delay before voting,
 vote countdown, questions per player, sub-rounds on/off, allow vote-changing,
-players needed to start, a switch for each way of scoring) are not env vars — they're chosen per game in the host
+players needed to start, most players seated, a switch for each way of scoring) are not env vars — they're chosen per game in the host
 screen's Settings panel and default to a ~20-minute session.
 
 ---

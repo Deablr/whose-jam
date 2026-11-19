@@ -100,7 +100,7 @@ export default {
           .catch(() => ctx.onError("sdk_load_failed"))
       },
 
-      play(uri) {
+      play(uri, fromMs = 0) {
         wasPlaying = true
         lastPos = 0
 
@@ -112,7 +112,7 @@ export default {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({uris: [uri], position_ms: 0}),
+            body: JSON.stringify({uris: [uri], position_ms: Math.max(0, Math.round(fromMs))}),
           }
         ).then((resp) => {
           if (!resp.ok) ctx.onError("play_failed", `status ${resp.status}`)
