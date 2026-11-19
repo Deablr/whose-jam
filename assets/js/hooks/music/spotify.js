@@ -81,7 +81,10 @@ export default {
         // A single-track play ends by pausing at position 0 after having played.
         if (wasPlaying && state.paused && pos === 0 && lastPos > 0) {
           wasPlaying = false
-          ctx.onEnded()
+          // The track Spotify says it was playing (as asked for, if it was
+          // relinked to another release).
+          const track = state.track_window && state.track_window.current_track
+          ctx.onEnded(track ? (track.linked_from && track.linked_from.uri) || track.uri : null)
         }
         lastPos = pos
       })

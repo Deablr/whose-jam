@@ -2946,6 +2946,24 @@ defmodule WhoseJam.Game.ServerTest do
       assert {:ok, %{role: :audience}} = Game.join(code, "Late")
     end
 
+    test "a cap lowered below the seated keeps the players needed to start" do
+      {code, _ids} = lobby_with_players(guess_who_theme(), 6, %{min_players: 4})
+      :ok = Game.set_config(code, %{max_players: 2})
+
+      assert %{min_players: 4, max_players: 6} = Game.get_state(code).config
+    end
+
+    test "a player leaving the lobby frees their seat for whoever waited longest" do
+      {code, [leaver | _]} = lobby_with_players(guess_who_theme(), 3, %{max_players: 3})
+      {:ok, %{player_id: first, role: :audience}} = Game.join(code, "First late")
+      {:ok, %{player_id: second, role: :audience}} = Game.join(code, "Second late")
+
+      :ok = Game.leave(code, leaver)
+      view = Game.get_state(code)
+      assert first in Enum.map(view.players, & &1.id)
+      assert Enum.map(view.audience, & &1.id) == [second]
+    end
+
     test "play again fills the host's seats, not the default eight" do
       {code, ids} = lobby_with_players(guess_who_theme(), 3, %{max_players: 4})
       :ok = Game.start_game(code)

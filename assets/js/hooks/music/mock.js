@@ -21,9 +21,9 @@ export default {
       audio = null
     }
 
-    const fakeEnd = () => {
+    const fakeEnd = (uri) => {
       clearTimeout(timer)
-      timer = setTimeout(() => ctx.onEnded(), config.track_ms || 5000)
+      timer = setTimeout(() => ctx.onEnded(uri), config.track_ms || 5000)
     }
 
     return {
@@ -33,15 +33,15 @@ export default {
         clearTimeout(timer)
         stopAudio()
         const src = config.audio && config.audio[uri]
-        if (!src) return fakeEnd()
+        if (!src) return fakeEnd(uri)
 
         const song = new Audio(src)
         song.volume = volume
         if (fromMs > 0) song.currentTime = fromMs / 1000
         audio = song
-        song.onended = () => { if (audio === song) { audio = null; ctx.onEnded() } }
-        song.onerror = () => { if (audio === song) { audio = null; fakeEnd() } }
-        song.play().catch(() => { if (audio === song) { stopAudio(); fakeEnd() } })
+        song.onended = () => { if (audio === song) { audio = null; ctx.onEnded(uri) } }
+        song.onerror = () => { if (audio === song) { audio = null; fakeEnd(uri) } }
+        song.play().catch(() => { if (audio === song) { stopAudio(); fakeEnd(uri) } })
       },
 
       pause() {

@@ -316,7 +316,7 @@ defmodule WhoseJam.Game.Server do
         {:participant_removed, id, reason}
       )
 
-      state = state |> forget_participant(id) |> drop_from_play(id) |> touch()
+      state = state |> forget_participant(id) |> drop_from_play(id) |> seat_waiting() |> touch()
       {:reply, :ok, broadcast(state)}
     else
       {:reply, {:error, :unknown_player}, state}
@@ -327,12 +327,11 @@ defmodule WhoseJam.Game.Server do
     {:reply, {:error, :finished}, state}
   end
 
-  # More seats seat whoever an earlier cap sent to the audience, in the order
-  # they joined.
+  # More seats seat whoever an earlier cap sent to the audience (see
+  # `seat_waiting/1`).
   def handle_call({:set_config, overrides}, _from, %{phase: :lobby} = state)
       when is_map(overrides) do
-    state = %{state | overrides: Map.merge(state.overrides, overrides)}
-    state = %{state | participants: seat_audience(state)}
+    state = seat_waiting(%{state | overrides: Map.merge(state.overrides, overrides)})
     {:reply, :ok, broadcast(touch(state))}
   end
 
@@ -813,7 +812,7 @@ defmodule WhoseJam.Game.Server do
 
   defp start_game(state) do
     player_ids = player_ids(state)
-    config = state.overrides |> Config.build(length(player_ids)) |> seats_for(length(player_ids))
+    config = seated_config(state.overrides, length(player_ids))
 
     subrounds = Enum.flat_map(state.themes, &build_subrounds(&1, config, player_ids))
 
@@ -1670,6 +1669,11 @@ defmodule WhoseJam.Game.Server do
     }
   end
 
+  # In the lobby, a free seat (more seats, or a player gone) always goes to
+  # whoever has waited longest in the audience.
+  defp seat_waiting(%{phase: :lobby} = state), do: %{state | participants: seat_audience(state)}
+  defp seat_waiting(state), do: state
+
   # A new game has player seats to fill: whoever watched the last one from the
   # audience (they arrived after it started) takes any that are free, in the
   # order they joined.
@@ -2365,14 +2369,24 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp current_config(state) do
-    players = role_count(state, :player)
-    state.config || state.overrides |> Config.build(max(players, 1)) |> seats_for(players)
+    state.config || seated_config(state.overrides, role_count(state, :player))
   end
 
   # Never fewer seats than players already seated: a host lowering the cap
-  # takes it down to them, not below.
-  defp seats_for(config, players),
-    do: %{config | max_players: max(config.max_players, players)}
+  # takes it down to them, not below (and the players needed to start with
+  # it, which is never more than the seats).
+  defp seated_config(overrides, players) do
+    config = Config.build(overrides, max(players, 1))
+
+    if config.max_players >= players do
+      config
+    else
+      overrides
+      |> Map.drop([:max_players, "max_players"])
+      |> Map.put(:max_players, players)
+      |> Config.build(players)
+    end
+  end
 
   defp ordered_participants(state) do
     Enum.map(state.order, fn id -> Map.fetch!(state.participants, id) end)

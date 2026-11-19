@@ -27,7 +27,9 @@
 //
 // where `play` starts the song `fromMs` milliseconds in (0: from the top).
 //
-// where `ctx` is `{el, videoEl, config, onReady(), onNotReady(), onEnded(), onError(reason, message)}`
+// where `ctx` is `{el, videoEl, config, onReady(), onNotReady(), onEnded(uri), onError(reason, message)}`
+// (`onEnded` says which song ended, when the module knows: an end that
+// arrives after the hook has moved on to another song is dropped)
 // and a module may also have `setVolume(level)` (0 to 1), which the hook calls
 // before it starts a song: quiet for the background track, full for the game's.
 // `onNotReady()` tells the hook the player lost its device: it holds off
@@ -89,7 +91,9 @@ const MusicPlayer = {
         this.sync()
       },
       onNotReady: () => { this.ready = false },
-      onEnded: () => {
+      onEnded: (uri) => {
+        // A song the hook has already left (its end came in late).
+        if (uri && uri !== this.currentUri) return
         const ended = this.currentUri
         if (ended) delete this.positions[ended]
         this.playingFrom = null

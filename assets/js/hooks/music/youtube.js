@@ -125,7 +125,10 @@ export default {
               clearFailure()
             } else if (event.data === states.ENDED && started) {
               started = false
-              ctx.onEnded()
+              // The video that ended, as the player has it.
+              let id = null
+              try { id = player.getVideoData().video_id } catch (_e) {}
+              ctx.onEnded(id ? URI_PREFIX + id : null)
             }
           },
 
