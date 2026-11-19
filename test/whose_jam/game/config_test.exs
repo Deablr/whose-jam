@@ -219,6 +219,19 @@ defmodule WhoseJam.Game.ConfigTest do
       assert Config.build(%{min_players: 12}, 5).min_players == 8
     end
 
+    test "max_players defaults to 8 and is clamped to 2..12" do
+      assert Config.build(%{}, 5).max_players == 8
+      assert Config.build(%{"max_players" => "11"}, 5).max_players == 11
+      assert Config.build(%{max_players: 1}, 5).max_players == 2
+      assert Config.build(%{max_players: 13}, 5).max_players == 12
+    end
+
+    test "min_players never asks for more players than max_players seats" do
+      assert Config.build(%{min_players: 6, max_players: 4}, 3).min_players == 4
+      assert Config.build(%{max_players: 2}, 3).min_players == 2
+      assert Config.build(%{min_players: 4, max_players: 4}, 3).min_players == 4
+    end
+
     test "min_players_range/0 exposes the clamp range" do
       assert Config.min_players_range() == 2..8
     end
@@ -265,6 +278,7 @@ defmodule WhoseJam.Game.ConfigTest do
       assert Config.range(:vote_timer_s) == 1..300
       assert Config.range(:questions_per_player) == 1..10
       assert Config.range(:min_players) == 2..8
+      assert Config.range(:max_players) == 2..12
       assert Config.min_players_range() == Config.range(:min_players)
     end
 
@@ -274,7 +288,8 @@ defmodule WhoseJam.Game.ConfigTest do
             :vote_delay_s,
             :vote_timer_s,
             :questions_per_player,
-            :min_players
+            :min_players,
+            :max_players
           ],
           first..last//_ = Config.range(key),
           {input, expected} <- [

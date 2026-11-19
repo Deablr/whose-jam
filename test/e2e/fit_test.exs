@@ -68,6 +68,17 @@ defmodule WhoseJamWeb.E2E.FitTest do
     previous = Application.fetch_env!(:whose_jam, :results_pause_ms)
     Application.put_env(:whose_jam, :results_pause_ms, 8_000)
     on_exit(fn -> Application.put_env(:whose_jam, :results_pause_ms, previous) end)
+
+    # Each round opens with how it's played; long enough here to see it.
+    previous_intro = Application.fetch_env(:whose_jam, :intro_ms)
+    Application.put_env(:whose_jam, :intro_ms, 1_500)
+
+    on_exit(fn ->
+      case previous_intro do
+        {:ok, ms} -> Application.put_env(:whose_jam, :intro_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :intro_ms)
+      end
+    end)
   end
 
   # --- the room code -----------------------------------------------------------
@@ -88,6 +99,36 @@ defmodule WhoseJamWeb.E2E.FitTest do
 
       for size <- @home_sizes do
         screen |> Fit.resize(size) |> assert_join_ticket_fits(size)
+      end
+    end)
+  end
+
+  # The page never scrolls as a whole, so a page taller than its window
+  # (the credits, on a small phone or a short screen) scrolls in its place,
+  # down to its last section.
+  test "the credits scroll in their place", context do
+    roles = [{:phone, "A phone", :iphone_se}, {:screen, "Any screen", :tv}]
+
+    Stage.record(context, roles, "tmp/e2e/fit_credits.mp4", fn devices ->
+      for key <- [:phone, :screen] do
+        devices
+        |> Map.fetch!(key)
+        |> visit(~p"/credits")
+        |> assert_has("#credits-ai")
+        |> evaluate(
+          """
+          (() => {
+            const main = document.querySelector("main");
+            main.scrollTop = main.scrollHeight;
+            const last = document.querySelector("#credits-ai").getBoundingClientRect();
+            const page = document.scrollingElement.scrollHeight <= innerHeight + 1;
+            return `page fits: ${page}, last section seen: ${last.bottom <= innerHeight + 1}`;
+          })()
+          """,
+          &send(self(), {:credits, key, &1})
+        )
+
+        assert_received {:credits, ^key, "page fits: true, last section seen: true"}
       end
     end)
   end

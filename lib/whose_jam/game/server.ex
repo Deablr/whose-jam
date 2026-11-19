@@ -13,12 +13,20 @@ defmodule WhoseJam.Game.Server do
 
       :lobby
         └─ per sub-round:
+             (:intro, before a theme's first sub-round) ──▶
              :answering ──▶ :playing
                               ├─ round :revealing  (listening delay: song plays, votes closed for vote_delay_s)
                               ├─ round :voting     (song keeps playing; clients guess)
                               └─ round :results    (submitter + deltas revealed)
              ...next sub-round or...
         └─ :finished
+
+  ## How each round is played
+
+  Each theme is a round of the game, and opens with `:intro`: a short spell
+  (`@intro_ms`) in which every screen tells the room how this round is
+  played, before its songs are picked. Its deadline is the public view's
+  `intro`; the host can cut it short (`WhoseJam.Game.skip_song/1`).
 
   ## Voting countdown
 
@@ -63,11 +71,14 @@ defmodule WhoseJam.Game.Server do
 
   A `:vs` sub-round asks everyone the same one prompt, then plays the songs
   against each other in a bracket (`WhoseJam.Game.Bracket`) instead of one
-  round per song. Each matchup is a round: in `:revealing` the first song
-  (`"a"`) plays for a clip, then the second (`"b"`; the TV reporting a song's
-  end moves on early); in `:voting` the room picks the better one, with the
-  countdown running from the start; at `:results` the pickers are named and
-  the winner goes through. When a stage's matchups are done the winners (and
+  round per song. Each matchup is a round, and its vote is open, and public
+  (the view's `vs.ballots`), from the first note: the first song (`"a"`)
+  plays a clip (`@vs_clip_s`, from `@vs_start_s` into the song), then the
+  second (`"b"`; the TV reporting a song's end moves on early); then the song
+  with the most votes plays (`WhoseJam.Game.Bracket.leader/2`), switching
+  whenever the lead changes (the TV resumes each where it left off), while
+  the countdown runs; at `:results` the pickers are named and the winner
+  goes through. When a stage's matchups are done the winners (and
   any bye) make the next stage, until one song is left, whose picker gets
   `WhoseJam.Game.Bracket.champion_bonus/0`.
 
@@ -107,7 +118,6 @@ defmodule WhoseJam.Game.Server do
 
   # --- capacity / timing constants -----------------------------------------
 
-  @max_players 8
   @audience_soft_cap 20
 
   # Idle guards. Kept large so they never interfere with a live game or a test;
@@ -117,7 +127,7 @@ defmodule WhoseJam.Game.Server do
   @finale_shutdown_ms 10 * 60 * 1000
   @abandoned_ttl_ms 60 * 60 * 1000
   # Defensive ceiling on uncounted voting, in case the TV never reports the song
-  # ending and nobody votes. Real clients call `song_ended/1` well before this.
+  # ending and nobody votes. Real clients call `song_ended/2` well before this.
   @voting_safety_extra_s 120
   # Once every eligible voter has voted the countdown drops to this (never
   # lengthening a shorter remaining countdown): long enough for the room to
@@ -126,6 +136,8 @@ defmodule WhoseJam.Game.Server do
   @final_changes_s 5
   # How long the song-picking screen stays up once everyone has picked.
   @all_in_pause_ms 1_500
+  # How long a round's how-to-play screen stays up before its picking starts.
+  @intro_ms 15_000
   # How long a game outlives its last host screen: long enough for a refresh
   # or a dropped connection to come back. A host screen that left to sign in to
   # a music service gets as long as that sign-in may take (the OAuth state's
@@ -137,8 +149,13 @@ defmodule WhoseJam.Game.Server do
   @max_sign_ins 4
 
   @guess_question_decoys 3
-  # How long each song of a head-to-head matchup plays before the next.
-  @vs_clip_s 30
+  # How long each song of a head-to-head matchup plays before the next, and
+  # how far into each song its clip starts.
+  @vs_clip_s 15
+  @vs_start_s 15
+  # Once both clips are heard and everyone is in, the clock is cut to this
+  # (never lengthened), so the room's pick is heard before the reveal.
+  @vs_all_in_s 10
   # A tap on "one more second" faster than this is the same tap.
   @extend_tap_ms 150
   # How much one tap gives the song.
@@ -235,10 +252,6 @@ defmodule WhoseJam.Game.Server do
     GenServer.start_link(__MODULE__, opts, name: via(code))
   end
 
-  @doc "How many joiners are players; anyone after that joins as audience."
-  @spec max_players() :: pos_integer()
-  def max_players, do: @max_players
-
   @doc "The `:via` tuple used to register/address a game by its code."
   def via(code), do: {:via, Registry, {WhoseJam.Game.Registry, code}}
 
@@ -303,7 +316,7 @@ defmodule WhoseJam.Game.Server do
         {:participant_removed, id, reason}
       )
 
-      state = state |> forget_participant(id) |> drop_from_play(id) |> touch()
+      state = state |> forget_participant(id) |> drop_from_play(id) |> seat_waiting() |> touch()
       {:reply, :ok, broadcast(state)}
     else
       {:reply, {:error, :unknown_player}, state}
@@ -314,10 +327,12 @@ defmodule WhoseJam.Game.Server do
     {:reply, {:error, :finished}, state}
   end
 
+  # More seats seat whoever an earlier cap sent to the audience (see
+  # `seat_waiting/1`).
   def handle_call({:set_config, overrides}, _from, %{phase: :lobby} = state)
       when is_map(overrides) do
-    merged = Map.merge(state.overrides, overrides)
-    {:reply, :ok, broadcast(touch(%{state | overrides: merged}))}
+    state = seat_waiting(%{state | overrides: Map.merge(state.overrides, overrides)})
+    {:reply, :ok, broadcast(touch(state))}
   end
 
   def handle_call({:set_config, _overrides}, _from, state) do
@@ -432,7 +447,7 @@ defmodule WhoseJam.Game.Server do
          :ok <- validate_choice(state, choice),
          :ok <- validate_can_vote(state, voter_id) do
       round = record_choice(state.round, voter, choice, now_ms() - state.votes_open_ms)
-      state = %{state | round: round} |> touch() |> update_countdown()
+      state = %{state | round: round} |> touch() |> play_leader() |> update_countdown()
       {:reply, :ok, broadcast(state)}
     else
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -444,24 +459,36 @@ defmodule WhoseJam.Game.Server do
   end
 
   # The song is over: open voting if it wasn't already, and make sure the
-  # countdown is running so the round can't stall.
+  # countdown is running so the round can't stall. A report about a song the
+  # round isn't playing (it has moved on, as a head-to-head matchup does when
+  # the lead changes) is stale, and changes nothing.
   def handle_call(
-        :song_ended,
+        {:song_ended, uri},
         _from,
-        %{phase: :playing, round_state: :revealing, round: %{style: :vs}} = state
-      ) do
-    {:reply, :ok, broadcast(vs_next(state))}
+        %{phase: :playing, round: %{song: %{uri: playing}}} = state
+      )
+      when is_binary(uri) and uri != playing do
+    {:reply, :ok, state}
   end
 
-  def handle_call(:song_ended, _from, %{phase: :playing, round_state: :revealing} = state) do
+  def handle_call(
+        {:song_ended, _uri},
+        _from,
+        %{phase: :playing, round_state: :voting, round: %{style: :vs} = round} = state
+      ) do
+    state = if round.clips_done?, do: vs_song_over(state), else: vs_next(state)
+    {:reply, :ok, broadcast(state)}
+  end
+
+  def handle_call({:song_ended, _uri}, _from, %{phase: :playing, round_state: :revealing} = state) do
     {:reply, :ok, broadcast(state |> begin_voting() |> start_countdown())}
   end
 
-  def handle_call(:song_ended, _from, %{phase: :playing, round_state: :voting} = state) do
+  def handle_call({:song_ended, _uri}, _from, %{phase: :playing, round_state: :voting} = state) do
     {:reply, :ok, broadcast(start_countdown(state))}
   end
 
-  def handle_call(:song_ended, _from, state) do
+  def handle_call({:song_ended, _uri}, _from, state) do
     {:reply, {:error, :not_playing}, state}
   end
 
@@ -525,6 +552,11 @@ defmodule WhoseJam.Game.Server do
 
   def handle_call({:set_saved_playlist, _url}, _from, state) do
     {:reply, {:error, :not_finished}, state}
+  end
+
+  # The host skips a round's how-to-play: its picking starts now.
+  def handle_call(:skip_song, _from, %{phase: :intro} = state) do
+    {:reply, :ok, broadcast(end_intro(state))}
   end
 
   def handle_call(:skip_song, _from, %{phase: :playing} = state) do
@@ -645,8 +677,15 @@ defmodule WhoseJam.Game.Server do
     {:noreply, broadcast(end_answering(state))}
   end
 
-  def handle_info({:vs_next, si, ri}, state) do
-    if state.phase == :playing and state.round_state == :revealing and
+  def handle_info({:intro_done, si}, %{phase: :intro, subround_index: si} = state) do
+    {:noreply, broadcast(end_intro(state))}
+  end
+
+  # Each clip's timer names its song, so one that fired as a song_ended
+  # call started the next clip doesn't cut that one short too.
+  def handle_info({:vs_next, si, ri, side}, state) do
+    if state.phase == :playing and state.round_state == :voting and
+         match?(%{style: :vs, clips_done?: false, playing: ^side}, state.round) and
          state.subround_index == si and state.round_index == ri do
       {:noreply, broadcast(vs_next(state))}
     else
@@ -773,7 +812,7 @@ defmodule WhoseJam.Game.Server do
 
   defp start_game(state) do
     player_ids = player_ids(state)
-    config = Config.build(state.overrides, length(player_ids))
+    config = seated_config(state.overrides, length(player_ids))
 
     subrounds = Enum.flat_map(state.themes, &build_subrounds(&1, config, player_ids))
 
@@ -787,7 +826,7 @@ defmodule WhoseJam.Game.Server do
         scores: reset_scores(state)
     }
 
-    begin_answering(state, 0)
+    begin_subround(state, 0)
   end
 
   # One sub-round per style of the theme when enabled; a single all-styles
@@ -860,6 +899,45 @@ defmodule WhoseJam.Game.Server do
       pools: pools
     }
   end
+
+  # =========================================================================
+  # A round's how-to-play
+  # =========================================================================
+
+  # A theme's first sub-round opens with its how-to-play; the theme's later
+  # sub-rounds go straight to their picking.
+  defp begin_subround(state, index) do
+    previous = index > 0 && Enum.at(state.subrounds, index - 1)
+    subround = Enum.at(state.subrounds, index)
+
+    if (previous && previous.theme_id == subround.theme_id) or intro_ms() == 0,
+      do: begin_answering(state, index),
+      else: begin_intro(state, index)
+  end
+
+  # The intro's timer is the answer timer's: one of the two runs at a time.
+  defp begin_intro(state, index) do
+    ms = intro_ms()
+    ref = schedule({:intro_done, index}, ms)
+
+    %{
+      state
+      | phase: :intro,
+        round_state: nil,
+        subround_index: index,
+        submissions: %{},
+        answer_deadline_ms: now_ms() + ms,
+        answer_window_ms: ms,
+        answer_ref: ref,
+        rounds: [],
+        round_index: 0,
+        round: nil,
+        vote_deadline_ms: nil
+    }
+  end
+
+  defp end_intro(state),
+    do: state |> cancel_timer(:answer_ref) |> begin_answering(state.subround_index)
 
   # =========================================================================
   # Answering
@@ -1011,7 +1089,12 @@ defmodule WhoseJam.Game.Server do
       extended_s: 0,
       extend_taps: %{},
       all_in_cut?: false,
+      # the clip playing (%{deadline_ms, duration_ms}) until both have had
+      # theirs; then the room's pick plays, and the songs that have ended
       revealed: false,
+      clip: nil,
+      clips_done?: false,
+      ended: [],
       deltas: nil,
       next_ms: nil,
       tally: nil,
@@ -1038,15 +1121,67 @@ defmodule WhoseJam.Game.Server do
   # The other entry of a matchup a player has left.
   defp vs_opponent(round, id), do: if(round.a.player_id == id, do: round.b, else: round.a)
 
-  # The first song's clip is over (or it ended): the second plays; the
-  # second's is over: the vote.
-  defp vs_next(%{round: %{playing: "a"} = round} = state) do
-    state = cancel_timer(state, :vote_delay_ref)
-    ref = schedule({:vs_next, state.subround_index, state.round_index}, vs_clip_ms())
-    %{state | round: %{round | playing: "b", song: round.b.song}, vote_delay_ref: ref}
+  # A matchup opens with its vote, and the first song's clip.
+  defp begin_matchup(state) do
+    %{
+      state
+      | round_state: :voting,
+        votes_open_ms: now_ms(),
+        vote_deadline_ms: nil,
+        vote_ref: nil
+    }
+    |> start_clip("a")
   end
 
-  defp vs_next(state), do: begin_voting(state)
+  defp start_clip(state, side) do
+    state = cancel_timer(state, :vote_delay_ref)
+    ms = vs_clip_ms()
+    ref = schedule({:vs_next, state.subround_index, state.round_index, side}, ms)
+    clip = %{deadline_ms: now_ms() + ms, duration_ms: ms}
+    %{state | round: play_side(%{state.round | clip: clip}, side), vote_delay_ref: ref}
+  end
+
+  defp play_side(round, side),
+    do: %{round | playing: side, song: Map.fetch!(round, side(side)).song}
+
+  # The first song's clip is over (or it ended): the second plays; the
+  # second's is over: the room's pick plays, and the clock starts.
+  defp vs_next(%{round: %{playing: "a"}} = state), do: start_clip(state, "b")
+
+  defp vs_next(state) do
+    state = cancel_timer(state, :vote_delay_ref)
+
+    %{state | round: %{state.round | clip: nil, clips_done?: true}}
+    |> play_leader()
+    |> start_countdown()
+    |> update_countdown()
+  end
+
+  # Once both clips are heard, the song with the most votes plays (of those
+  # that haven't ended); a tie keeps the one playing.
+  defp play_leader(%{round: %{style: :vs, clips_done?: true, revealed: false} = round} = state) do
+    side =
+      case ["a", "b"] -- round.ended do
+        [only] -> only
+        [] -> round.playing
+        _both -> Bracket.leader(vote_list(round), round.playing)
+      end
+
+    %{state | round: play_side(round, side)}
+  end
+
+  defp play_leader(state), do: state
+
+  # A song ran out after the clips: the other plays on, and with both over
+  # there is nothing left to hear, so the vote closes soon.
+  defp vs_song_over(state) do
+    round = %{state.round | ended: Enum.uniq([state.round.playing | state.round.ended])}
+    state = play_leader(%{state | round: round})
+
+    if state.round.playing in state.round.ended,
+      do: countdown_at_most(state, all_voted_countdown_ms(state)),
+      else: state
+  end
 
   defp vs_results(state) do
     round = state.round
@@ -1055,9 +1190,11 @@ defmodule WhoseJam.Game.Server do
     deltas = {round.a, round.b} |> Bracket.deltas(tally) |> only_participants(state)
     ms = results_pause_ms(state)
 
+    # The song going through plays the reveal out.
     round = %{
-      round
+      play_side(round, winner)
       | revealed: true,
+        clip: nil,
         deltas: deltas,
         tally: tally,
         winner: winner,
@@ -1224,15 +1361,16 @@ defmodule WhoseJam.Game.Server do
   defp record_choice(%{submitter_id: id} = round, %{id: id}, choice, _ms),
     do: %{round | forecast: choice}
 
-  # A vote keeps how long its voter took to first lock in once votes opened.
+  # A vote keeps how long its voter took to first lock in once votes opened,
+  # and its place in the order the room locked in (`seq`).
   defp record_choice(round, voter, choice, ms) do
-    first =
+    {first, seq} =
       case Map.fetch(round.votes, voter.id) do
-        {:ok, %{ms: first}} -> first
-        :error -> ms
+        {:ok, %{ms: first, seq: seq}} -> {first, seq}
+        :error -> {ms, System.unique_integer([:monotonic])}
       end
 
-    vote = %{choice: choice, role: voter.role, ms: first}
+    vote = %{choice: choice, role: voter.role, ms: first, seq: seq}
 
     %{round | votes: Map.put(round.votes, voter.id, vote)}
   end
@@ -1288,8 +1426,7 @@ defmodule WhoseJam.Game.Server do
 
     cond do
       round.style == :vs ->
-        ref = schedule({:vs_next, state.subround_index, index}, vs_clip_ms())
-        %{state | vote_delay_ref: ref}
+        begin_matchup(state)
 
       delay_ms == 0 ->
         begin_voting(state)
@@ -1316,7 +1453,6 @@ defmodule WhoseJam.Game.Server do
         vote_deadline_ms: nil,
         vote_ref: ref
     }
-    |> then(&if(&1.round.style == :vs, do: start_countdown(&1), else: &1))
     |> update_countdown()
   end
 
@@ -1326,11 +1462,16 @@ defmodule WhoseJam.Game.Server do
   # The cut to the short countdown happens once a round: after it, the clock
   # only moves by the seconds the room asks for (`extend_countdown/2`), which
   # a phone dropping out or a vote changed mustn't take back.
+  #
+  # A head-to-head matchup's clock waits for both clips, however soon the
+  # room is in, and then gives the room's pick a moment of its own.
+  defp update_countdown(%{round: %{style: :vs, clips_done?: false}} = state), do: state
+
   defp update_countdown(state) do
     cond do
       all_eligible_voted?(state) and not state.round.all_in_cut? ->
         state
-        |> countdown_at_most(all_voted_countdown_ms(state))
+        |> countdown_at_most(all_in_countdown_ms(state))
         |> then(&%{&1 | round: %{&1.round | all_in_cut?: true}})
 
       all_eligible_voted?(state) ->
@@ -1468,7 +1609,7 @@ defmodule WhoseJam.Game.Server do
     next = state.subround_index + 1
 
     if next < length(state.subrounds) do
-      begin_answering(state, next)
+      begin_subround(state, next)
     else
       finish(state)
     end
@@ -1528,11 +1669,16 @@ defmodule WhoseJam.Game.Server do
     }
   end
 
+  # In the lobby, a free seat (more seats, or a player gone) always goes to
+  # whoever has waited longest in the audience.
+  defp seat_waiting(%{phase: :lobby} = state), do: %{state | participants: seat_audience(state)}
+  defp seat_waiting(state), do: state
+
   # A new game has player seats to fill: whoever watched the last one from the
   # audience (they arrived after it started) takes any that are free, in the
   # order they joined.
   defp seat_audience(state) do
-    free = @max_players - role_count(state, :player)
+    free = current_config(state).max_players - role_count(state, :player)
 
     state
     |> ordered_participants()
@@ -1590,6 +1736,7 @@ defmodule WhoseJam.Game.Server do
       subround_index: state.subround_index,
       subround_total: length(state.subrounds),
       subround_styles: current_subround_styles(state),
+      intro: intro_view(state),
       answering: answering_view(state),
       round: round_view(state),
       scores: state.scores,
@@ -1761,6 +1908,7 @@ defmodule WhoseJam.Game.Server do
       subrounds_enabled?: config.subrounds_enabled?,
       allow_vote_change?: config.allow_vote_change?,
       min_players: config.min_players,
+      max_players: config.max_players,
       quick_reveals?: config.quick_reveals?,
       name_non_voters?: config.name_non_voters?,
       show_places?: config.show_places?,
@@ -1790,6 +1938,21 @@ defmodule WhoseJam.Game.Server do
   defp participant_view(p) do
     %{id: p.id, name: p.name, role: p.role, connected?: p.connected?}
   end
+
+  # A round's how-to-play: when its picking starts, and which round of the
+  # night it is (`round`, of `of`: one per theme).
+  defp intro_view(%{phase: :intro} = state) do
+    theme = current_theme(state)
+
+    %{
+      deadline_ms: state.answer_deadline_ms,
+      duration_ms: state.answer_window_ms,
+      round: (Enum.find_index(state.themes, &(&1.id == theme.id)) || 0) + 1,
+      of: length(state.themes)
+    }
+  end
+
+  defp intro_view(_state), do: nil
 
   defp answering_view(%{phase: :answering} = state) do
     %{
@@ -1886,7 +2049,18 @@ defmodule WhoseJam.Game.Server do
   defp round_view(_state), do: nil
 
   defp vs_view(%{style: :vs} = round) do
-    base = %{stage: round.stage, playing: round.playing, a: round.a.song, b: round.b.song}
+    base = %{
+      stage: round.stage,
+      playing: round.playing,
+      a: round.a.song,
+      b: round.b.song,
+      # how far into each song the TV starts it
+      start_ms: @vs_start_s * 1000,
+      clip: round.clip,
+      clips_done?: round.clips_done?,
+      # The vote is public: who backs which song, in the order they locked in.
+      ballots: ballots(round)
+    }
 
     if round.revealed,
       do:
@@ -1899,6 +2073,15 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp vs_view(_round), do: nil
+
+  defp ballots(round) do
+    by_side =
+      round.votes
+      |> Enum.sort_by(fn {_id, vote} -> vote.seq end)
+      |> Enum.group_by(fn {_id, vote} -> vote.choice end, fn {id, _vote} -> id end)
+
+    %{"a" => Map.get(by_side, "a", []), "b" => Map.get(by_side, "b", [])}
+  end
 
   # What the submitter forecast, and whether it came true.
   defp forecast_view(%{forecast: nil}), do: nil
@@ -2053,7 +2236,7 @@ defmodule WhoseJam.Game.Server do
         |> next_round()
 
       state.round_state == :voting ->
-        update_countdown(state)
+        state |> play_leader() |> update_countdown()
 
       true ->
         state
@@ -2094,7 +2277,7 @@ defmodule WhoseJam.Game.Server do
   defp join_role(state) do
     cond do
       state.phase != :lobby -> :audience
-      role_count(state, :player) >= @max_players -> :audience
+      role_count(state, :player) >= current_config(state).max_players -> :audience
       true -> :player
     end
   end
@@ -2158,7 +2341,7 @@ defmodule WhoseJam.Game.Server do
   defp current_theme(state) do
     theme_id =
       case Enum.at(state.subrounds, state.subround_index) do
-        %{theme_id: id} when state.phase in [:answering, :playing] -> id
+        %{theme_id: id} when state.phase in [:intro, :answering, :playing] -> id
         _other -> nil
       end
 
@@ -2186,7 +2369,23 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp current_config(state) do
-    state.config || Config.build(state.overrides, max(role_count(state, :player), 1))
+    state.config || seated_config(state.overrides, role_count(state, :player))
+  end
+
+  # Never fewer seats than players already seated: a host lowering the cap
+  # takes it down to them, not below (and the players needed to start with
+  # it, which is never more than the seats).
+  defp seated_config(overrides, players) do
+    config = Config.build(overrides, max(players, 1))
+
+    if config.max_players >= players do
+      config
+    else
+      overrides
+      |> Map.drop([:max_players, "max_players"])
+      |> Map.put(:max_players, players)
+      |> Config.build(players)
+    end
   end
 
   defp ordered_participants(state) do
@@ -2275,6 +2474,15 @@ defmodule WhoseJam.Game.Server do
   end
 
   defp all_in_pause_ms, do: env_ms(:all_in_pause_ms, @all_in_pause_ms)
+
+  # Everyone's in: the short final countdown, or, head to head, long enough to
+  # hear the room's pick.
+  defp all_in_countdown_ms(%{round: %{style: :vs}} = state),
+    do: max(all_voted_countdown_ms(state), env_ms(:vs_all_in_ms, @vs_all_in_s * 1000))
+
+  defp all_in_countdown_ms(state), do: all_voted_countdown_ms(state)
+
+  defp intro_ms, do: env_ms(:intro_ms, @intro_ms)
 
   defp finished_shutdown_ms, do: env_ms(:finished_shutdown_ms, @finished_shutdown_ms)
 

@@ -4,8 +4,9 @@ defmodule WhoseJam.Game.Bracket do
   plain data out.
 
   Everyone picks a song for the same prompt. The songs meet two at a time;
-  the room votes for the better one, and it goes through to the next stage,
-  until one is left: the champion. A stage with an odd number of songs gives
+  the room votes for the better one, in the open (who backs which song is
+  shown as the votes land), and it goes through to the next stage, until one
+  is left: the champion. A stage with an odd number of songs gives
   the last one a bye straight through.
 
   An entry is `%{player_id, song}` (the song as `WhoseJam.Music.Track`
@@ -91,6 +92,24 @@ defmodule WhoseJam.Game.Bracket do
           do: side
 
     Map.merge(%{"a" => 0, "b" => 0}, Enum.frequencies(counted))
+  end
+
+  @doc """
+  The side the room is behind right now, which is the one the TV plays once
+  both songs have had their clip. Every vote counts here, a picker's for
+  their own song too: the count is public while the vote is open, and one
+  left out would give away whose song it is. A tie keeps `current`.
+
+      iex> votes = [%{voter_id: "ava", choice: "b"}, %{voter_id: "ben", choice: "b"}]
+      iex> WhoseJam.Game.Bracket.leader(votes, "a")
+      "b"
+      iex> WhoseJam.Game.Bracket.leader([], "a")
+      "a"
+  """
+  @spec leader([vote()], side()) :: side()
+  def leader(votes, current) when is_list(votes) and current in ["a", "b"] do
+    counts = Enum.frequencies(for %{choice: side} <- votes, side in ["a", "b"], do: side)
+    winner(%{"a" => Map.get(counts, "a", 0), "b" => Map.get(counts, "b", 0)}, current)
   end
 
   @doc """

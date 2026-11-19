@@ -6,9 +6,14 @@
 //     song to be playing *right now*, or "" to pause) and `data-round` (the
 //     round's identity), and the hook reconciles real playback toward them. A
 //     new round restarts the song even when its URI matches the previous
-//     round's. It reports back with pushed events: "playback_ready",
+//     round's. Within a round the song can change and change back (head to
+//     head, the TV switches between a matchup's two songs): each song picks
+//     up where it left off, never from the top again, and a song's first
+//     play in a round starts `data-start-ms` in (0 unless the round says
+//     otherwise). It reports back with pushed events: "playback_ready",
 //     "song_ended" and "playback_error" (so the LiveView can show a banner
-//     instead of the game silently dying).
+//     instead of the game silently dying). "song_ended" carries the `uri`
+//     that ended.
 //
 //     While `data-background="true"` the song is the host's background track,
 //     played under the lobby and the song-picking: quietly (`setVolume`), on
@@ -18,9 +23,13 @@
 //
 // A provider module is a plain object (see ./mock.js for the smallest one):
 //
-//   create(ctx) -> { init(), play(uri), pause(), updateConfig(config), destroy() }
+//   create(ctx) -> { init(), play(uri, fromMs), pause(), updateConfig(config), destroy() }
 //
-// where `ctx` is `{el, videoEl, config, onReady(), onNotReady(), onEnded(), onError(reason, message)}`
+// where `play` starts the song `fromMs` milliseconds in (0: from the top).
+//
+// where `ctx` is `{el, videoEl, config, onReady(), onNotReady(), onEnded(uri), onError(reason, message)}`
+// (`onEnded` says which song ended, when the module knows: an end that
+// arrives after the hook has moved on to another song is dropped)
 // and a module may also have `setVolume(level)` (0 to 1), which the hook calls
 // before it starts a song: quiet for the background track, full for the game's.
 // `onNotReady()` tells the hook the player lost its device: it holds off
@@ -49,6 +58,11 @@ const MusicPlayer = {
     this.round = this.el.dataset.round || ""
     this.background = this.el.dataset.background === "true"
     this.currentUri = null
+    // Where each song of this round got to: uri -> ms into it, kept when the
+    // round moves to its other song, so coming back resumes it.
+    this.positions = {}
+    // The song playing now, from where, and since when (for its position).
+    this.playingFrom = null
     this.ready = false
     // The browser refused to start the background track without a click.
     this.blocked = false
@@ -77,12 +91,19 @@ const MusicPlayer = {
         this.sync()
       },
       onNotReady: () => { this.ready = false },
-      onEnded: () => {
+      onEnded: (uri) => {
+        // A song the hook has already left (its end came in late).
+        if (uri && uri !== this.currentUri) return
+        const ended = this.currentUri
+        if (ended) delete this.positions[ended]
+        this.playingFrom = null
         this.currentUri = null
         if (this.background) {
           this.sync()
         } else {
-          this.pushEvent("song_ended", {})
+          // Which song, so the server can tell a report the round has
+          // already moved on from.
+          this.pushEvent("song_ended", ended ? {uri: ended} : {})
         }
       },
       onError: (reason, message) => {
@@ -111,6 +132,8 @@ const MusicPlayer = {
       // A new round always (re)starts its song, even a repeat of the last one.
       this.round = round
       this.wantUri = want
+      this.positions = {}
+      this.playingFrom = null
       if (want) this.currentUri = null
       this.sync()
     } else if (want !== this.wantUri) {
@@ -131,16 +154,37 @@ const MusicPlayer = {
     if (!this.ready) return
     if (this.wantUri) {
       if (this.wantUri !== this.currentUri) {
+        this.keepPosition()
         this.currentUri = this.wantUri
+        const from = this.background ? 0 : this.resumeAt(this.wantUri)
+        this.playingFrom = {uri: this.wantUri, from, at: Date.now()}
         if (this.player.setVolume) this.player.setVolume(this.background ? BACKGROUND_VOLUME : SONG_VOLUME)
-        this.player.play(this.wantUri)
+        this.player.play(this.wantUri, from)
       }
     } else if (this.currentUri !== null) {
       // Only pause if we started something (pausing an idle player makes some
       // SDKs emit a spurious error).
+      this.keepPosition()
       this.currentUri = null
       this.player.pause()
     }
+  },
+
+  // Note how far the song playing got, before it gives way to another.
+  keepPosition() {
+    const playing = this.playingFrom
+    if (playing && playing.uri === this.currentUri) {
+      this.positions[playing.uri] = playing.from + (Date.now() - playing.at)
+    }
+    this.playingFrom = null
+  },
+
+  // Where a song picks up: where it left off this round, else the round's
+  // starting point.
+  resumeAt(uri) {
+    if (uri in this.positions) return this.positions[uri]
+    const start = parseInt(this.el.dataset.startMs || "0", 10)
+    return Number.isNaN(start) || start < 0 ? 0 : start
   },
 }
 

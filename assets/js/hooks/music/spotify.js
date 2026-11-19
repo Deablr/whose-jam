@@ -81,7 +81,10 @@ export default {
         // A single-track play ends by pausing at position 0 after having played.
         if (wasPlaying && state.paused && pos === 0 && lastPos > 0) {
           wasPlaying = false
-          ctx.onEnded()
+          // The track Spotify says it was playing (as asked for, if it was
+          // relinked to another release).
+          const track = state.track_window && state.track_window.current_track
+          ctx.onEnded(track ? (track.linked_from && track.linked_from.uri) || track.uri : null)
         }
         lastPos = pos
       })
@@ -100,7 +103,7 @@ export default {
           .catch(() => ctx.onError("sdk_load_failed"))
       },
 
-      play(uri) {
+      play(uri, fromMs = 0) {
         wasPlaying = true
         lastPos = 0
 
@@ -112,7 +115,7 @@ export default {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({uris: [uri], position_ms: 0}),
+            body: JSON.stringify({uris: [uri], position_ms: Math.max(0, Math.round(fromMs))}),
           }
         ).then((resp) => {
           if (!resp.ok) ctx.onError("play_failed", `status ${resp.status}`)

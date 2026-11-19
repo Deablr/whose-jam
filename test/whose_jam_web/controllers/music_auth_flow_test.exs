@@ -62,6 +62,17 @@ defmodule WhoseJamWeb.MusicAuthFlowTest do
     Application.put_env(:whose_jam, :music_providers, [OauthStub | previous])
     on_exit(fn -> Application.put_env(:whose_jam, :music_providers, previous) end)
 
+    # Straight to the picking: a round's how-to-play is the screens' business.
+    previous_intro = Application.fetch_env(:whose_jam, :intro_ms)
+    Application.put_env(:whose_jam, :intro_ms, 0)
+
+    on_exit(fn ->
+      case previous_intro do
+        {:ok, ms} -> Application.put_env(:whose_jam, :intro_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :intro_ms)
+      end
+    end)
+
     theme =
       %Theme{}
       |> Theme.changeset(%{

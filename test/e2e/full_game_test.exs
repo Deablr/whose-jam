@@ -59,6 +59,17 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     previous = Application.fetch_env!(:whose_jam, :results_pause_ms)
     Application.put_env(:whose_jam, :results_pause_ms, 8_000)
     on_exit(fn -> Application.put_env(:whose_jam, :results_pause_ms, previous) end)
+
+    # Each round opens with how it's played; long enough here to see it.
+    previous_intro = Application.fetch_env(:whose_jam, :intro_ms)
+    Application.put_env(:whose_jam, :intro_ms, 6_000)
+
+    on_exit(fn ->
+      case previous_intro do
+        {:ok, ms} -> Application.put_env(:whose_jam, :intro_ms, ms)
+        :error -> Application.delete_env(:whose_jam, :intro_ms)
+      end
+    end)
   end
 
   test "a host and eight players play a whole game", context do
@@ -73,8 +84,19 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
       join_everyone(devices, code, join_url)
 
       devices.host
-      |> assert_has("#player-count", text: "#{length(@players)}/#{WhoseJam.Game.max_players()}")
+      |> assert_has("#player-count", text: "#{length(@players)}/8")
       |> click_button("Start game")
+
+      # The round opens with how it's played, on the TV and every phone.
+      devices.host
+      |> assert_has("#tv-intro h1", text: @theme, timeout: @wait)
+      |> assert_has("#intro-steps", text: "Guess whose jam")
+
+      devices.gus
+      |> assert_has("#phone-intro", text: "Keep a straight face", timeout: @wait)
+
+      Stage.hold(1_500)
+      Stage.snap(devices, [:host, :cleo, :gus], "how-to-play")
 
       pick_songs(devices)
       {scores, most_fooled} = play_every_round(devices)
@@ -597,8 +619,10 @@ defmodule WhoseJamWeb.E2E.FullGameTest do
     winner = Enum.find(Enum.map(@players, &elem(&1, 0)), &(scores[&1] == top))
     {_, winner_name, _, _, song} = List.keyfind!(@players, winner, 0)
 
+    # ("…, pick a victory song on your phone", or with a tie, "…, one of
+    # you picks a victory song".)
     devices.host
-    |> assert_has("#finale-note", text: "pick a victory song", timeout: @wait)
+    |> assert_has("#finale-note", text: "victory song", timeout: @wait)
 
     devices
     |> Map.fetch!(winner)

@@ -125,7 +125,10 @@ export default {
               clearFailure()
             } else if (event.data === states.ENDED && started) {
               started = false
-              ctx.onEnded()
+              // The video that ended, as the player has it.
+              let id = null
+              try { id = player.getVideoData().video_id } catch (_e) {}
+              ctx.onEnded(id ? URI_PREFIX + id : null)
             }
           },
 
@@ -157,7 +160,7 @@ export default {
           .catch(() => ctx.onError("sdk_load_failed"))
       },
 
-      play(uri) {
+      play(uri, fromMs = 0) {
         const id = videoId(uri)
         started = false
         clearFailure()
@@ -169,7 +172,7 @@ export default {
         }
 
         try { player.setVolume(volume) } catch (_e) {}
-        player.loadVideoById(id)
+        player.loadVideoById({videoId: id, startSeconds: Math.max(0, fromMs) / 1000})
       },
 
       pause() {
